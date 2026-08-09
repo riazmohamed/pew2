@@ -58,6 +58,32 @@ Bring one back with `pew2 providers enable <id>`.
 
 ---
 
+## The bridge's replacement, and why it is not in use yet
+
+GG Coder 5.37.0 added a native `acp` subcommand (`modes/acp-mode.ts`). It is
+strictly better than the bridge: `session/close` and `session/delete` on top of
+what the bridge does, plus real diffs.
+
+It is **not** wired up because every published build of it ignores the `cwd` a
+client sends with `session/new` and uses the agent process's own directory
+instead. Under a daemon that is `/`:
+
+- **Loud failure:** `session/new` returns `ENOENT: ... mkdir '/.gg'`.
+- **Silent, and worse:** where the process directory is writable, the session
+  is created and runs against the wrong project — verified by spawning in one
+  directory, asking for another, and watching the agent list the first.
+
+Fixed locally in gg-framework `07a8090e`. **Once a build carrying that fix is
+published**, switch `providers/ggcoder.json` to:
+
+```json
+"distribution": { "type": "command", "command": "ogcoder", "args": ["acp"] }
+```
+
+and delete `packages/daemon/src/acp/ogcoder-*.ts`. Keep the manifest id
+`ggcoder`: the daemon keys history hydration off it
+(`acp/messageCounts.ts`, `index.ts`).
+
 ## The work still owed
 
 ### 1. Publish the `--resume` fix

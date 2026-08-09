@@ -11,6 +11,17 @@
  * This process sits between the two: ACP on stdio facing the daemon, one
  * `ogcoder --rpc` child per session facing the agent.
  *
+ * **When this can be deleted.** GG Coder gained a native `acp` subcommand in
+ * 5.37.0, which is strictly better than this bridge: it adds `session/close`
+ * and `session/delete`, and renders real diffs. It is not used yet because
+ * every published build of that subcommand ignores the `cwd` a client sends
+ * with `session/new` and runs the session in the agent process's own directory
+ * instead. Under a daemon that is `/`, which fails as `mkdir '/.gg'` — and
+ * where the process directory happens to be writable it silently runs against
+ * a project the user never chose. Fixed in gg-framework 07a8090e; once a build
+ * carrying that reaches npm, point the manifest at `ogcoder acp` and delete
+ * this file and its four modules.
+ *
  * Two shape mismatches are worth naming, because they drive the design:
  *
  *   1. **A child is a session.** `--rpc` opens its conversation on spawn and

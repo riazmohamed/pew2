@@ -26,12 +26,19 @@
  */
 import { agent, ndJsonStream } from "@agentclientprotocol/sdk";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { Readable, Writable } from "node:stream";
 import { resolveOgcoderBin } from "./ogcoder-binary.js";
-import { modelConfigOption, providerForModel, type ConfigOption } from "./ogcoder-models.js";
+import {
+  contextWindowFor,
+  modelConfigOption,
+  providerForModel,
+  type ConfigOption,
+} from "./ogcoder-models.js";
+import { usageUpdate, type RpcUsage } from "./ogcoder-usage.js";
 import { listStoredSessions } from "./ogcoder-sessions.js";
-import { toolKind, toolTitle } from "./ogcoder-tools.js";
+import { toolContent, toolKind, toolTitle } from "./ogcoder-tools.js";
 
 /**
  * The binary to drive.
@@ -64,7 +71,14 @@ type RpcEvent =
   | { type: "text_delta"; text: string }
   | { type: "thinking_delta"; text: string }
   | { type: "tool_call_start"; toolCallId: string; name: string; args?: Record<string, unknown> }
-  | { type: "tool_call_end"; toolCallId: string; isError?: boolean }
+  | { type: "tool_call_update"; toolCallId: string; update?: unknown }
+  | { type: "tool_call_end"; toolCallId: string; isError?: boolean; result?: string }
+  | { type: "turn_end"; turn?: number; stopReason?: string; usage?: RpcUsage }
+  | { type: "model_change"; provider?: string; model?: string }
+  | { type: "compaction_start"; messageCount?: number }
+  | { type: "compaction_end"; compacted?: boolean; originalCount?: number; newCount?: number }
+  | { type: "server_tool_call"; id: string; name: string; input?: unknown }
+  | { type: "server_tool_result"; toolUseId: string; resultType?: string }
   | { type: "error"; message: string };
 
 /** Replies to a command, correlated by the `id` we sent. */
@@ -102,8 +116,19 @@ interface Session {
 }
 
 const sessions = new Map<string, Session>();
-let sessionCounter = 0;
 let commandCounter = 0;
+
+/**
+ * A session id that stays unique across restarts.
+ *
+ * A counter restarting at 1 on every daemon bounce meant `ogcoder_1` could name
+ * a different conversation after a restart than it did before — so a phone
+ * holding the old id would silently address the wrong thread. Randomness costs
+ * nothing here and removes the whole class of mistake.
+ */
+function newSessionId(): string {
+  return `ogcoder_${randomUUID()}`;
+}
 
 /**
  * Spawn a child and wire its stdout to ACP notifications.
@@ -115,16 +140,14 @@ let commandCounter = 0;
 /**
  * Spawn a child, optionally pointed at a stored conversation.
  *
- * **`--resume` does not work in `--rpc` mode.** `AgentSession` supports it
- * through its `sessionId` option, and the Ink TUI uses that, but `runRpcMode`
- * never plumbs the flag through — so the child parses `--resume`, ignores it,
- * and starts an empty conversation. It is passed anyway because the day that
- * gap is closed upstream, this becomes correct with no change here.
+ * `--resume` reached `--rpc` mode as of gg-framework `a28cca93`: the flag was
+ * parsed by the CLI and dropped before `runRpcMode`, so reopening a thread gave
+ * a process with none of its history — the transcript painted from disk while
+ * the agent behind it answered as though the conversation had just started.
  *
- * The consequence, stated plainly because it is invisible from the app: opening
- * a stored thread paints its full transcript (the daemon reads GG Coder's JSONL
- * itself) while the agent behind it has no memory of any of it. Fixing that
- * needs ~6 lines in the fork's `modes/rpc-mode.ts`, not a change in pew2.
+ * A stock `ggcoder` that predates that fix still behaves the old way. Nothing
+ * here can detect it; the symptom is an agent that cannot recall a message
+ * plainly visible above it.
  */
 function start(
   sessionId: string,
@@ -215,16 +238,88 @@ function start(
             status: "in_progress",
           });
           break;
+        case "tool_call_update":
+          // Live progress — a long `bash` or `grep` otherwise sits at
+          // "in progress" with nothing to show it is moving.
+          await emit({
+            sessionUpdate: "tool_call_update",
+            toolCallId: line.toolCallId,
+            status: "in_progress",
+            ...toolContent(line.update),
+          });
+          break;
         case "tool_call_end":
           await emit({
             sessionUpdate: "tool_call_update",
             toolCallId: line.toolCallId,
             status: line.isError ? "failed" : "completed",
+            // The result text, so a finished call can be opened rather than
+            // just ticked off.
+            ...toolContent(line.result),
           });
           break;
+        case "server_tool_call":
+          // Provider-side tools — web search, mostly. Without these the agent
+          // pauses mid-answer for no visible reason.
+          await emit({
+            sessionUpdate: "tool_call",
+            toolCallId: line.id,
+            title: toolTitle(line.name, undefined),
+            kind: toolKind(line.name),
+            status: "in_progress",
+          });
+          break;
+        case "server_tool_result":
+          await emit({
+            sessionUpdate: "tool_call_update",
+            toolCallId: line.toolUseId,
+            status: "completed",
+          });
+          break;
+        case "turn_end": {
+          // The context meter. The turn knows what it spent; only the registry
+          // knows the window, so both halves are needed for a reading.
+          const update = usageUpdate(line.usage, await contextWindowFor(OGCODER_BIN, session.model));
+          if (update) await emit({ ...update });
+          break;
+        }
+        case "model_change":
+          // A `/model` typed at the desk, or an automatic fallback. Without
+          // this the phone's pill keeps naming a model that is no longer
+          // running — a label that lies about where the work is going.
+          if (line.model) {
+            session.model = line.model;
+            await emit({
+              sessionUpdate: "current_config_option_update",
+              configOptions: await configOptionsFor(session),
+            });
+          }
+          break;
+        case "compaction_start":
+          // Compaction can take a while with nothing streaming. Silence here
+          // is indistinguishable from a hung session.
+          await emit({
+            sessionUpdate: "agent_thought_chunk",
+            content: { type: "text", text: "\nCompacting the conversation…\n" },
+          });
+          break;
+        case "compaction_end":
+          if (line.compacted) {
+            await emit({
+              sessionUpdate: "agent_thought_chunk",
+              content: {
+                type: "text",
+                text: `Compacted ${line.originalCount ?? "?"} messages to ${line.newCount ?? "?"}.\n`,
+              },
+            });
+          }
+          break;
         case "error":
-          // Surfaced as agent prose: a mid-turn provider failure that vanished
-          // silently would look to the user like the agent simply stopped.
+          // Prose, deliberately. ACP has no notification for a mid-turn
+          // failure: an error may only be returned from a request, and this
+          // arrives while `session/prompt` is still streaming. Failing the
+          // whole turn would discard the work already done, so the message is
+          // shown where the user is looking and the turn is allowed to finish.
           await emit({
             sessionUpdate: "agent_message_chunk",
             content: { type: "text", text: `\n⚠️ ${line.message}\n` },
@@ -262,6 +357,47 @@ async function configOptionsFor(session: Session): Promise<ConfigOption[]> {
   return model ? [model] : [];
 }
 
+/**
+ * Slash commands answered by an RPC command rather than by the model.
+ *
+ * `--rpc` exposes these as first-class operations, but they reach the bridge as
+ * ordinary prompt text — so without interception `/compact` is forwarded to the
+ * model, which replies with a sentence about compacting and compacts nothing.
+ *
+ * Only commands with a real RPC counterpart belong here. `branch` and
+ * `new_session` are deliberately left out: both change which conversation the
+ * session points at, and the daemon has already painted a transcript for the
+ * old one.
+ */
+const BUILTIN_COMMANDS: Record<
+  string,
+  { description: string; rpc: Record<string, unknown>; done: string }
+> = {
+  "/compact": {
+    description: "Summarise the conversation so far to free up context",
+    rpc: { command: "compact" },
+    done: "\nConversation compacted.\n",
+  },
+};
+
+/**
+ * Tell the client which slash commands this session answers itself.
+ *
+ * Sent as a notification just after the session opens, which is where ACP puts
+ * it. Not awaited: a client that never reads it must not stall session
+ * creation, and the file-based commands the manifest declares are unaffected
+ * either way.
+ */
+function announceCommands(session: Session): void {
+  void session.emit({
+    sessionUpdate: "available_commands_update",
+    availableCommands: Object.entries(BUILTIN_COMMANDS).map(([name, command]) => ({
+      name: name.replace(/^\//, ""),
+      description: command.description,
+    })),
+  });
+}
+
 const app = agent({ name: "pew2-ogcoder" })
   .onRequest("initialize", async () => ({
     protocolVersion: 1,
@@ -278,7 +414,7 @@ const app = agent({ name: "pew2-ogcoder" })
   }))
   .onRequest("session/new", async (ctx: { params?: { cwd?: string }; client: AcpClient }) => {
     const cwd = ctx.params?.cwd ?? process.cwd();
-    const sessionId = `ogcoder_${++sessionCounter}`;
+    const sessionId = newSessionId();
     const session = start(sessionId, cwd, (update) =>
       ctx.client.notify("session/update", { sessionId, update }),
     );
@@ -286,6 +422,7 @@ const app = agent({ name: "pew2-ogcoder" })
     // Surfacing a boot failure here, rather than on the first prompt, is what
     // makes `pew2 providers verify ggcoder` mean anything.
     await session.ready;
+    announceCommands(session);
     return { sessionId, configOptions: await configOptionsFor(session) };
   })
   /**
@@ -342,6 +479,7 @@ const app = agent({ name: "pew2-ogcoder" })
       );
       sessions.set(sessionId, session);
       await session.ready;
+      announceCommands(session);
       return { configOptions: await configOptionsFor(session) };
     },
   )
@@ -405,6 +543,21 @@ const app = agent({ name: "pew2-ogcoder" })
         .map((part) => part.text ?? "")
         .join(" ")
         .trim();
+
+      // Slash commands arrive as ordinary prompt text, so the ones backed by an
+      // RPC command are intercepted here. Sent to the model instead, `/compact`
+      // is just a sentence about compacting.
+      const builtin = BUILTIN_COMMANDS[text.toLowerCase()];
+      if (builtin) {
+        const reply = await send(session, builtin.rpc);
+        if (session.cancelled) return { stopReason: "cancelled" };
+        if (reply.type === "error") throw new Error(reply.message);
+        await session.emit({
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: builtin.done },
+        });
+        return { stopReason: "end_turn" };
+      }
 
       const reply = await send(session, { command: "prompt", text });
       if (session.cancelled) return { stopReason: "cancelled" };

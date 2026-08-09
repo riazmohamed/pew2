@@ -18,11 +18,13 @@ import { readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-/** One entry of GG Coder's own `MODELS` array, narrowed to what we display. */
+/** One entry of GG Coder's own `MODELS` array, narrowed to what we use. */
 interface ModelInfo {
   id: string;
   name: string;
   provider: string;
+  /** Denominator for the app's context meter. */
+  contextWindow?: number;
 }
 
 /** An ACP `select` config option, as the phone's picker renders it. */
@@ -135,6 +137,20 @@ export async function modelConfigOption(
   };
 }
 
+/** One model's registry entry, or `undefined` if the catalogue is unreadable. */
+async function lookup(bin: string, modelId: string): Promise<ModelInfo | undefined> {
+  const entrypoint = entrypointFor(bin);
+  if (!entrypoint) return undefined;
+  try {
+    const registry = (await import(join(dirname(entrypoint), "core", "model-registry.js"))) as {
+      MODELS?: ModelInfo[];
+    };
+    return registry.MODELS?.find((model) => model.id === modelId);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The provider that owns a model id, needed because `switch_model` takes both.
  */
@@ -142,14 +158,19 @@ export async function providerForModel(
   bin: string,
   modelId: string,
 ): Promise<string | undefined> {
-  const entrypoint = entrypointFor(bin);
-  if (!entrypoint) return undefined;
-  try {
-    const registry = (await import(join(dirname(entrypoint), "core", "model-registry.js"))) as {
-      MODELS?: ModelInfo[];
-    };
-    return registry.MODELS?.find((model) => model.id === modelId)?.provider;
-  } catch {
-    return undefined;
-  }
+  return (await lookup(bin, modelId))?.provider;
+}
+
+/**
+ * A model's context window, the denominator for the app's usage meter.
+ *
+ * A turn reports what it spent, never what it was allowed, so this is the only
+ * source for the other half of the reading.
+ */
+export async function contextWindowFor(
+  bin: string,
+  modelId: string | undefined,
+): Promise<number | undefined> {
+  if (!modelId) return undefined;
+  return (await lookup(bin, modelId))?.contextWindow;
 }

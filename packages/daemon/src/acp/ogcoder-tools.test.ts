@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { toolKind, toolTitle } from "./ogcoder-tools.js";
+import { toolContent, toolKind, toolTitle } from "./ogcoder-tools.js";
 
 test("edit-shaped names win over the nouns they contain", () => {
   // `write_file` contains "file" and `read` — the danger is classifying a write
@@ -43,4 +43,34 @@ test("a long argument is clipped with an ellipsis, not sent whole", () => {
   const title = toolTitle("Bash", { command: long });
   expect(title.length).toBe("Bash: ".length + 80);
   expect(title.endsWith("…")).toBe(true);
+});
+
+test("a bare string result becomes tool content", () => {
+  expect(toolContent("hello\nworld")).toEqual({
+    content: [{ type: "content", content: { type: "text", text: "hello\nworld" } }],
+  });
+});
+
+test("progress objects are read from whichever field carries the text", () => {
+  // GG Coder sends a bare string for a result and `{ type, output }` for
+  // progress; assuming one shape silently drops the other.
+  expect(toolContent({ type: "bash_progress", output: "line 1" })).toEqual({
+    content: [{ type: "content", content: { type: "text", text: "line 1" } }],
+  });
+});
+
+test("nothing worth showing yields an empty object, not empty content", () => {
+  // Callers spread this unconditionally, so it must be safe to be absent.
+  expect(toolContent(undefined)).toEqual({});
+  expect(toolContent("   ")).toEqual({});
+  expect(toolContent({ type: "progress" })).toEqual({});
+  expect(toolContent(42)).toEqual({});
+});
+
+test("huge output is clipped before it crosses the relay", () => {
+  // A bash call can emit megabytes, and every byte reaches a phone.
+  const result = toolContent("x".repeat(50_000));
+  const text = (result.content?.[0]?.content as { text: string }).text;
+  expect(text.length).toBeLessThan(4_100);
+  expect(text.endsWith("… (truncated)")).toBe(true);
 });

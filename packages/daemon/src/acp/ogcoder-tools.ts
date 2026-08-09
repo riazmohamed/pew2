@@ -34,6 +34,47 @@ export function toolKind(name: string): ToolKind {
 const TITLE_LIMIT = 80;
 
 /**
+ * Longest tool output we forward.
+ *
+ * A `bash` call can emit megabytes, and every byte crosses the relay to a
+ * phone. The head is kept because that is where a command says what it did;
+ * the transcript on disk keeps the whole thing either way.
+ */
+const OUTPUT_LIMIT = 4_000;
+
+/**
+ * ACP `content` for a tool call's progress or result.
+ *
+ * Returns an empty object when there is nothing worth showing, so the caller
+ * can spread it unconditionally rather than branching at every call site.
+ */
+export function toolContent(value: unknown): { content?: { type: "content"; content: unknown }[] } {
+  const text = extractText(value);
+  if (!text) return {};
+  const clipped =
+    text.length > OUTPUT_LIMIT ? `${text.slice(0, OUTPUT_LIMIT)}\n… (truncated)` : text;
+  return { content: [{ type: "content", content: { type: "text", text: clipped } }] };
+}
+
+/**
+ * The human-readable text inside a progress or result payload.
+ *
+ * GG Coder sends a bare string for a result and a `{ type, output }` object for
+ * progress, so both shapes are read rather than assuming one and silently
+ * dropping the other.
+ */
+function extractText(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined;
+  if (typeof value !== "object" || value === null) return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of ["output", "text", "result", "content"]) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return undefined;
+}
+
+/**
  * A one-line title for a tool call.
  *
  * The first non-empty string argument is nearly always the interesting one — a

@@ -1,11 +1,31 @@
 /**
  * Merging dictated speech into a draft that may already have text in it.
  *
- * The rule that makes or breaks this: a recogniser emits *interim* results, and
- * each one is a revised transcript of the whole utterance so far, not the next
- * few words. Appending them produces "hello hello there hello there world".
- * So a dictation session remembers where it started and what it last wrote, and
- * every result replaces that tail.
+ * Two rules pull against each other, and getting only one of them right is how
+ * dictation loses words.
+ *
+ * 1. **Interim results restate the whole utterance**, not the next few words.
+ *    Appending them yields "hello hello there hello there world". So the
+ *    volatile tail is *replaced* on every result.
+ * 2. **We run `continuous: true`, so one recording holds many utterances.** The
+ *    recogniser closes a segment and starts the next from empty. Treat that as
+ *    rule 1 and sentence two overwrites sentence one — a paragraph of speech
+ *    arrives as its last phrase.
+ *
+ * The tempting fix is to trust `isFinal` as the segment boundary. It is not
+ * trustworthy. On iOS 18 the Expo module cannot get a real one (Apple stopped
+ * delivering it: forums.developer.apple.com/forums/thread/762952) and infers it
+ * from `speechRecognitionMetadata.speechDuration > 0` — its own comment says
+ * this "can be emitted multiple times during a continuous session". The same
+ * segment can therefore be announced final several times, and can still be
+ * *revised* afterwards. Folding every final into a committed base duplicates
+ * text when finals repeat; ignoring finals drops whole segments. That pair is
+ * the intermittent "sometimes it replaces, sometimes it doesn't".
+ *
+ * So the boundary is decided from the transcripts themselves: a result that
+ * *extends* the open segment revises it, and only a result that does not starts
+ * a new one. `isFinal` is kept as a hint that a boundary may follow — never as
+ * the thing that moves text into the committed part.
  *
  * Kept away from the Expo module (`ui/speech.ts`) so the rule is testable —
  * `bun test` cannot parse React Native's Flow syntax, and this is the part with
@@ -15,46 +35,109 @@
 /**
  * What a dictation session needs to remember between results.
  *
- * Only the starting draft: every result rebuilds from it, which is *how* the
- * dictated tail is replaced rather than appended. Keeping the last transcript
- * too would be a second copy of something already implied.
+ * The draft is always `typed + committed + segment`, and each field answers a
+ * different question: `typed` is what cancelling falls back to, `committed` is
+ * the utterances that are settled, `segment` is the one still open to revision.
+ * Storing only the joined draft would make a revision indistinguishable from a
+ * new sentence, which is the whole problem.
  */
 export interface DictationState {
   /** The draft as it stood when the mic was tapped. */
-  base: string;
+  typed: string;
+  /** Utterances the recogniser has finished with, joined. */
+  committed: string;
+  /** The utterance still open to revision. */
+  segment: string;
+  /** Whether `segment` was announced final, so the next result may open a new one. */
+  closed: boolean;
 }
 
 export function beginDictation(draft: string): DictationState {
-  return { base: draft };
+  return { typed: draft, committed: "", segment: "", closed: false };
+}
+
+/**
+ * Join two fragments the way a person would.
+ *
+ * Dictating onto existing text inserts a space, because someone who typed
+ * "fix the" and then said "login bug" means two words, not one. Text that
+ * already ends in whitespace, or an opening bracket, is left as written.
+ */
+function join(left: string, right: string): string {
+  if (!left) return right;
+  if (!right) return left;
+  return left + (/[\s([{"'`]$/.test(left) ? "" : " ") + right;
+}
+
+function draftOf(state: DictationState): string {
+  return join(join(state.typed, state.committed), state.segment);
+}
+
+/**
+ * Whether `spoken` is the open segment being revised rather than a new utterance.
+ *
+ * Revisions grow from the front: "open" → "open the" → "Open the file." So a
+ * prefix match in either direction is a revision — either direction because a
+ * recogniser also *shortens* a guess it decided was wrong. Trailing punctuation
+ * and case are ignored, since the recogniser adds both when finalising: reading
+ * "open the" → "Open the file." as a new sentence is what duplicates text.
+ *
+ * A correction that rewrites a word mid-sentence ("the write approach" → "the
+ * right approach") shares no prefix and is read as a new utterance. That is
+ * deliberate, not an oversight: nothing in the result distinguishes it from a
+ * genuinely new sentence, and the two mistakes are not equal. Appending leaves
+ * a visible stutter the user can edit; replacing deletes speech they gave us,
+ * which is the bug this file exists to prevent.
+ */
+function revises(segment: string, spoken: string): boolean {
+  if (!segment) return true;
+  const normalise = (text: string) => text.toLowerCase().replace(/[\s.,!?;:]+$/, "");
+  const previous = normalise(segment);
+  const next = normalise(spoken);
+  if (!previous) return true;
+  return next.startsWith(previous) || previous.startsWith(next);
 }
 
 /**
  * The draft after this transcript, and the state to carry forward.
  *
- * Dictating onto existing text inserts a space, because someone who typed
- * "fix the" and then said "login bug" means two words, not one. A draft that
- * already ends in whitespace, or an opening bracket, is left as written.
+ * `isFinal` only closes the open segment; it never moves text by itself. A
+ * closed segment is still revised in place when the next result turns out to
+ * extend it, which is what makes iOS 18's repeated finals harmless.
  */
 export function applyTranscript(
   state: DictationState,
   transcript: string,
+  isFinal = false,
 ): { draft: string; state: DictationState } {
   const spoken = transcript.trim();
-  const base = state.base;
-  if (!spoken) return { draft: base, state };
+  if (!spoken) return { draft: draftOf(state), state };
 
-  const joiner = base.length === 0 || /[\s([{"'`]$/.test(base) ? "" : " ";
-  return { draft: base + joiner + spoken, state };
+  // A new utterance only when the open one is closed *and* this is not a late
+  // revision of it.
+  const next: DictationState =
+    state.closed && !revises(state.segment, spoken)
+      ? {
+          ...state,
+          committed: join(state.committed, state.segment),
+          segment: spoken,
+          closed: isFinal,
+        }
+      : { ...state, segment: spoken, closed: isFinal || state.closed };
+
+  return { draft: draftOf(next), state: next };
 }
 
 /**
  * The draft to keep when dictation is cancelled rather than finished.
  *
  * Interim results are guesses; abandoning a recording should leave what was
- * typed before it, not a half-heard sentence the user never approved.
+ * typed before it, not a half-heard sentence the user never approved. That
+ * means `typed` alone — `committed` is finalised speech, which is exactly what
+ * cancelling is meant to throw away.
  */
 export function cancelDictation(state: DictationState): string {
-  return state.base;
+  return state.typed;
 }
 
 /**

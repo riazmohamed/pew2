@@ -88,8 +88,11 @@ export function useDictation({ draft, onDraftChange, onMessage }: UseDictationOp
     haptics.sent();
 
     void startDictation({
-      onTranscript: (transcript) => {
-        const next = applyTranscript(state.current, transcript);
+      // `isFinal` is not cosmetic: under `continuous`, the recogniser restarts
+      // from empty after every final result, so a final that is not folded into
+      // the base gets overwritten by the next sentence.
+      onTranscript: (transcript, isFinal) => {
+        const next = applyTranscript(state.current, transcript, isFinal);
         state.current = next.state;
         changeRef.current(next.draft);
       },

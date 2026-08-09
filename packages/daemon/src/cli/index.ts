@@ -254,30 +254,6 @@ function pickerNote(agent: {
   return undefined;
 }
 
-/**
- * Run a bundled ACP bridge, named by id.
- *
- * Some agents do not speak ACP, and pew2 ships a translator for them. A bridge
- * is source in this repo, so a manifest cannot point at a file: inside the
- * compiled binary there is none. Reaching it through pew2's own argv means the
- * bridge is bundled by the same build that bundles the CLI — nothing extra to
- * ship, install, or find on disk.
- *
- * The import is dynamic so a bridge's own module-level work (resolving the
- * agent's binary, and exiting when it is absent) only happens when that bridge
- * is the thing being asked for.
- */
-async function runBridge(id: string | undefined): Promise<number> {
-  if (id === "ogcoder") {
-    await import("../acp/ogcoder-bridge.js");
-    // The bridge owns the process from here: it holds stdio open for as long as
-    // the session lives, so returning would end a conversation mid-turn.
-    await new Promise<never>(() => {});
-  }
-  console.error(`Unknown bridge '${id ?? ""}'.`);
-  return 1;
-}
-
 async function cmdSetup(flags: Set<string>) {
   const json = flags.has("--json");
   if (json) {
@@ -714,11 +690,6 @@ async function main() {
     console.log(VERSION);
     return 0;
   }
-
-  // Hidden, and deliberately absent from `--help`: this is how a manifest
-  // re-enters pew2 to run a bridge, not something a person types. Its argv is a
-  // compatibility surface, because a manifest on disk names it.
-  if (group === "__bridge") return runBridge(command);
 
   if (group === "setup") return cmdSetup(flags);
   if (group === "pair") return cmdPair(flags);

@@ -3,30 +3,19 @@
   "id": "ggcoder",
   "name": "GG Coder",
   "version": "1.0.0",
-  "description": "GG Coder, and its OG Coder fork, through a bundled bridge. The CLI speaks its own line protocol via `--rpc` rather than ACP, so pew2 translates.",
+  "description": "GG Coder, and its OG Coder fork. Speaks ACP natively over stdio - no adapter process.",
   "distribution": {
     "type": "command",
-    "command": "${PEW2_SELF}",
-    "args": [
-      "__bridge",
-      "ogcoder"
-    ]
+    "command": "ogcoder",
+    "args": ["acp"]
   },
   "repository": "https://github.com/kenkaiiii/gg-framework",
-  "authors": [
-    "kenkaiiii"
-  ],
+  "authors": ["kenkaiiii"],
   "license": "MIT",
   "pew": {
     "transport": "acp",
     "color": "#4ade80",
-    "requiresCommand": [
-      "ogcoder",
-      "ggcoder"
-    ],
-    "commandDirs": [
-      ".gg/commands",
-      "~/.gg/commands"
-    ]
+    "requiresCommand": ["ogcoder", "ggcoder"],
+    "commandDirs": [".gg/commands", "~/.gg/commands"]
   }
 }

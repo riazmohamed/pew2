@@ -1,104 +1,97 @@
-# OG Coder + Hermes: what works, and what is still owed
+# GG Coder + Hermes in pew2
 
-**Written 2026-08-09.** Read this before touching either provider.
+**Updated 2026-08-09.** Read this before touching either provider.
 
-Both agents ship inside pew2 now. A fresh clone gets them; nothing under
+Both ship inside pew2. A fresh clone of this fork gets them; nothing under
 `~/.pew2` is required.
+
+---
+
+## GG Coder speaks ACP natively
+
+`providers/ggcoder.json` runs `ogcoder acp`. There is no adapter process.
+
+pew2 carried a bridge for this agent until GG Coder 5.37.0 added `acp` mode.
+The bridge is gone, and native is better on every axis measured:
+
+| | bridge | native |
+|---|---|---|
+| slash commands | 1 | **43** |
+| models | 20 | **31** |
+| sessions / projects | 187 / 21 | 147 / **20** |
+| context meter | yes | yes |
+| tool content, diffs | text only | **real diffs** |
+| `session/close`, `session/delete` | no | **yes** |
+
+**This depends on a local gg-framework build.** Published 5.37.0 ignores the
+`cwd` a client sends with `session/new` and uses the agent process's own
+directory instead. Under a daemon that is `/`, which fails as `mkdir '/.gg'` —
+and where the process directory is writable it silently runs the session
+against a project the user never chose. Fixed in gg-framework `07a8090e`, which
+is **committed but not published**: a stock `ogcoder` from npm still has it.
+
+The manifest id must stay `ggcoder`. The daemon keys history hydration off it
+(`acp/messageCounts.ts`, `index.ts`).
+
+## Hermes needs `stdoutPipe`
+
+Bun's `spawn` hands a child a stdout descriptor Python's asyncio cannot write
+to: the agent logs `initialize`, its reply never arrives, and the session dies
+60s later reporting a handshake timeout — which names the wrong cause entirely.
+
+Measured, not assumed: the same agent replies immediately under Node, is silent
+under Bun, and replies under Bun through `sh -c '… | cat'`. `pew.stdoutPipe`
+does exactly that. It will be needed by **any** Python ACP agent.
 
 ---
 
 ## Will it keep working?
 
-**Yes.** Reboots, daemon restarts, phone reconnects, roaming, and moving this
-repo are all fine. The machine-local files this used to depend on are gone.
-
-Two conditions remain, and neither is specific to these agents:
+Reboots, daemon restarts, phone reconnects, roaming and moving this repo are all
+fine.
 
 | # | Condition | What breaks it | Symptom on the phone |
 |---|-----------|----------------|----------------------|
 | 1 | `bun` keeps Full Disk Access | Revoking it; **replacing the bun binary may silently drop the grant** | Every agent hangs, daemon logs stay empty |
-| 2 | The agent stays installed | Uninstalling `ogcoder` / `hermes` | The agent drops off the list, honestly |
+| 2 | `ogcoder` keeps pointing at the local build | `npm i -g` a published ogcoder | Sessions run in the wrong directory, or fail with `mkdir '/.gg'` |
+| 3 | The agent stays installed | Uninstalling `ogcoder` / `hermes` | The agent drops off the list, honestly |
 
-**One thing is still machine-local:** the `--resume` fix lives in `gg-framework`
-at commit `a28cca93` and is only in your local `dist/`. Until it is published, a
-clone of pew2 talking to a stock `ogcoder` gets session history with no agent
-memory behind it.
-
----
-
-## What shipped
-
-**pew2 `f4bf52e`** — the bridge and its modules:
-
-- `acp/ogcoder-bridge.ts` — ACP on stdio, one `ogcoder --rpc` child per session
-- `acp/ogcoder-binary.ts` — finds `ogcoder` before `ggcoder`, searches
-  pnpm/bun/homebrew dirs as well as PATH
-- `acp/ogcoder-tools.ts` — tool name to ACP kind and title
-- `acp/ogcoder-models.ts` — reads GG Coder's own `MODELS` registry, filtered to
-  logged-in providers
-- `acp/ogcoder-sessions.ts` — lists conversations from the JSONL store
-
-**pew2 `f7e454a`** — made it shippable:
-
-- `${PEW2_SELF}` in a manifest plus a hidden `pew2 __bridge <id>` subcommand, so
-  the bridge travels inside the compiled binary
-- `requiresCommand` — availability from the real dependency, not from pew2
-- `stdoutPipe` — the Bun/asyncio stdout fix, replacing the `~/.pew2` shim
-- `session/list` with no cwd now walks the whole store, which is what fills the
-  app's project picker
-- `doctor` ignores agents the user switched off
-
-**gg-framework `a28cca93`** — `--rpc --resume` was parsed and dropped;
-`resolveResumePath` now plumbs it through. Committed, **not published**.
-
-## Agents currently switched off
+## Agents switched off
 
 `cline`, `gemini-cli`, `opencode`, `qwen-code` — in `~/.pew2/disabled.json`.
 Bring one back with `pew2 providers enable <id>`.
 
 ---
 
-## The bridge's replacement, and why it is not in use yet
-
-GG Coder 5.37.0 added a native `acp` subcommand (`modes/acp-mode.ts`). It is
-strictly better than the bridge: `session/close` and `session/delete` on top of
-what the bridge does, plus real diffs.
-
-It is **not** wired up because every published build of it ignores the `cwd` a
-client sends with `session/new` and uses the agent process's own directory
-instead. Under a daemon that is `/`:
-
-- **Loud failure:** `session/new` returns `ENOENT: ... mkdir '/.gg'`.
-- **Silent, and worse:** where the process directory is writable, the session
-  is created and runs against the wrong project — verified by spawning in one
-  directory, asking for another, and watching the agent list the first.
-
-Fixed locally in gg-framework `07a8090e`. **Once a build carrying that fix is
-published**, switch `providers/ggcoder.json` to:
-
-```json
-"distribution": { "type": "command", "command": "ogcoder", "args": ["acp"] }
-```
-
-and delete `packages/daemon/src/acp/ogcoder-*.ts`. Keep the manifest id
-`ggcoder`: the daemon keys history hydration off it
-(`acp/messageCounts.ts`, `index.ts`).
-
 ## The work still owed
 
-### 1. Publish the `--resume` fix
+### 1. Publish gg-framework
 
-`a28cca93` is committed to `rebrand/abukhaled`, unpublished. Until it ships,
-resume works only on this machine's `dist/`. The bug is in upstream `ggcoder`
-too, so it is worth sending there as well.
+Two fixes are committed and unpublished, and this fork depends on both:
 
-### 2. Contribute the Hermes manifest upstream
+- `a28cca93` — `--rpc --resume` was parsed and dropped.
+- `07a8090e` — ACP `session/new` ignored the client's `cwd`.
 
-Hermes had no bundled manifest before this work. It now ships with
-`stdoutPipe: true`, which is worth upstreaming with the reasoning intact: any
-Python ACP agent spawned from Bun hits the same wall.
+The second affects every ACP client of GG Coder, not just pew2.
 
-### 3. Clean up the npm cache properly
+### 2. A permission hook — the one real safety gap
+
+GG Coder has **no approval concept anywhere**: not in `acp-mode.ts`, not in
+`rpc-mode.ts`, not in `agent-session.ts`. Every edit and shell command runs
+unattended, so from the phone you cannot stop a destructive tool call. Claude
+Code can.
+
+Partly mitigated in gg-framework `ce990894`: recursive force-removal outside the
+workspace is now refused, matching the write guard's existing boundary and
+opt-in. That closes the worst accident, not the general gap.
+
+The general fix is bigger than it looks. ACP has `session/request_permission`,
+so the protocol supports it — but `gg-agent` has five dependents, no policy
+exists to extend, and a blocked turn needs a timeout and a default (where
+"default allow" quietly restores today's behaviour at the worst moment). Decide
+the policy before writing code.
+
+### 3. Clean up the npm cache
 
 218 root-owned files in `~/.npm/_cacache`, from an old `sudo npm`, break `npx`.
 Worked around with `cache=~/.npm-pew2-cache` in `~/.npmrc`. Real fix:
@@ -108,25 +101,16 @@ Worked around with `cache=~/.npm-pew2-cache` in `~/.npmrc`. Real fix:
 
 ## Traps worth remembering
 
+- **ACP `session/new` carries the project directory.** An agent that ignores it
+  and uses `process.cwd()` works when a human runs it in a project and silently
+  works in the wrong place under a daemon.
 - **`AgentSession`'s `sessionId` option takes a session *path*, not an id.**
-  Passing an id loads nothing and silently starts an empty conversation. This is
-  the whole bug behind `--resume`.
-- **Bun's `spawn` gives a child a stdout descriptor Python's asyncio cannot
-  write to.** The reply never arrives and the session dies on a 60s timeout that
-  blames the handshake. `stdoutPipe: true` is the fix; it will be needed by any
-  Python agent, not just Hermes.
-- **`abort` in `--rpc` is fatal.** It trips the AbortController the session was
-  built with, so the child cannot serve another turn. Cancel therefore kills the
-  child; the next prompt respawns it with `--resume`.
-- **A child is a session.** `--rpc` takes cwd from `process.cwd()` and opens its
-  conversation on spawn, so ACP's per-session `cwd` requires one child each.
-- **The daemon calls `session/list` with no arguments** and folds the result into
-  the app's project picker. An agent that scopes that call to one directory
+  Passing an id loads nothing and silently starts an empty conversation.
+- **The daemon calls `session/list` with no arguments** and folds the result
+  into the app's project picker. An agent that scopes that call to one directory
   leaves the picker empty forever.
-- **Thinking level is deliberately not exposed.** `--rpc` accepts it only at
-  construction, so a dropdown would have to discard the conversation to apply.
-- **`pew2 service install` bakes the installing shell's PATH into the plist.** It
-  is a snapshot: an agent installed afterwards is invisible to the running
+- **`pew2 service install` bakes the installing shell's PATH into the plist.**
+  It is a snapshot: an agent installed afterwards is invisible to the running
   daemon, which looks like a provider that works in the terminal and is missing
   on the phone. `canResolveCommand` also searches the usual package-manager bin
   directories because of this.
@@ -143,14 +127,14 @@ pew2 providers verify hermes       # expect: ok
 pew2 doctor                        # expect: everything checks out
 ```
 
-The case that actually broke before is the compiled binary, so test that too:
+`verify` runs in your shell, which has a full PATH, so it cannot catch the
+launchd-PATH class of bug. Test that explicitly:
 
 ```bash
-bun build --compile packages/daemon/src/cli/index.ts --outfile /tmp/pew2-test
-/tmp/pew2-test providers verify ggcoder
+env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin ogcoder acp </dev/null
 ```
 
-A real end-to-end check is the phone: pull to refresh, open OG Coder, confirm
-the folder picker lists your projects, the model pill lists ~20 models, the
-sidebar lists past chats, and a resumed chat can recall something from earlier
-in that thread.
+A real end-to-end check is the phone: pull to refresh, open GG Coder, confirm
+the folder picker lists your projects, the model pill lists ~31 models, the
+sidebar lists past chats, and a resumed chat recalls something from earlier in
+that thread.

@@ -11,7 +11,6 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { BUNDLED_MANIFESTS } from "./bundled.js";
-import { SELF_PLACEHOLDER } from "./self-command.js";
 import {
   ProviderManifest,
   formatManifestError,
@@ -74,7 +73,6 @@ function isInstalled(
 ): boolean {
   const required = manifest.pew.requiresCommand;
   if (required.length > 0) return required.some((name) => canResolveCommand(name, env));
-  if (command === SELF_PLACEHOLDER) return true;
   return canResolveCommand(command, env);
 }
 

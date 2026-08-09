@@ -15,7 +15,6 @@ import { promptBlocks, type PromptCapabilities } from "./promptBlocks.js";
 import { SESSION_HISTORY_LIMIT } from "../session-history.js";
 import { hydrateMessageCounts } from "./messageCounts.js";
 import { foldProjects, type AgentProject } from "../projects.js";
-import { resolveSelfCommand } from "../providers/self-command.js";
 import { withStdoutPipe } from "./stdout-pipe.js";
 
 /**
@@ -423,12 +422,10 @@ function applyConfigUpdate(
 export async function connectProvider(options: ConnectOptions): Promise<AcpSessionHandle> {
   const { provider, cwd } = options;
 
-  // A bridged provider names pew2 itself, which differs between a compiled
-  // binary and a checkout, so it can only be resolved here rather than written
-  // into the manifest. `stdoutPipe` then routes stdout through a real pipe for
-  // agents whose runtime cannot write to the descriptor Bun hands out.
+  // `stdoutPipe` routes stdout through a real pipe for agents whose runtime
+  // cannot write to the descriptor Bun hands out.
   const { command, args } = withStdoutPipe(
-    resolveSelfCommand(provider.command, provider.args),
+    { command: provider.command, args: [...provider.args] },
     provider.manifest.pew.stdoutPipe,
   );
 

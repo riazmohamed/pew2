@@ -289,22 +289,37 @@ const app = agent({ name: "pew2-ogcoder" })
     return { sessionId, configOptions: await configOptionsFor(session) };
   })
   /**
-   * Previous conversations for this directory, read from GG Coder's store.
+   * Previous conversations, read from GG Coder's store.
    *
-   * The ids returned are GG Coder's own, so `session/load` can hand one
-   * straight to `--resume` and the daemon can find the matching JSONL file to
-   * paint from.
+   * The daemon calls this with no `cwd` and folds the result into the app's
+   * project picker, so an unfiltered call must return *every* project's
+   * sessions. Narrowing it to one directory — or worse, to `process.cwd()`,
+   * which is `/` under launchd — leaves the picker searching for folders that
+   * never arrive.
+   *
+   * The ids returned are GG Coder's own, so `session/load` can hand one straight
+   * to `--resume` and the daemon can find the matching JSONL file to paint from.
    */
   .onRequest("session/list", async (ctx: { params?: { cwd?: string | null } }) => {
-    const cwd = ctx.params?.cwd ?? process.cwd();
+    const cwd = ctx.params?.cwd ?? undefined;
     const stored = await listStoredSessions(cwd);
     return {
-      sessions: stored.map((entry) => ({
-        sessionId: entry.sessionId,
-        cwd: entry.cwd || cwd,
-        title: entry.title,
-        updatedAt: entry.updatedAt,
-      })),
+      sessions: stored.flatMap((entry) => {
+        // A session whose header carries no cwd cannot be attributed to a
+        // project. Listing it under a guessed directory would put a
+        // conversation in the wrong folder in the picker.
+        const home = entry.cwd || cwd;
+        return home
+          ? [
+              {
+                sessionId: entry.sessionId,
+                cwd: home,
+                title: entry.title,
+                updatedAt: entry.updatedAt,
+              },
+            ]
+          : [];
+      }),
     };
   })
   /**

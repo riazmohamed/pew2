@@ -12,6 +12,7 @@
  * must not trap an agent in a loop it cannot escape.
  */
 import { loadProviders, isAvailable, unavailableReason, providerDirs } from "../providers/registry.js";
+import { readDisabled } from "../providers/enabled.js";
 import {
   lanAddresses,
   MIN_TOKEN_LENGTH,
@@ -149,6 +150,10 @@ export async function doctor(options: DoctorOptions = {}): Promise<DoctorReport>
   // Built-in agents only when the caller did not name directories of its own.
   const bundled = options.searchDirs === undefined;
   const { providers, errors } = await loadProviders(dirs, env, { bundled });
+  // An agent the user switched off is not a fault to report. Without this,
+  // turning one off to stop hearing about it left the warning in place, which
+  // reads as the setting having been ignored.
+  const disabled = await readDisabled(env);
   const problems: Problem[] = [];
 
   for (const error of errors) {
@@ -171,6 +176,7 @@ export async function doctor(options: DoctorOptions = {}): Promise<DoctorReport>
 
   for (const provider of providers) {
     if (isAvailable(provider)) continue;
+    if (disabled.has(provider.manifest.id)) continue;
 
     // An agent that is not on this machine is not a problem, and this is the
     // one place that decides it. pew2 ships thirteen manifests and nobody

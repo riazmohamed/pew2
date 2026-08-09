@@ -112,6 +112,29 @@ const PewExtensions = z.object({
    * adding an agent stays a manifest change rather than a code change.
    */
   commandDirs: z.array(z.string()).default([]),
+  /**
+   * Binaries that prove the underlying agent is installed. Any one is enough.
+   *
+   * Availability is normally read off the manifest's own command, which breaks
+   * for a provider pew2 launches itself: a bridged agent runs `${PEW2_SELF}`,
+   * which always exists, so the provider would be offered on a machine where
+   * the agent it bridges to is absent — failing at spawn instead of being
+   * honestly missing from the list.
+   */
+  requiresCommand: z.array(z.string()).default([]),
+  /**
+   * Give the child an ordinary pipe for stdout instead of the default handle.
+   *
+   * Bun's `spawn` hands a child a stdout descriptor that Python's asyncio
+   * cannot drive: the agent reads `initialize`, logs it, and its reply never
+   * arrives — surfacing 60s later as "started but never completed the ACP
+   * handshake", which reads like a flag problem and is not one. Routing stdout
+   * through a plain pipe costs one `cat`-equivalent and makes asyncio work.
+   *
+   * Opt-in rather than always-on: every agent already shipping works on the
+   * default path, and this is only known to matter for Python agents.
+   */
+  stdoutPipe: z.boolean().default(false),
 });
 
 /** Strict so that a mistyped key is a loud error, never a silently ignored field. */

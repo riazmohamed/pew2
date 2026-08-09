@@ -77,6 +77,21 @@
         "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
         "requiresWorkspace": { "type": "boolean", "default": true },
         "experimental": { "type": "boolean", "default": false },
+        "commandDirs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Directories holding the agent's markdown slash commands, relative to the workspace. '~' means the user's home. Only a fallback: an agent that advertises its commands over ACP is believed instead."
+        },
+        "requiresCommand": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Binaries that prove the underlying agent is installed; any one is enough. Needed when the manifest's own command is not the agent: a bridged provider runs pew2 itself, which always exists, so without this it would be offered on a machine that lacks the agent."
+        },
+        "stdoutPipe": {
+          "type": "boolean",
+          "default": false,
+          "description": "Route the agent's stdout through a shell pipe. Bun's spawn hands a child a descriptor Python's asyncio cannot write to, so the handshake reply never arrives and the session dies on a 60s timeout naming the wrong cause."
+        },
         "env": {
           "type": "array",
           "items": {

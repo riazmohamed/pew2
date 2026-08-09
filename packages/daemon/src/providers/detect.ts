@@ -201,7 +201,10 @@ export const CATALOG: CatalogEntry[] = [
       // from ~/.hermes/.env, so naming any one key required would gate a
       // correctly configured install — the inverse of the Gemini case, where the
       // key genuinely is the only way in.
-      pew: { transport: "acp", color: "#6366f1" },
+      // Bun's spawn hands a child a stdout descriptor Python's asyncio cannot
+      // write to: the agent logs `initialize` and its reply never arrives,
+      // surfacing 60s later as a handshake timeout that names the wrong cause.
+      pew: { transport: "acp", color: "#6366f1", stdoutPipe: true },
     },
   },
   {

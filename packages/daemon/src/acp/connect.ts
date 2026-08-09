@@ -15,6 +15,8 @@ import { promptBlocks, type PromptCapabilities } from "./promptBlocks.js";
 import { SESSION_HISTORY_LIMIT } from "../session-history.js";
 import { hydrateMessageCounts } from "./messageCounts.js";
 import { foldProjects, type AgentProject } from "../projects.js";
+import { resolveSelfCommand } from "../providers/self-command.js";
+import { withStdoutPipe } from "./stdout-pipe.js";
 
 /**
  * A session-level selector advertised by the agent: model, thinking level, mode.
@@ -421,7 +423,16 @@ function applyConfigUpdate(
 export async function connectProvider(options: ConnectOptions): Promise<AcpSessionHandle> {
   const { provider, cwd } = options;
 
-  const child = spawn(provider.command, provider.args, {
+  // A bridged provider names pew2 itself, which differs between a compiled
+  // binary and a checkout, so it can only be resolved here rather than written
+  // into the manifest. `stdoutPipe` then routes stdout through a real pipe for
+  // agents whose runtime cannot write to the descriptor Bun hands out.
+  const { command, args } = withStdoutPipe(
+    resolveSelfCommand(provider.command, provider.args),
+    provider.manifest.pew.stdoutPipe,
+  );
+
+  const child = spawn(command, args, {
     cwd,
     // ACP mandates stdout carry only protocol messages, so logs go to stderr.
     stdio: ["pipe", "pipe", "pipe"],

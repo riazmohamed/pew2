@@ -11,6 +11,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { BUNDLED_MANIFESTS } from "./bundled.js";
+import { SELF_PLACEHOLDER } from "./self-command.js";
 import {
   ProviderManifest,
   formatManifestError,
@@ -57,8 +58,59 @@ export function findOnPath(
   return undefined;
 }
 
-function canResolveCommand(command: string, env: NodeJS.ProcessEnv): boolean {
-  return findOnPath(command, env) !== undefined;
+/**
+ * Whether the agent behind a manifest is actually present.
+ *
+ * `requiresCommand` wins when set, because it names the real dependency. A
+ * bridged provider runs `${PEW2_SELF}` — pew2 itself, which by definition
+ * exists — so checking the spawn command would mark it installed on a machine
+ * that has no such agent, and the failure would surface as a broken session
+ * rather than an honest absence from the list.
+ */
+function isInstalled(
+  manifest: { pew: { requiresCommand: string[] } },
+  command: string,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  const required = manifest.pew.requiresCommand;
+  if (required.length > 0) return required.some((name) => canResolveCommand(name, env));
+  if (command === SELF_PLACEHOLDER) return true;
+  return canResolveCommand(command, env);
+}
+
+/**
+ * Directories searched in addition to PATH.
+ *
+ * `pew2 service install` bakes the installing shell's PATH into the launchd
+ * plist, so the daemon normally has a full one — but it is a *snapshot*. Install
+ * an agent afterwards and the running daemon cannot see it, which shows up as a
+ * provider that works in the terminal and is missing on the phone. These are the
+ * directories JS and Python tooling installs into.
+ */
+const WELL_KNOWN_BIN_DIRS = [
+  "Library/pnpm",
+  ".local/share/pnpm",
+  ".bun/bin",
+  ".local/bin",
+  ".cargo/bin",
+] as const;
+
+function wellKnownDirs(env: NodeJS.ProcessEnv): string[] {
+  const home = env.HOME ?? env.USERPROFILE;
+  const dirs = home ? WELL_KNOWN_BIN_DIRS.map((dir) => join(home, dir)) : [];
+  return [...dirs, "/usr/local/bin", "/opt/homebrew/bin"];
+}
+
+/**
+ * Whether a binary exists, searching PATH and then the well-known directories.
+ *
+ * Exported because availability and detection must agree: a provider reported
+ * as installed and then failing to spawn is worse than either answer alone.
+ */
+export function canResolveCommand(command: string, env: NodeJS.ProcessEnv): boolean {
+  if (findOnPath(command, env) !== undefined) return true;
+  if (isAbsolute(command) || command.includes("/")) return false;
+  return wellKnownDirs(env).some((dir) => existsSync(join(dir, command)));
 }
 
 export interface LoadResult {
@@ -136,7 +188,7 @@ function addManifest(
     command,
     args,
     missingEnv,
-    commandMissing: !canResolveCommand(command, env),
+    commandMissing: !isInstalled(parsed, command, env),
   });
 }
 
@@ -236,7 +288,7 @@ async function loadOneDir(
     const missingEnv = manifest.pew.env
       .filter((v) => v.required && !env[v.name])
       .map((v) => v.name);
-    const commandMissing = !canResolveCommand(command, env);
+    const commandMissing = !isInstalled(manifest, command, env);
 
     providers.push({ manifest, source, command, args, missingEnv, commandMissing });
   }

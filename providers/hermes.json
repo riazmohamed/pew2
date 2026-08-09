@@ -14,6 +14,7 @@
   "license": "MIT",
   "pew": {
     "transport": "acp",
-    "color": "#6366f1"
+    "color": "#6366f1",
+    "stdoutPipe": true
   }
 }

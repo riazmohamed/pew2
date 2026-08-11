@@ -70,6 +70,11 @@ function Drawer({ initialPath }: { initialPath?: string }) {
       activeSessionId="s1"
       onSelectProvider={() => {}}
       onOpenSession={() => {}}
+      // Two of the five, so the harness shows both a row holding an agent and
+      // one that is only history — the close control appears on the first pair
+      // and must not appear on the rest.
+      liveSessionIds={["s0", "s1"]}
+      onCloseSession={() => {}}
       // Only rendered with a project chosen, so the right-hand mount is the one
       // that exercises the "+ New chat" chip.
       onNewConversation={() => {}}

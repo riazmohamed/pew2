@@ -75,6 +75,7 @@ import { withLayoutX, type PillX } from "./src/ui/pillAnchor";
 import { PairingScreen } from "./src/ui/PairingScreen";
 import { LaunchScreen } from "./src/ui/LaunchScreen";
 import { clearPairing, loadPairing, savePairing, type Pairing } from "./src/pairing";
+import { clearSessionCache, readSessionCache, writeSessionCache } from "./src/sessionCacheFile";
 import * as SplashScreen from "expo-splash-screen";
 import { clearCrash, readCrash } from "./src/crashLog";
 import * as Clipboard from "expo-clipboard";
@@ -232,6 +233,10 @@ function Root() {
   const unpair = useCallback(() => {
     // Same reasoning inverted: forget it locally even if the delete failed, or
     // the confirmed "Forget" action would appear to do nothing.
+    // The remembered conversation titles came from the machine being
+    // disconnected from, so "Forget" has to include them: leaving them behind
+    // would show one person's work on the next person's pairing screen.
+    clearSessionCache();
     void clearPairing()
       .catch(() => {})
       .then(() => {
@@ -470,6 +475,13 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
     onPushRegistered: (registered) => {
       pushExpected.current = registered;
     },
+    // Same seam, same reason: touching the filesystem means Expo, and
+    // `useDaemon` stays platform-free. What this buys is a drawer that is
+    // populated on the first frame of a cold start, including with the desk
+    // machine asleep — the list used to exist only in memory, so closing the
+    // app read as having lost every conversation.
+    restoreSessions: readSessionCache,
+    persistSessions: writeSessionCache,
   });
 
   // Retry the socket the moment the app is back, rather than waiting out a
@@ -1108,6 +1120,11 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
         // closing here would make choosing an app cost two trips.
         onSelectProvider={daemon.select}
         onOpenSession={openSession}
+        // Which conversations are holding an agent, and how to let one go. Only
+        // the daemon knows the first — the drawer lists conversations from the
+        // agent's disk too, and most of those are not running anything.
+        liveSessionIds={daemon.liveSessionIds}
+        onCloseSession={daemon.closeSession}
         onNewConversation={newConversation}
         // Which project the history is narrowed to, and where the next
         // conversation will open.

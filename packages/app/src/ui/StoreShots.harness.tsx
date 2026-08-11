@@ -150,6 +150,9 @@ function Conversation({ drawerOpen }: { drawerOpen: boolean }) {
         activeSessionId="s0"
         onSelectProvider={() => {}}
         onOpenSession={() => {}}
+        // No live ids: these are store screenshots, and a close control on every
+        // row would put housekeeping in the picture that sells the product.
+        onCloseSession={() => {}}
         onNewConversation={() => {}}
         projects={PROJECTS}
         selectedProjectPath="/Users/k/code/storefront"

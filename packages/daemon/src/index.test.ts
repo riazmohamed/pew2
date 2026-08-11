@@ -727,6 +727,89 @@ test("reaping tells clients, through the list they already watch", () => {
   expect(announce.activeSessions).not.toContain("stale");
 });
 
+test("closing a conversation gives its agent back straight away", async () => {
+  // The reaper's fifteen-minute window is the wrong tool for someone about to
+  // shut a laptop: they know they are done, and an agent sitting on 90-370MB
+  // until a timer expires is memory they cannot get back by asking.
+  const { daemon } = daemonWithCollector();
+  const open = plantIdleSession(daemon, "done", { lastUsedAt: Date.now() });
+
+  expect(await daemon.close("done")).toBe(true);
+
+  expect(open.wasClosed()).toBe(true);
+  // Gone from the map, exactly as the reaper leaves it: the conversation is on
+  // the agent's disk, so reopening it resumes rather than finding a dead id.
+  expect((daemon as any).sessions.has("done")).toBe(false);
+});
+
+test("closing a working conversation stops the turn first", async () => {
+  // The reaper refuses this case because it cannot tell a long tool call from a
+  // wedged one. A person tapping Close has said they are done — but closing the
+  // handle under a running turn would strand the app waiting for a completion
+  // that can no longer arrive, so the turn is cancelled on the way out.
+  const { daemon } = daemonWithCollector();
+  let cancelled = false;
+  plantIdleSession(daemon, "busy", {
+    working: true,
+    handle: {
+      close: () => {},
+      cancel: () => {
+        cancelled = true;
+        return Promise.resolve();
+      },
+    } as unknown as AcpSessionHandle,
+  });
+
+  expect(await daemon.close("busy")).toBe(true);
+
+  expect(cancelled).toBe(true);
+  expect((daemon as any).sessions.has("busy")).toBe(false);
+});
+
+test("an agent that will not answer its cancel is still let go of", async () => {
+  // Otherwise the one case where the memory is most likely stuck — a wedged
+  // agent — is the case the button cannot fix.
+  const { daemon } = daemonWithCollector();
+  let closed = false;
+  plantIdleSession(daemon, "wedged", {
+    working: true,
+    handle: {
+      close: () => {
+        closed = true;
+      },
+      cancel: () => Promise.reject(new Error("agent is not answering")),
+    } as unknown as AcpSessionHandle,
+  });
+
+  expect(await daemon.close("wedged")).toBe(true);
+
+  expect(closed).toBe(true);
+  expect((daemon as any).sessions.has("wedged")).toBe(false);
+});
+
+test("closing a conversation whose agent is already gone is not an error", async () => {
+  // The reaper may have taken it, or another device may have closed it. Either
+  // way the caller's wish is already true, and throwing "Unknown session" at a
+  // phone for agreeing with the daemon helps nobody.
+  const { daemon } = daemonWithCollector();
+
+  expect(await daemon.close("never-existed")).toBe(false);
+});
+
+test("closing tells every client, not just the one that asked", async () => {
+  // A second phone looking at the same conversation has to learn its agent is
+  // gone, or its next prompt fails with "Unknown session" instead of resuming.
+  const { daemon, sent } = daemonWithCollector();
+  plantIdleSession(daemon, "done");
+  sent.length = 0;
+
+  await daemon.close("done");
+
+  const announce = sent.find((m: any) => m?.t === "providers") as any;
+  expect(announce).toBeDefined();
+  expect(announce.activeSessions).not.toContain("done");
+});
+
 test("a pass that reaps nothing says nothing", () => {
   // The reaper runs every few minutes forever. Announcing each time would put a
   // full provider list on the wire for no reason, and re-render the drawer.

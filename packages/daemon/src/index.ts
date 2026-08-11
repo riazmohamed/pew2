@@ -1570,6 +1570,53 @@ export class Daemon {
     await session.handle!.cancel();
   }
 
+  /**
+   * Let go of a conversation's agent now, rather than when the reaper gets to
+   * it.
+   *
+   * The same close `reapIdleSessions` performs, on demand. Everything true
+   * there is true here: the process is the expensive part, the transcript is on
+   * disk, and the conversation reopens by resuming — so this reclaims memory
+   * without losing anything.
+   *
+   * A turn in flight is cancelled first rather than refused. The reaper skips a
+   * working session because it cannot know whether the silence is a long tool
+   * call, but a person tapping Close is saying they are done with it, and
+   * closing the handle underneath a running turn would strand the app waiting
+   * for a completion that can no longer arrive.
+   *
+   * Unknown ids are not an error. The session may have been reaped, or closed
+   * on another device, and either way the caller's wish is already true —
+   * `require` would throw an "Unknown session" the user cannot act on.
+   *
+   * @returns Whether a live session was actually closed.
+   */
+  async close(sessionId: string): Promise<boolean> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+
+    if (session.working) {
+      // Best effort: an agent that is already gone, or wedged, must not stop
+      // this from reclaiming the process it is holding.
+      try {
+        await session.ready;
+        await session.handle?.cancel();
+      } catch {
+        // Falls through to the close below, which is the point of the call.
+      }
+    }
+
+    if (session.replayTimer) clearTimeout(session.replayTimer);
+    session.handle?.close();
+    this.sessions.delete(sessionId);
+    // The same announce the reaper and the session cap send, for the same
+    // reason: `activeSessions` is how a client learns an id it still lists no
+    // longer holds an agent, so the next prompt resumes instead of failing with
+    // "Unknown session".
+    this.announceProviders();
+    return true;
+  }
+
   answerPermission(sessionId: string, requestId: string, optionId: string) {
     return this.require(sessionId).handle?.answerPermission(requestId, optionId) ?? false;
   }

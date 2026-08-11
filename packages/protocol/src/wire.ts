@@ -423,6 +423,25 @@ export const Cancel = z.object({
 });
 
 /**
+ * App -> daemon. Let go of this conversation's agent process.
+ *
+ * Distinct from {@link Cancel}, which stops a turn and leaves the agent
+ * attached for the next prompt. This ends the process: a coding agent holds
+ * 90-370MB while it waits, and the idle reaper only reclaims that after fifteen
+ * minutes. Someone who knows they are done should not have to wait out a timer
+ * on a laptop they are about to shut.
+ *
+ * Not a delete. The transcript is on the agent's disk and the conversation
+ * keeps its row in the drawer; reopening it resumes, exactly as it does after
+ * the reaper closes it or the daemon restarts. This is that same close, put
+ * under the user's finger.
+ */
+export const CloseSession = z.object({
+  t: z.literal("session.close"),
+  sessionId: z.string(),
+});
+
+/**
  * App -> daemon. Change a selector on a live session.
  *
  * The counterpart to {@link SetProviderConfig}, which is the same choice made
@@ -677,6 +696,7 @@ export const ClientMessage = z.discriminatedUnion("t", [
   ResumeSession,
   Prompt,
   Cancel,
+  CloseSession,
   PermissionReply,
   ImageRequest,
   WorkspaceRequest,
@@ -719,6 +739,7 @@ export type StartSession = z.output<typeof StartSession>;
 export type PromptAttachment = z.output<typeof PromptAttachment>;
 export type Prompt = z.output<typeof Prompt>;
 export type Cancel = z.output<typeof Cancel>;
+export type CloseSession = z.output<typeof CloseSession>;
 export type PermissionReply = z.output<typeof PermissionReply>;
 export type ImageRequest = z.output<typeof ImageRequest>;
 export type ImageData = z.output<typeof ImageData>;

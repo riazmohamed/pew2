@@ -327,6 +327,15 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         break;
       }
 
+      // Nothing is replied. The close is announced through `providers`, whose
+      // `activeSessions` every client already watches — so a second phone
+      // looking at the same conversation learns it has to resume, rather than
+      // only the device that asked.
+      case "session.close": {
+        await daemon.close(message.sessionId);
+        break;
+      }
+
       // No session yet: the empty state is a real place to choose from, and a
       // conversation does not exist until the first prompt is sent. Record the
       // choice so the session this prompt creates opens with it already set,

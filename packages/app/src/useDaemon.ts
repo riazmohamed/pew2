@@ -12,6 +12,7 @@ import { SecureChannel, e2e, envelopeHeader, wire } from "@pew2/protocol";
 const { WIRE_VERSION } = wire;
 import { USE_FIXTURES, isFixtureSession, sampleSessions } from "./fixtures";
 import { mergeAgentSessions, needsResume, replaceAgentSessionStub } from "./agentHistory";
+import { sessionCacheKey, toCachedSessions, type CachedSession } from "./sessionCache";
 import {
   adoptPendingSession,
   dropPendingSessions,
@@ -367,6 +368,16 @@ interface State {
    * landed, which is the flash this exists to prevent.
    */
   loadingProject?: string;
+  /**
+   * The conversations whose agent process this daemon is still holding.
+   *
+   * Mirrors the `activeSessions` in every `providers` announce, which
+   * `liveSessions` already tracks in a ref. In state as well because the drawer
+   * renders from it: Close is only offered for a conversation that actually has
+   * something to close, and a ref would not re-render the row when the reaper,
+   * the session cap, or another device closed one.
+   */
+  liveSessionIds: string[];
 }
 
 /**
@@ -491,6 +502,27 @@ interface DaemonOptions {
    * it keeps raising the local banner instead of going silent.
    */
   onPushRegistered?: (registered: boolean) => void;
+  /**
+   * The conversation index this device remembered from its last run.
+   *
+   * Injected rather than read here, for the reason given on `pushAddress`:
+   * storage means Expo, and this module stays platform-free so the daemon's
+   * test suite can import it under Node. `sessionCacheFile.ts` is the half that
+   * touches the disk.
+   *
+   * Read once, synchronously, as the initial state — not in an effect. An
+   * effect would paint an empty drawer and fill it a tick later, which is the
+   * "my history is gone" flash this exists to remove.
+   */
+  restoreSessions?: () => Session[];
+  /**
+   * Persist the index, called when it has settled rather than on every change.
+   *
+   * The debounce is here rather than in the caller because this hook owns the
+   * list and knows when it is merely restreaming turns, which the cache does
+   * not store.
+   */
+  persistSessions?: (sessions: CachedSession[]) => void;
 }
 
 /**
@@ -518,7 +550,14 @@ export function useDaemon(
     // Sample conversations in development so history and long-response
     // rendering can be reviewed with content. Real sessions are appended
     // ahead of these and never replaced by them.
-    sessions: USE_FIXTURES ? sampleSessions() : [],
+    //
+    // Otherwise the index this device remembered last run, so the drawer is
+    // populated on the first frame — before the socket is open, and whether or
+    // not the desk machine is even awake. Every restored row carries the
+    // agent's own session id, so opening one resumes it exactly as a row the
+    // agent just listed would; `mergeAgentSessions` matches on that id and will
+    // not list a remembered conversation twice.
+    sessions: USE_FIXTURES ? sampleSessions() : (options.restoreSessions?.() ?? []),
     configOptions: [],
     commands: [],
     busy: false,
@@ -528,6 +567,7 @@ export function useDaemon(
     projects: {},
     projectPath: {},
     workspaceNonce: 0,
+    liveSessionIds: [],
   });
 
   // Not in State: this is a cache keyed by provider, not part of the session.
@@ -661,6 +701,28 @@ export function useDaemon(
   // it needs them rather than depending on them.
   const optionsRef = useRef(options);
   optionsRef.current = options;
+
+  // The conversation index, reduced to the fields the cache actually stores.
+  //
+  // The sessions array takes a new identity on every streamed chunk, because
+  // each one updates the turns hanging off the active session. Depending on the
+  // array directly would write the file hundreds of times per answered prompt,
+  // and never change a byte of it — turns are not stored. An unchanged key is a
+  // guarantee the file would be unchanged too.
+  const cacheKey = useMemo(() => sessionCacheKey(state.sessions), [state.sessions]);
+
+  useEffect(() => {
+    const persist = optionsRef.current.persistSessions;
+    if (!persist || USE_FIXTURES) return;
+    // Trailing, so a burst of changes — a history probe landing, a title being
+    // filled in as the first prompt is sent — costs one write rather than one
+    // per change. Short enough that force-quitting a moment after the drawer
+    // settles still keeps what is on screen.
+    const timer = setTimeout(() => {
+      persist(toCachedSessions(sessionsRef.current));
+    }, 1_000);
+    return () => clearTimeout(timer);
+  }, [cacheKey]);
 
   // What each session's agent has said during its current turn, keyed by
   // session, so a notification can quote a conversation that is not on screen.
@@ -1194,6 +1256,11 @@ export function useDaemon(
           }
           if (Array.isArray(message.activeSessions)) {
             liveSessions.current = new Set<string>(message.activeSessions);
+            // Mirrored into state for the drawer. Same list, and the announce
+            // is infrequent — a session opening, closing, or being reaped — so
+            // this is not a render on the streaming path.
+            const live = [...liveSessions.current];
+            setState((s) => ({ ...s, liveSessionIds: live }));
             // The conversation on screen may have died with a previous daemon
             // process. Reopen it from the agent's own copy rather than leaving
             // a thread that answers "Unknown session" on the next prompt.
@@ -1952,6 +2019,42 @@ export function useDaemon(
           // The prompt is still on screen but the agent never saw it: say so,
           // rather than leaving it looking like a message that was ignored.
           turns: note ? [...s.turns, note] : s.turns,
+        }));
+      },
+
+      /**
+       * Let go of a conversation's agent, without losing the conversation.
+       *
+       * The row stays in the drawer and reopening it resumes from the agent's
+       * own copy — the same thing that happens after the daemon's idle reaper
+       * closes one, which is a path this app has always handled. What it buys
+       * is the memory back now: an agent holds hundreds of megabytes while it
+       * waits, and waiting out a fifteen-minute timer is not an option on a
+       * laptop about to be shut.
+       *
+       * Applied optimistically. The daemon's `providers` announce is the
+       * authority and will restate it a moment later, but the tap has to look
+       * like it did something immediately — and if the socket is down, the
+       * honest answer is that nothing was closed, which the announce corrects
+       * on reconnect.
+       */
+      closeSession: (sessionId: string) => {
+        post({ t: "session.close", sessionId });
+        setState((s) => ({
+          ...s,
+          liveSessionIds: s.liveSessionIds.filter((id) => id !== sessionId),
+          // A closed agent is not working, whatever the row said a moment ago.
+          // The turn is cancelled by the daemon before it lets go of the
+          // handle, so a spinner left spinning here would be describing a
+          // process that no longer exists.
+          sessions: s.sessions.map((session) =>
+            session.id === sessionId ? { ...session, busy: false } : session,
+          ),
+          // Only when it is the conversation on screen: closing a background
+          // one must not reach in and idle the transcript being read.
+          ...(sessionRef.current === sessionId
+            ? { busy: false, activity: IDLE_ACTIVITY, receipt: undefined }
+            : {}),
         }));
       },
 

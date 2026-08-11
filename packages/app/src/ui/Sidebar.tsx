@@ -9,7 +9,7 @@
  * being covered, so the two surfaces read as one moving layout instead of a
  * modal layer. The panel itself is therefore static — App owns the motion.
  */
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -50,6 +50,16 @@ interface SidebarProps {
   activeSessionId?: string;
   onSelectProvider: (id: string) => void;
   onOpenSession: (id: string) => void;
+  /**
+   * Conversations currently holding an agent process on the desktop.
+   *
+   * Only these get a close control, because only these have anything to close.
+   * The daemon caps it at four, so this is a short list even when the drawer
+   * holds hundreds of rows.
+   */
+  liveSessionIds?: string[];
+  /** Ends the agent process, keeping the conversation. */
+  onCloseSession: (id: string) => void;
   /**
    * Starts a conversation in `cwd`.
    *
@@ -175,6 +185,66 @@ interface SessionRowProps {
    *  background. */
   paused: boolean;
   onOpen: () => void;
+  /**
+   * This conversation is holding an agent process on the desktop right now.
+   *
+   * The close control appears only for these. Every other row is already just
+   * an entry in the agent's own history, so offering to close one would promise
+   * an action with nothing behind it — and, worse, read as "delete".
+   */
+  live: boolean;
+  onClose: () => void;
+}
+
+/**
+ * Let go of the agent this conversation is holding.
+ *
+ * Deliberately not a delete, and shaped to say so: a power glyph rather than a
+ * cross or a bin, and the row it belongs to stays exactly where it is
+ * afterwards. The conversation is on the agent's disk; this is only the running
+ * process.
+ *
+ * Shown inline rather than behind a long-press, because the thing it acts on is
+ * invisible otherwise — nobody long-presses to find out whether a laptop is
+ * running four language servers. At most four conversations hold an agent at
+ * once (the daemon caps it), so this stays rare enough not to be clutter.
+ */
+function CloseAgentButton({ title, busy, onPress }: {
+  title: string;
+  busy: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      // Names the conversation, because in a list of rows "Close" alone leaves
+      // a screen reader user with no idea which one they are on.
+      accessibilityLabel={`Close the running agent for ${title}`}
+      accessibilityHint="Frees memory on your computer. The conversation is kept and reopens where it left off."
+      hitSlop={touchSlop(theme.size.touch)}
+      onPress={() => {
+        // Interrupting work is a decision worth a beat; releasing an idle agent
+        // is housekeeping. Only the first one asks.
+        if (!busy) {
+          haptics.tap();
+          onPress();
+          return;
+        }
+        haptics.warned();
+        Alert.alert(
+          "Stop and close?",
+          `${title} is working. Closing stops it and frees the memory. The conversation is kept \u2014 reopening it picks up where it left off.`,
+          [
+            { text: "Keep running", style: "cancel" },
+            { text: "Stop and close", style: "destructive", onPress },
+          ],
+        );
+      }}
+      style={({ pressed }) => [styles.closeAgent, pressed && styles.pressed]}
+    >
+      <Ionicons name="power" size={14} color={theme.color.textDim} />
+    </Pressable>
+  );
 }
 
 function SessionRow({
@@ -184,6 +254,8 @@ function SessionRow({
   reduceMotion,
   paused,
   onOpen,
+  live,
+  onClose,
 }: SessionRowProps) {
   // Only the initial viewport cascades. Rows virtualized in later should appear
   // immediately, rather than fading under the user's finger while they scroll.
@@ -247,6 +319,16 @@ function SessionRow({
             reduceMotion={reduceMotion}
             paused={paused}
           />
+          {/* Outside the row's own Pressable in the accessibility tree but
+              inside it on screen: tapping the title opens, tapping this closes,
+              and the two targets do not overlap. */}
+          {live ? (
+            <CloseAgentButton
+              title={session.title}
+              busy={session.busy === true}
+              onPress={onClose}
+            />
+          ) : null}
         </View>
         {metadata ? (
           <Text style={styles.sessionMeta} numberOfLines={1}>
@@ -266,6 +348,8 @@ function SidebarView({
   activeSessionId,
   onSelectProvider,
   onOpenSession,
+  liveSessionIds,
+  onCloseSession,
   onNewConversation,
   projects,
   selectedProjectPath,
@@ -288,6 +372,10 @@ function SidebarView({
   // the select row's own height comes from the type inside it, so the only
   // honest place to hang the menu from is where the row actually ended up.
   const [menuTop, setMenuTop] = useState(0);
+
+  // A Set because every visible row asks. The array is at most four ids, so the
+  // rebuild is free; what it avoids is an `includes` per row per render.
+  const live = useMemo(() => new Set(liveSessionIds ?? []), [liveSessionIds]);
 
   // Closing the drawer, or switching app, ends the menu.
   //
@@ -474,7 +562,10 @@ function SidebarView({
             contentContainerStyle={styles.sessionsContent}
             showsVerticalScrollIndicator={false}
             data={visible}
-            extraData={`${activeSessionId ?? ""}:${reduceMotion}`}
+            // The live set joins this, or a row would keep offering to close an
+            // agent the reaper has already taken — `FlatList` does not re-render
+            // rows for a prop it was not told to watch.
+            extraData={`${activeSessionId ?? ""}:${reduceMotion}:${liveSessionIds?.join(",") ?? ""}`}
             keyExtractor={(session) => session.id}
             initialNumToRender={18}
             maxToRenderPerBatch={18}
@@ -502,6 +593,8 @@ function SidebarView({
                   haptics.tap();
                   onOpenSession(session.id);
                 }}
+                live={live.has(session.id)}
+                onClose={() => onCloseSession(session.id)}
               />
             )}
           />
@@ -784,6 +877,17 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   sessionMeta: { color: theme.color.textDim, fontSize: theme.font.tiny },
+  // Sits at the end of the title line, after the status dot. Quiet by default:
+  // this is housekeeping, and it must never compete with the conversation title
+  // it belongs to.
+  closeAgent: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.radius.sm,
+    marginLeft: "auto",
+  },
   empty: {
     color: theme.color.textDim,
     fontSize: theme.font.small,

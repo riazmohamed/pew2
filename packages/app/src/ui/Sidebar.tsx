@@ -505,7 +505,23 @@ function SidebarView({
       accessibilityElementsHidden={!open}
       importantForAccessibility={open ? "auto" : "no-hide-descendants"}
     >
-      <View style={[styles.panelInner, { paddingTop: insets.top + theme.headerInset }]}>
+      <View
+        style={[
+          styles.panelInner,
+          {
+            paddingTop: insets.top + theme.headerInset,
+            // The bottom inset belongs here for the same reason the top one
+            // does, and its absence was not cosmetic: the machine row is the
+            // last child, so on a phone with a home indicator `Forget` sat
+            // inside the system gesture strip, which takes the touch before the
+            // button ever sees it. The control was visible and simply would not
+            // press — and it is the only way back to the pairing screen, so the
+            // one action that recovers a dead pairing was the one unreachable
+            // thing in the app.
+            paddingBottom: insets.bottom + theme.space(4),
+          },
+        ]}
+      >
           <View style={styles.header}>
             {/* The dot rides with the title rather than sitting in the footer:
                 connection state is the first thing to check when the drawer is
@@ -835,7 +851,9 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderRightColor: "rgba(255,255,255,0.28)",
   },
-  panelInner: { flex: 1, paddingBottom: theme.space(4) },
+  // No `paddingBottom` here — it is applied inline, because it has to carry the
+  // safe-area inset. See the comment at the call site.
+  panelInner: { flex: 1 },
 
   header: {
     flexDirection: "row",

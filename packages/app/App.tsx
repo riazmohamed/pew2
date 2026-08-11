@@ -8,7 +8,7 @@
  * The approval sheet is the reason this app exists, so it is a blocking,
  * unmissable surface rather than an inline row that can scroll away.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -48,7 +48,7 @@ import {
 } from "./src/ui/notifier";
 import { pushAddress } from "./src/ui/push";
 import { Orb } from "./src/ui/Orb";
-import { Composer, type ComposerHandle } from "./src/ui/Composer";
+import { ComposerDock, type ComposerDockHandle } from "./src/ui/ComposerDock";
 import { ChatThread, type ChatThreadRef } from "./src/ui/ChatThread";
 import { ImageResolverProvider } from "./src/ui/ChatImage";
 import { CommandSheet } from "./src/ui/CommandSheet";
@@ -58,7 +58,6 @@ import { AttachmentSheet, type AttachmentSource } from "./src/ui/AttachmentSheet
 import { addAttachments, MAX_ATTACHMENTS, type PendingAttachment } from "./src/attachments";
 import { pickFiles, pickPhotos, takePhoto } from "./src/ui/attachmentPicker";
 import { useDictation } from "./src/ui/useDictation";
-import { ContextBar } from "./src/ui/ContextBar";
 import { ApprovalSheet } from "./src/ui/ApprovalSheet";
 import { ThoughtSheet } from "./src/ui/ThoughtSheet";
 import { applyCommand, type SlashCommand } from "./src/slashCommands";
@@ -76,6 +75,7 @@ import { PairingScreen } from "./src/ui/PairingScreen";
 import { LaunchScreen } from "./src/ui/LaunchScreen";
 import { clearPairing, loadPairing, savePairing, type Pairing } from "./src/pairing";
 import { clearSessionCache, readSessionCache, writeSessionCache } from "./src/sessionCacheFile";
+import { clearCachedProviders } from "./src/preferences";
 import * as SplashScreen from "expo-splash-screen";
 import { clearCrash, readCrash } from "./src/crashLog";
 import * as Clipboard from "expo-clipboard";
@@ -233,11 +233,17 @@ function Root() {
   const unpair = useCallback(() => {
     // Same reasoning inverted: forget it locally even if the delete failed, or
     // the confirmed "Forget" action would appear to do nothing.
-    // The remembered conversation titles came from the machine being
-    // disconnected from, so "Forget" has to include them: leaving them behind
-    // would show one person's work on the next person's pairing screen.
+    //
+    // Everything this device remembered about that machine goes with it. The
+    // agent list describes one specific computer, so keeping it would offer the
+    // next one agents it may not have; the conversation titles are that
+    // machine's work, and leaving them would show it on the next owner's
+    // pairing screen. "Forget this computer" ought to mean it.
+    //
+    // `clearSessionCache` is synchronous and swallows its own failures, so it
+    // is called rather than awaited alongside the other two.
     clearSessionCache();
-    void clearPairing()
+    void Promise.all([clearPairing(), clearCachedProviders()])
       .catch(() => {})
       .then(() => {
         setPairing(null);
@@ -506,12 +512,26 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
     return () => subscription.remove();
   }, [resumeDaemon]);
 
+  // The rest of the hook's actions, pulled out for the same reason as
+  // `resumeDaemon` above: `daemon` is a fresh object every render (it spreads
+  // state over actions), while each function on it is stable. Naming them here
+  // lets every callback below depend on exactly what it calls, instead of on an
+  // identity that changes on every streamed chunk — which would rebuild the
+  // memoised dock and transcript cells for each token that arrives.
+  const {
+    answer: answerDaemon,
+    leave: leaveDaemon,
+    openSession: openDaemonSession,
+    prompt: promptDaemon,
+    selectProject: selectDaemonProject,
+    start: startDaemon,
+  } = daemon;
+
   // Tell the notification layer which conversation is open, so a push that
   // arrives for the one already on screen is dropped instead of covering the
   // reply it is announcing. The daemon pushes without knowing what this phone is
   // showing — only this side can know that.
   useEffect(() => setOpenConversation(daemon.sessionId), [daemon.sessionId]);
-  const [draft, setDraft] = useState("");
   // Files staged for the next message. Cleared with the draft on send, because
   // the two are one message.
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
@@ -529,7 +549,13 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   // so the sheet lives outside the recycling list — a cell scrolled off screen
   // must not take the sheet down with it.
   const [thought, setThought] = useState<string | null>(null);
-  const composer = useRef<ComposerHandle>(null);
+  // The draft lives inside the dock, not here.
+  //
+  // Holding it at the root meant every keystroke re-rendered the entire app,
+  // and the composer's own growth animation then had to share the JS thread
+  // with that work — which is what made the box lag the caret on every wrapped
+  // line. This handle is how the root still reaches text it no longer owns.
+  const composer = useRef<ComposerDockHandle>(null);
   /** The keyboard is up, so the composer owns the screen. */
   const [typing, setTyping] = useState(false);
   // Measured so the thread's top inset always matches the real nav height.
@@ -615,19 +641,24 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   // sessions array itself, which is rebuilt on every streamed chunk. See
   // `projectSourceKey`: `daemon.sessions` is still what the computation reads,
   // but it is no longer what decides whether to run it.
-  const projectKey = projectSourceKey(daemon.sessions, active?.id);
+  const activeId = active?.id;
+  const daemonSessions = daemon.sessions;
+  const projectKey = projectSourceKey(daemonSessions, activeId);
   const projects = useMemo(
-    () => projectsForProvider(daemon.projects[active?.id ?? ""], daemon.sessions, active?.id),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `projectKey` stands
-    // in for `daemon.sessions` on purpose; including the array would defeat it.
-    [daemon.projects, projectKey, active?.id],
+    () => projectsForProvider(daemon.projects[activeId ?? ""], daemonSessions, activeId),
+    // `projectKey` stands in for `daemonSessions` on purpose — the array is
+    // rebuilt on every streamed chunk, and listing it would recompute the fold
+    // for every token that arrives. The rule cannot see that one summarises the
+    // other, so this is the one place it is overruled by hand.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [daemon.projects, projectKey, activeId],
   );
-  const selectedProjectPath = active ? daemon.projectPath[active.id] : undefined;
+  const selectedProjectPath = activeId ? daemon.projectPath[activeId] : undefined;
   const selectProject = useCallback(
     (path?: string) => {
-      if (active) daemon.selectProject(active.id, path);
+      if (activeId) selectDaemonProject(activeId, path);
     },
-    [active?.id, daemon.selectProject],
+    [activeId, selectDaemonProject],
   );
 
   const inThread = daemon.turns.length > 0;
@@ -804,6 +835,17 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
     return () => animation.stop();
   }, [atBottom, reduceMotion, jumpOpacity]);
 
+  /**
+   * Hide the keyboard, from a worklet.
+   *
+   * A plain JS function so the gesture captures *this* and not the `Keyboard`
+   * module: `runOnJS` still has to read its argument on the UI runtime, and a
+   * native module is not serializable to it.
+   */
+  const dismissKeyboard = useCallback(() => {
+    Keyboard.dismiss();
+  }, []);
+
   // The drawer tracks the finger in both directions: dragged out from the left
   // edge when closed, and pushed back by the uncovered pane when open. It is
   // being moved by the gesture rather than triggered by it.
@@ -829,7 +871,15 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
           // place, so the keyboard goes the moment the drag is claimed rather
           // than once it commits. Switching a model does not do this — that is
           // still the same conversation.
-          runOnJS(Keyboard.dismiss)();
+          //
+          // `dismissKeyboard`, never `runOnJS(Keyboard.dismiss)`. This body is a
+          // worklet, so naming `Keyboard.dismiss` reads a property off the
+          // `Keyboard` module *on the UI runtime* — and a native module cannot
+          // be sent there. Worklets throws, and a throw on the UI thread is not
+          // catchable JS: it aborts the process. That is the whole crash — the
+          // drawer never opened because the app died on the first frame of the
+          // drag, in both directions, since both go through here.
+          runOnJS(dismissKeyboard)();
           // The effect above animates this same value on `menuOpen`. Cancelling
           // here means the finger takes over from where the drawer currently
           // rests rather than from where it was heading.
@@ -868,7 +918,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
           runOnJS(settleDrawer)(menuOpen);
         })
     );
-  }, [menuOpen, drawer$, releaseDrawer, settleDrawer]);
+  }, [menuOpen, drawer$, releaseDrawer, settleDrawer, dismissKeyboard]);
 
   // Two instances of the same gesture rather than one shared between the edge
   // strip and the overlay. A GestureDetector stamps its own handler tag onto the
@@ -906,15 +956,32 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
 
   const openSession = useCallback(
     (id: string) => {
-      // Remounts the thread so it re-arms at this transcript's own bottom.
-      // Deliberately not `daemon.sessionId`: a fresh conversation renders its
-      // optimistic first prompt before the daemon assigns an id, and keying on
-      // that would tear the list down mid-reply the moment the id landed.
-      setThreadKey(id);
-      daemon.openSession(id);
+      // Closing the drawer is urgent; swapping the transcript underneath it is
+      // not, and they are separated here because they used to be one render.
+      //
+      // The spring that closes the drawer is started by an effect on
+      // `menuOpen`, and effects run after the commit — so it could not begin
+      // until React had finished the work in the same batch. That work is a
+      // whole new transcript: `threadKey` changes, the list remounts, and every
+      // turn in the conversation mounts and parses its markdown. The drawer
+      // therefore stayed still from the tap until all of that had landed, and
+      // only then started moving. That pause is the stagger — not a slow
+      // animation, a late one, and worst on the longest conversations.
+      //
+      // Marked non-urgent, the transcript renders in its own pass. The tap now
+      // commits nothing but `menuOpen`, the effect fires, and the drawer is
+      // already travelling while the turns are built behind it.
       setMenuOpen(false);
+      startTransition(() => {
+        // Remounts the thread so it re-arms at this transcript's own bottom.
+        // Deliberately not `daemon.sessionId`: a fresh conversation renders its
+        // optimistic first prompt before the daemon assigns an id, and keying on
+        // that would tear the list down mid-reply the moment the id landed.
+        setThreadKey(id);
+        openDaemonSession(id);
+      });
     },
-    [daemon.openSession],
+    [openDaemonSession],
   );
 
   // Deferred until the conversation the banner named is in the list: a banner
@@ -922,73 +989,115 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   // and addressing an unknown id is a no-op that would silently lose it.
   useEffect(() => {
     if (!choice) return;
-    if (!daemon.sessions.some((session) => session.id === choice.sessionId)) return;
+    if (!daemonSessions.some((session) => session.id === choice.sessionId)) return;
     setChoice(undefined);
     if (choice.text) {
       // Replied from the banner: answer that agent where it is and leave the
       // user wherever they were. Being pulled into another project because you
       // dashed off one line is the thing the reply box exists to avoid.
-      if (daemon.prompt(choice.text, choice.sessionId)) {
+      if (promptDaemon(choice.text, choice.sessionId)) {
         haptics.sent();
         return;
       }
       // The conversation has to be reloaded first (the daemon was restarted).
       // Open it with the reply waiting in the composer rather than dropping
       // what was typed: one tap to send beats losing it silently.
-      setDraft(choice.text);
+      composer.current?.setDraft(choice.text);
     }
     openSession(choice.sessionId);
-  }, [choice, daemon.sessions, daemon.prompt, openSession]);
+  }, [choice, daemonSessions, promptDaemon, openSession]);
 
   /**
    * Dictation writes straight into the draft.
    *
-   * `draft` is read through a getter rather than passed as a value: it changes
-   * on every result, and a dependency on it would tear down the recogniser's
-   * listeners mid-sentence.
+   * Both sides go through the dock's handle, which is stable: the draft is not
+   * state here any more, so there is nothing on this component for a
+   * dependency to track and nothing to tear the recogniser's listeners down
+   * mid-sentence.
    */
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
   const dictation = useDictation({
-    draft: useCallback(() => draftRef.current, []),
-    onDraftChange: setDraft,
+    draft: useCallback(() => composer.current?.getDraft() ?? "", []),
+    onDraftChange: useCallback((text: string) => composer.current?.setDraft(text), []),
     onMessage: useCallback((message: string) => {
       Alert.alert("Dictation", message);
     }, []),
   });
+  // Same reason as the daemon actions above: the hook's object is new each
+  // render, the function on it is not.
+  const cancelDictation = dictation.cancel;
 
-  const send = useCallback(() => {
-    const text = draft.trim();
-    // A photo on its own is a message; "look at this" is implied by attaching it.
-    if (!text && attachments.length === 0) return;
+  // Handed the text by the dock, which owns it.
+  //
+  // Answers whether the message went. The dock clears the draft on true and
+  // keeps it on false, so a send refused below — no agent available to start a
+  // conversation with — leaves the words in the box instead of destroying a
+  // message that was never delivered.
+  const send = useCallback(
+    (text: string): boolean => {
+      // A photo on its own is a message; "look at this" is implied by attaching it.
+      if (!text && attachmentsRef.current.length === 0) return false;
+      const staged = attachmentsRef.current;
 
-    // Whatever the recogniser still holds is not going into a message that has
-    // already gone, and a live mic outliving the send is what leaves the OS
-    // recording indicator on.
-    dictation.cancel();
+      if (!daemon.sessionId && !active?.available) return false;
 
-    // Asked at the moment it earns itself: the user is about to wait on an
-    // agent, which is the only thing this app notifies about. Not awaited — the
-    // prompt must go out whatever the system decides.
-    void ensureNotificationPermission();
+      // Whatever the recogniser still holds is not going into a message that has
+      // already gone, and a live mic outliving the send is what leaves the OS
+      // recording indicator on.
+      cancelDictation();
 
-    if (daemon.sessionId) {
-      daemon.prompt(text, undefined, attachments);
-    } else {
-      // No session yet: start one with the chosen available agent and let the
-      // daemon deliver this prompt as soon as it is ready.
-      if (!active?.available) return;
-      daemon.start(active.id, text, attachments);
-    }
-    setDraft("");
-    setAttachments([]);
-  }, [draft, attachments, dictation.cancel, daemon.sessionId, daemon.prompt, daemon.start, active]);
+      // Asked at the moment it earns itself: the user is about to wait on an
+      // agent, which is the only thing this app notifies about. Not awaited — the
+      // prompt must go out whatever the system decides.
+      void ensureNotificationPermission();
+
+      // Offline the message is queued rather than sent, which still counts as
+      // taken: it is on screen, marked as waiting, and goes out on reconnect.
+      // A false here is the rare genuine refusal — the outbox is full — and the
+      // draft and its attachments stay put, because destroying a message that
+      // was never delivered is the one outcome there is no way back from.
+      const taken = daemon.sessionId
+        ? promptDaemon(text, undefined, staged)
+        : // No session yet: start one with the chosen available agent and let
+          // the daemon deliver this prompt as soon as it is ready.
+          startDaemon(active!.id, text, staged);
+      if (!taken) return false;
+      setAttachments([]);
+      return true;
+    },
+    // Attachments are read through their ref, so staging a photo does not
+    // rebuild this and re-render the memoised dock beneath it.
+    [cancelDictation, daemon.sessionId, promptDaemon, startDaemon, active],
+  );
+
+  /**
+   * Sending a failed prompt again, from the transcript.
+   *
+   * The same path as the composer, deliberately: a retry has to start a
+   * conversation when the daemon was restarted under it, and has to queue when
+   * the phone has no signal, exactly as typing it out by hand would.
+   *
+   * What it cannot bring back is the failed message's attachments — they left
+   * the composer when it was sent. It carries whatever is staged now, which is
+   * the same rule the composer follows.
+   *
+   * A refusal has one cause the user can act on: no agent is available to open
+   * a conversation with. That lands the prompt in the composer rather than
+   * nowhere, so the tap is never silent.
+   */
+  const retrySend = useCallback(
+    (text: string) => {
+      if (send(text)) return;
+      composer.current?.setDraft(text);
+      composer.current?.focus();
+    },
+    [send],
+  );
 
   // A mic left listening across a session switch would put the next sentence
   // into a conversation the user has already left.
   useEffect(() => {
-    dictation.cancel();
-  }, [daemon.sessionId, dictation.cancel]);
+    cancelDictation();
+  }, [daemon.sessionId, cancelDictation]);
 
   const openAttach = useCallback(() => {
     Keyboard.dismiss();
@@ -1043,12 +1152,12 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
    */
   const startNewChat = useCallback(
     (cwd?: string) => {
-      if (cwd && active) daemon.selectProject(active.id, cwd);
-      daemon.leave();
+      if (cwd && activeId) selectDaemonProject(activeId, cwd);
+      leaveDaemon();
       setNewChatOpen(false);
       setMenuOpen(false);
     },
-    [active?.id, daemon.selectProject, daemon.leave],
+    [activeId, selectDaemonProject, leaveDaemon],
   );
   const closeNewChat = useCallback(() => setNewChatOpen(false), []);
   // The drawer only ever offers this beside a named project, so it always has
@@ -1058,7 +1167,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   const pickCommand = useCallback((command: SlashCommand) => {
     // Placed in the composer rather than sent: a command may still want an
     // argument, and even one that does not should be reviewed before running.
-    setDraft(applyCommand(command));
+    composer.current?.setDraft(applyCommand(command));
     setCommandsOpen(false);
     // Straight back to typing, caret after the trailing space. Deferred past
     // this commit because the sheet still holds focus during it, and focusing
@@ -1083,9 +1192,9 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
     (requestId: string, optionId: string, deny: boolean) => {
       if (deny) haptics.warned();
       else haptics.sent();
-      daemon.answer(requestId, optionId);
+      answerDaemon(requestId, optionId);
     },
-    [daemon.answer],
+    [answerDaemon],
   );
 
   const closePicker = useCallback(() => setPicker(null), []);
@@ -1136,6 +1245,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
         machineLabel={pairing.label}
         machineRemote={pairing.remote}
         connectionStatus={daemon.status}
+        update={daemon.update}
         onUnpair={onUnpair}
       />
 
@@ -1280,6 +1390,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
             indicatorBottom={dockHeight}
             onAtBottomChange={setAtBottom}
             onOpenThought={openThought}
+            onRetry={retrySend}
           />
         ) : !daemon.loadingSession ? (
           // Cancels half the pane's lift, so the greeting settles in the middle
@@ -1311,11 +1422,18 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
                     machine rejects below the socket — 401 from the daemon, 409
                     from a relay room with no machine in it — sends no frame to
                     explain itself, so retrying continues in the background
-                    while the words stop pretending it is nearly there. */}
+                    while the words stop pretending it is nearly there.
+
+                    Deliberately not a checklist. By far the commonest reason
+                    this shows is that the phone has no signal, and the machine
+                    is fine — so instructions to go and inspect it are wrong
+                    advice most of the times they are read, and unfollowable
+                    anyway from wherever the user is standing. What can be done
+                    from here is keep typing, which the composer now says. */}
                 {daemon.fatal
                   ? daemon.fatal
                   : daemon.unreachable
-                    ? "Can't reach your machine. Check it's awake and running pew2 — if this code is old, run `pew2 pair` there for the current one."
+                    ? "Can't reach your machine."
                     : daemon.status !== "online"
                       ? "Connecting to your machine..."
                       : active
@@ -1350,7 +1468,15 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
           {dockHeight > 0 && (
             <CanvasCover edge="bottom" height={dockHeight} style={styles.dockCover} />
           )}
-          <View
+          {/* The dock keeps the composer even while an approval is pending:
+              the request is its own blocking sheet now, so swapping this out
+              under it would only resize the thread behind a covered surface.
+
+              It owns the draft, so typing re-renders this subtree and not the
+              whole app. That is what leaves the JS thread free for the
+              composer's own growth animation while a line wraps. */}
+          <ComposerDock
+            ref={composer}
             style={[
               styles.dock,
               // Constant. The spacer below the body carries the keyboard, and it
@@ -1358,57 +1484,51 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
               // same gap above either boundary without re-laying out.
               { paddingBottom: insets.bottom + theme.space(2) },
             ]}
-            onLayout={(event) => {
-              // Read out here, not inside the updater. React pools synthetic
-              // events and nulls `nativeEvent` once the handler returns, and a
-              // state updater runs after that — reaching into the event from in
-              // there threw `Cannot read property 'layout' of null` and took the
-              // whole render down.
-              const height = event.nativeEvent.layout.height;
+            // Settled heights only. The dock reports once its growth animation
+            // has stopped, not on every frame of it — measured at roughly one
+            // layout pass per two pixels, which turned a single wrapped line
+            // into about ten re-renders of this whole component, each one
+            // rebuilding the thread's spacers and re-running its follow-scroll
+            // on the exact frames the composer was trying to animate.
+            onHeightSettled={(height) => {
               // Recorded against the state it was measured in, and only when it
-              // actually changed: an unconditional set would re-render on every
-              // layout pass the dock does, including the ones the keyboard's own
-              // animation causes.
+              // actually changed — the keyboard's own animation causes layout
+              // passes that have nothing to do with the draft.
               setDockHeights((prev) => recordDockHeight(prev, typing, height));
             }}
-          >
-          {/* The dock keeps the composer even while an approval is pending:
-              the request is its own blocking sheet now, so swapping this out
-              under it would only resize the thread behind a covered surface.
-
-              The context row shows what the next prompt acts on — project,
-              context fill, uncommitted work, and the commands the agent offers
-              (an empty sheet is worse than no button). Never while typing: the
-              draft is the subject then, and the row would only crowd it. */}
-          {!typing && (daemon.commands.length > 0 || daemon.workspace || daemon.usage) && (
-            <ContextBar
-              workspace={daemon.workspace}
-              usage={daemon.usage}
-              showCommands={daemon.commands.length > 0}
-              onCommands={openCommands}
-            />
-          )}
-          <Composer
-            ref={composer}
-            value={draft}
-            onChangeText={setDraft}
+            typing={typing}
+            workspace={daemon.workspace}
+            usage={daemon.usage}
+            showCommands={daemon.commands.length > 0}
+            onCommands={openCommands}
             onSend={send}
             busy={showsStop(daemon)}
             onStop={daemon.cancel}
-            editable={daemon.status === "online"}
+            // Never locked by the network. A dead socket used to disable the
+            // whole composer — no keyboard, no typing, nothing — which is the
+            // one moment a phone is most likely to be in a tunnel and the user
+            // most wants to get a thought down. Offline sends are queued and
+            // delivered on reconnect (see `outbox.ts`), so the only thing that
+            // still locks it is a refusal retrying cannot fix: a rotated key or
+            // a version mismatch, where nothing typed here could ever go.
+            editable={!daemon.fatal}
             placeholder={
               dictation.listening
                 ? "Listening..."
-                : active
-                  ? "Ask me. Task me..."
-                  : "Waiting for an agent..."
+                : // Kept to one line: the collapsed pill is a single line tall,
+                  // and a placeholder that wraps pushes its own second line out
+                  // of the box — the state reads as broken rather than as calm.
+                  daemon.status !== "online"
+                  ? "Offline — sends when you reconnect"
+                  : active
+                    ? "Ask me anything..."
+                    : "Waiting for an agent..."
             }
             attachments={attachments}
             onAttach={openAttach}
             onRemoveAttachment={removeAttachment}
             dictation={dictation}
           />
-          </View>
         </View>
       </Reanimated.View>
 

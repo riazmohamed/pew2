@@ -8,7 +8,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import { client, ndJsonStream, type ClientConnection } from "@agentclientprotocol/sdk";
-import type { LoadedProvider } from "../providers/registry.js";
+import { findOnPath, type LoadedProvider } from "../providers/registry.js";
 import { humanError } from "../errors.js";
 import type { StoredAttachment } from "../attachments.js";
 import { promptBlocks, type PromptCapabilities } from "./promptBlocks.js";
@@ -16,6 +16,7 @@ import { SESSION_HISTORY_LIMIT } from "../session-history.js";
 import { hydrateMessageCounts } from "./messageCounts.js";
 import { foldProjects, type AgentProject } from "../projects.js";
 import { withStdoutPipe } from "./stdout-pipe.js";
+import { DETACH_CHILDREN, registerChild, terminateChild, unregisterChild } from "../children.js";
 
 /**
  * A session-level selector advertised by the agent: model, thinking level, mode.
@@ -419,21 +420,128 @@ function applyConfigUpdate(
   return undefined;
 }
 
+/**
+ * Characters cmd.exe treats as syntax rather than text — including the space,
+ * which is why a path can be escaped instead of quoted.
+ *
+ * Taken from cross-spawn, which is the de-facto implementation of this problem
+ * and has had a decade of Windows bug reports filed against it.
+ */
+const CMD_META = /([()\][%!^"`<>&|;, *?])/g;
+
+/**
+ * One argument, as the target program's C runtime will parse it back.
+ *
+ * Two layers, and they are not the same layer. First MSVCRT quoting, which is
+ * what the receiving program applies: a backslash is literal *except* directly
+ * before a quote, so those runs are doubled and the quote escaped. Then cmd's
+ * own layer on top, since with `windowsVerbatimArguments` this text reaches
+ * cmd.exe unaltered — including the quotes we just added, which have to be
+ * `^`-escaped or cmd eats them as delimiters.
+ */
+function escapeArgument(arg: string): string {
+  const quoted = `"${arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, "$1$1")}"`;
+  return quoted.replace(CMD_META, "^$1");
+}
+
+/**
+ * How to actually launch what `findOnPath` found.
+ *
+ * On POSIX, unchanged: the command is spawned as given.
+ *
+ * On Windows, two things are true that are not true anywhere else. The command
+ * has to be resolved to a real file first — libuv only ever appends `.com` and
+ * `.exe`, so a bare `npx` never finds the `npx.cmd` that npm actually installed.
+ * And since CVE-2024-27980 (Node 18.20.2 / 20.12.2 / 21.7.3) spawning a `.cmd`
+ * or `.bat` without a shell is refused outright with EINVAL, because argument
+ * quoting for those is a command-injection surface.
+ *
+ * So a batch shim goes through `cmd.exe` explicitly — never `shell: true`, which
+ * hands an unescaped line to a parser and is the vulnerability itself.
+ *
+ * The escaping is not optional decoration. Passing the parts as ordinary argv
+ * entries looks right and is wrong: Node quotes them MSVCRT-style, then `/s`
+ * strips the *first and last* quote of everything after `/c` — which unquotes
+ * the program path. `C:\Program Files\nodejs\npx.cmd`, the default location of
+ * the launcher five bundled providers run through, would split at the space and
+ * fail with a syntax error nobody could act on. So the line is built here,
+ * escaped for both parsers, and handed over verbatim — the same shape npm,
+ * nodemon and cross-spawn all settled on.
+ */
+export function launchSpec(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): { command: string; args: string[]; windowsVerbatimArguments?: boolean } {
+  // Same override the resolver honours, so the Windows path is reachable from a
+  // Linux CI run — the only reason this behaviour is testable at all.
+  const windows = env.PEW2_FAKE_PLATFORM
+    ? env.PEW2_FAKE_PLATFORM === "win32"
+    : process.platform === "win32";
+  if (!windows) return { command, args };
+
+  // Falls back to the bare name so the spawn still happens and still produces a
+  // real ENOENT: refusing here would report "not installed" for a command the
+  // user may have added to PATH since the registry last looked.
+  const resolved = findOnPath(command, env) ?? command;
+  const lower = resolved.toLowerCase();
+  if (!lower.endsWith(".cmd") && !lower.endsWith(".bat")) {
+    return { command: resolved, args };
+  }
+
+  // The program is `^`-escaped rather than quoted, so a space in the path is
+  // literal without opening a quote that `/s` would later strip.
+  const line = [resolved.replace(CMD_META, "^$1"), ...args.map(escapeArgument)].join(" ");
+
+  // `/d` skips AutoRun commands from the registry — without it, whatever a user
+  // or their IT department set there runs before every agent. `/s` makes the
+  // outer quotes mean exactly "strip these two", which is what the line is
+  // built to expect.
+  return {
+    command: env.COMSPEC ?? "cmd.exe",
+    args: ["/d", "/s", "/c", `"${line}"`],
+    windowsVerbatimArguments: true,
+  };
+}
+
 export async function connectProvider(options: ConnectOptions): Promise<AcpSessionHandle> {
   const { provider, cwd } = options;
 
+  // Never with a faked platform: this one actually spawns, so simulating
+  // Windows here would try to run cmd.exe on a Mac.
+  const launch = launchSpec(provider.command, provider.args, {
+    ...process.env,
+    PEW2_FAKE_PLATFORM: undefined,
+  });
+
   // `stdoutPipe` routes stdout through a real pipe for agents whose runtime
-  // cannot write to the descriptor Bun hands out.
-  const { command, args } = withStdoutPipe(
-    { command: provider.command, args: [...provider.args] },
-    provider.manifest.pew.stdoutPipe,
-  );
+  // cannot write to the descriptor Bun hands out. Applied *after* `launchSpec`,
+  // so the shell is handed the resolved executable rather than a bare name it
+  // would have to find again. The two never both apply: this wrap is skipped on
+  // Windows, and `launchSpec` is a passthrough everywhere else — so
+  // `windowsVerbatimArguments` still describes the argv actually being spawned.
+  //
+  // Read defensively: a validated manifest always carries `pew` (the schema
+  // defaults every field of it), but test fixtures and any hand-built provider
+  // reach this without going through validation, and a missing block should
+  // mean "the default path" rather than a TypeError at spawn.
+  const { command, args } = withStdoutPipe(launch, provider.manifest.pew?.stdoutPipe ?? false);
 
   const child = spawn(command, args, {
     cwd,
+    // Set only on the Windows batch-shim path, where the command line was
+    // escaped by hand above. Letting Node re-quote it would undo that.
+    windowsVerbatimArguments: launch.windowsVerbatimArguments,
     // ACP mandates stdout carry only protocol messages, so logs go to stderr.
     stdio: ["pipe", "pipe", "pipe"],
     env: process.env,
+    // Its own process group, so `kill` can address the whole tree. Five bundled
+    // providers run through `npx`: signalling only the process we spawned kills
+    // the launcher and reparents the real agent to pid 1, where it runs until
+    // the machine reboots. Detaching also stops a terminal's Ctrl-C reaching
+    // agents directly — the daemon's own handler closes them in order instead.
+    // Never on Windows, where the same flag means "outlive the parent".
+    detached: DETACH_CHILDREN,
   }) as ChildProcessWithoutNullStreams;
 
   // A missing executable surfaces asynchronously as an 'error' event. Without a
@@ -454,10 +562,37 @@ export async function connectProvider(options: ConnectOptions): Promise<AcpSessi
   });
   await spawned;
 
+  // Recorded so that a daemon which dies without running a handler — SIGKILL,
+  // OOM, panic — can still be cleaned up after, by the next one to start.
+  const pid = child.pid;
+  if (pid !== undefined) {
+    void registerChild({
+      pid,
+      providerId: provider.manifest.id,
+      fallbackCommand: [provider.command, ...provider.args].join(" "),
+    });
+  }
+
   // The exit listener is re-pointed on `adopt`, so a reused process reports
   // its death to the session currently living on it, not the first one.
   let exitHandler = options.onExit;
-  child.on("exit", (code, signal) => exitHandler?.(code, signal));
+  let exited = false;
+  child.on("exit", (code, signal) => {
+    exited = true;
+    if (pid !== undefined) void unregisterChild(pid);
+    exitHandler?.(code, signal);
+  });
+
+  /**
+   * SIGTERM to the whole group, SIGKILL to whatever ignored it.
+   *
+   * @param graceMs Time between the two. Zero for a process already known to be
+   * wedged, where the request is a formality.
+   */
+  const stop = (graceMs?: number) => {
+    if (exited || pid === undefined) return;
+    terminateChild(pid, () => exited, graceMs);
+  };
 
   // Always read stderr, even with no `onStderr` listener. An agent that fails to
   // hand shake explains itself there and nowhere else — `npm error ENOENT` from a
@@ -483,7 +618,14 @@ export async function connectProvider(options: ConnectOptions): Promise<AcpSessi
     });
   }
 
-  const pending = new Map<string, (optionId: string) => void>();
+  // Open permission requests, keyed by the id the app answers with.
+  //
+  // `null` is settled-without-an-answer: closing the connection has to resolve
+  // every entry it still holds, or the `session/request_permission` handler
+  // awaits a promise nobody can ever fulfil — which retains the request, its
+  // handler and the closure around this whole connection for the life of the
+  // daemon process.
+  const pending = new Map<string, (optionId: string | null) => void>();
   let permissionCounter = 0;
 
   const { input, output } = toWebStreams(child);
@@ -549,7 +691,7 @@ export async function connectProvider(options: ConnectOptions): Promise<AcpSessi
       const requestId = `perm_${++permissionCounter}`;
       // Register the resolver *before* notifying, otherwise a caller that answers
       // synchronously finds no pending entry and the agent waits forever.
-      const answered = new Promise<string>((resolve) => {
+      const answered = new Promise<string | null>((resolve) => {
         pending.set(requestId, resolve);
       });
       const sid = (ctx.params as { sessionId?: string })?.sessionId;
@@ -559,6 +701,10 @@ export async function connectProvider(options: ConnectOptions): Promise<AcpSessi
         options.onPermissionRequest;
       handler({ requestId, params: ctx.params });
       const optionId = await answered;
+      // Null means the connection went away with the question unanswered. ACP
+      // has a word for that, and saying it lets the agent unwind instead of
+      // sitting on a request whose client no longer exists.
+      if (optionId === null) return { outcome: { outcome: "cancelled" } };
       return { outcome: { outcome: "selected", optionId } };
     });
 
@@ -590,8 +736,10 @@ export async function connectProvider(options: ConnectOptions): Promise<AcpSessi
     options.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT_MS,
     () => {
       // The process is wedged, not merely slow: leaving it running would leak a
-      // child per attempt for as long as the user keeps tapping.
-      child.kill("SIGKILL");
+      // child per attempt for as long as the user keeps tapping. No grace, since
+      // it has already failed to answer for the whole handshake window — but by
+      // group, or a wrapped agent survives the launcher it was started behind.
+      stop(0);
       return new Error(
         `'${provider.manifest.name}' ${HANDSHAKE_TIMEOUT_MARKER}. ${failureContext()}`,
       );
@@ -728,16 +876,42 @@ export async function connectProvider(options: ConnectOptions): Promise<AcpSessi
     }
   }
 
-  current = await openSession(
-    options.loadSessionId,
-    cwd,
-    {
-      onUpdate: options.onUpdate,
-      onPermissionRequest: options.onPermissionRequest,
-      onConfigOptions: options.onConfigOptions,
-    },
-    options.haveHistory,
-  );
+  // Opening the first session is the last thing that can fail before the caller
+  // gets a handle — and until it does, nothing else has a reference to this
+  // process. So a failure here has to kill it: there is no `close()` to call
+  // when the call you would have got it from is the one that threw.
+  //
+  // `pew2 setup` proved the cost. Every agent that answered the handshake and
+  // then failed to open a session — the ordinary not-signed-in case — left a
+  // live process behind, one per agent per run, until the machine was rebooted.
+  //
+  // Bounded for the same reason the handshake is: an agent that accepts
+  // `session/new` and never answers used to hang this await for ever, with the
+  // child parked on it.
+  try {
+    current = await withTimeout(
+      openSession(
+        options.loadSessionId,
+        cwd,
+        {
+          onUpdate: options.onUpdate,
+          onPermissionRequest: options.onPermissionRequest,
+          onConfigOptions: options.onConfigOptions,
+        },
+        options.haveHistory,
+      ),
+      options.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT_MS,
+      () =>
+        new Error(
+          `'${provider.manifest.name}' answered the handshake but never opened a session. ${failureContext()}`,
+        ),
+    );
+  } catch (error) {
+    // No grace period: it either never answered, or answered with a refusal it
+    // has already finished sending.
+    stop(0);
+    throw error;
+  }
 
   return {
     connection,
@@ -894,8 +1068,13 @@ export async function connectProvider(options: ConnectOptions): Promise<AcpSessi
       return true;
     },
     close() {
+      // Settle before tearing the transport down: an unresolved promise here is
+      // a permission request the agent is still blocked on, and its resolver
+      // keeps this connection's entire closure reachable.
+      for (const resolve of pending.values()) resolve(null);
+      pending.clear();
       connection.close();
-      child.kill();
+      stop();
     },
   };
 }

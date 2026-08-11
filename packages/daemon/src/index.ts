@@ -25,6 +25,7 @@ import { discardAttachments, storeAttachments } from "./attachments.js";
 import { folderName, resolveWorkspace } from "./workspace.js";
 import { PushRegistry } from "./push.js";
 import { readProbeCache, writeProbeCache } from "./probe-cache.js";
+import { readKnownProjects, rememberKnownProject } from "./known-projects.js";
 import { hydrateMessageCounts } from "./acp/messageCounts.js";
 import { sessionsInProject, type AgentProject } from "./projects.js";
 import { SESSION_HISTORY_LIMIT } from "./session-history.js";
@@ -80,6 +81,20 @@ interface ActiveSession {
    * the flag that keeps the reaper off a running turn.
    */
   working?: boolean;
+  /**
+   * Approval requests the agent is blocked on, oldest first.
+   *
+   * The ACP request is still open — its resolver is sitting in the connection
+   * waiting for `answerPermission` — and nothing but this daemon knows that. A
+   * client that was offline when it was asked has no way back to it: the logged
+   * `permission_request` event is skipped on replay (in history it was answered
+   * long ago), so the sheet never reappeared and the turn stayed stopped for
+   * ever. `catchUp` hands these back so a reconnecting phone can answer.
+   *
+   * Keyed by request id and insertion-ordered: an agent can have several tools
+   * in flight, and answering one must not drop the rest.
+   */
+  permissions?: Map<string, unknown>;
   /**
    * What the agent has said so far in the current turn.
    *
@@ -218,6 +233,17 @@ export class Daemon {
   // flight rather than resolved so concurrent asks share one spawn.
   private readonly probes = new Map<string, Promise<ProviderCapabilities>>();
   /**
+   * When each provider's answer above was last obtained — from a live probe, or
+   * from the timestamp inside the cache file that answered instead.
+   *
+   * Monotonic: a disk file older than what is already known never rewinds this,
+   * so a failed refresh backs off for a full interval rather than spawning the
+   * agent again on every ask.
+   */
+  private readonly probedAt = new Map<string, number>();
+  /** Background refreshes in flight, so concurrent asks share one spawn. */
+  private readonly refreshing = new Map<string, Promise<void>>();
+  /**
    * Every session a provider reported, uncapped, keyed by provider id.
    *
    * The app is only ever sent the newest handful, because message counts cost
@@ -236,6 +262,15 @@ export class Daemon {
    * rather than a growing record of what is on the disk.
    */
   private readonly offeredWorkspaces = new Set<string>();
+
+  /**
+   * The same check's durable half: projects a client has actually opened, read
+   * from disk on first use. See `known-projects.ts` — the app re-sends its
+   * chosen project for days, so "offered seconds ago" is not the whole rule.
+   */
+  private chosen?: Promise<Set<string>>;
+  /** Serialises the read-modify-write behind `rememberProject`. */
+  private chosenWrites: Promise<void> = Promise.resolve();
 
   /**
    * One already-booted agent process per provider, left over from the last
@@ -299,6 +334,25 @@ export class Daemon {
   private static readonly SPARE_TTL_MS = 15 * 60 * 1000;
 
   /**
+   * How old a provider's session list may be before the next ask refreshes it.
+   *
+   * The probe used to be memoised for the daemon's lifetime, refreshed exactly
+   * once — on the first cache hit after boot. A daemon runs for days, and the
+   * user spends those days working at the desk, so every conversation and every
+   * project started after that one refresh was invisible to the phone until the
+   * daemon was restarted. The cache on this machine was two days stale while
+   * the agent had written sessions minutes earlier.
+   *
+   * A minute, because the ask that matters arrives when the app reconnects —
+   * once per foreground — and "I just put the laptop down" is exactly the case
+   * that has to work. The cached answer is still served immediately; this only
+   * decides when a refresh runs behind it. The spawn it costs is not wasted
+   * either: the probe leaves its process parked as the spare that the next
+   * conversation adopts.
+   */
+  private static readonly PROBE_TTL_MS = 60 * 1000;
+
+  /**
    * How long a conversation may sit untouched before its agent is closed.
    *
    * The same fifteen minutes as a warm spare, and for the same reason: what is
@@ -325,6 +379,23 @@ export class Daemon {
    * mean twenty in the worst case.
    */
   private static readonly REAP_INTERVAL_MS = 2 * 60 * 1000;
+  /**
+   * How long a session may sit blocked on an unanswered permission.
+   *
+   * Nothing times a permission out — deliberately, because a phone that lost
+   * signal mid-request must still be able to answer, and an agent stopped
+   * mid-task is better than one that guessed. But `working` is true for the
+   * whole wait, so the idle reaper never touched such a session: a request the
+   * user never saw pinned an agent, and its slot under `MAX_LIVE_SESSIONS`, for
+   * as long as the daemon ran.
+   *
+   * An hour is far past the point where anyone is coming back to that tap, and
+   * closing is not answering: the whole session goes, the app sees the id leave
+   * `activeSessions`, and reopening resumes the conversation — the same path a
+   * daemon restart already takes. A long turn with no pending permission is
+   * untouched.
+   */
+  private static readonly BLOCKED_TTL_MS = 60 * 60 * 1000;
   private reaper?: NodeJS.Timeout;
   /**
    * How many conversations may hold an agent process at once.
@@ -347,6 +418,9 @@ export class Daemon {
    * A failed refresh is silent: the cached answer stays in place.
    */
   private async revalidate(providerId: string) {
+    // Recorded before the refresh rather than after it, so a provider that fails
+    // or hangs is retried on the next interval instead of on the very next ask.
+    this.markProbed(providerId, Date.now());
     // Corrected on the way out, like every other capability answer: the refresh
     // reports the agent's defaults, and pushing those would overwrite a correct
     // pill with "Default" seconds after the app opened.
@@ -379,6 +453,45 @@ export class Daemon {
     }
   }
 
+  /**
+   * Refresh a provider's capabilities in the background, once.
+   *
+   * Deduplicated here rather than in each caller: the staleness check below and
+   * the spare boot both want the same refresh, and running two means spawning
+   * the agent twice to ask it the same question.
+   */
+  private refreshCapabilities(providerId: string): Promise<void> {
+    const existing = this.refreshing.get(providerId);
+    if (existing) return existing;
+    const run = this.revalidate(providerId)
+      .catch(() => {
+        // A failed refresh is silent by design: the cached answer stands.
+      })
+      .finally(() => {
+        if (this.refreshing.get(providerId) === run) this.refreshing.delete(providerId);
+      });
+    this.refreshing.set(providerId, run);
+    return run;
+  }
+
+  /** Newest wins, so a stale cache file cannot rewind a live probe. */
+  private markProbed(providerId: string, at: number) {
+    if ((this.probedAt.get(providerId) ?? 0) < at) this.probedAt.set(providerId, at);
+  }
+
+  /**
+   * Kick a background refresh if what we are about to serve is old.
+   *
+   * Never awaited. The caller is answered from the cached probe at once and the
+   * fresh list arrives moments later as a `provider.capabilities` push, which
+   * clients already fold in exactly like an answer to their own request.
+   */
+  private revalidateIfStale(providerId: string) {
+    const at = this.probedAt.get(providerId);
+    if (at !== undefined && Date.now() - at < Daemon.PROBE_TTL_MS) return;
+    void this.refreshCapabilities(providerId);
+  }
+
   private warmProvider(providerId: string): Promise<void> {
     // Nothing is warmed for an agent that is off. Without this the daemon would
     // still boot a process for it in the background, which is most of what
@@ -400,7 +513,7 @@ export class Daemon {
     // disk cache first, so a tap arriving in that window would find no promise
     // to wait on and spawn a second process alongside this one.
     this.armSpare(providerId);
-    const warming = this.revalidate(providerId).finally(() => {
+    const warming = this.refreshCapabilities(providerId).finally(() => {
       if (this.warming.get(providerId) === warming) this.warming.delete(providerId);
       // Release anyone still waiting; a finished boot either left a spare or
       // failed, and both answers are "stop waiting".
@@ -606,8 +719,18 @@ export class Daemon {
   ): Promise<void> {
     const callbacks = {
       onUpdate: (payload: unknown) => this.record(session, payload),
-      onPermissionRequest: ({ requestId, params }: { requestId: string; params: unknown }) =>
-        this.record(session, { kind: "permission_request", requestId, params }),
+      onPermissionRequest: ({ requestId, params }: { requestId: string; params: unknown }) => {
+        // Held before the event goes out, for the same reason the resolver is
+        // registered before the UI is notified: an answer can come back on the
+        // very next frame, and it must find this here to remove.
+        (session.permissions ??= new Map()).set(requestId, params);
+        // The blocked clock starts at the question, not at the last thing the
+        // user did: `reapIdleSessions` measures the wait from here, and without
+        // this stamp a request raised late in a busy session would be measured
+        // from before it was even asked.
+        session.lastUsedAt = Date.now();
+        this.record(session, { kind: "permission_request", requestId, params });
+      },
       onConfigOptions: (configOptions: ConfigOption[]) =>
         this.publishConfigOptions(session, configOptions),
       onExit: (code: number | null) => this.record(session, { kind: "exit", code }),
@@ -836,6 +959,72 @@ export class Daemon {
   }
 
   /**
+   * "This machine is behind", for the phone to show.
+   *
+   * Set by the update scheduler, which is the only thing that knows. Held here
+   * because `announceProviders` is the frame every client already gets on
+   * connect — a separate message would need its own replay rule to survive a
+   * reconnect, and this one is re-sent on every `hello` for free.
+   */
+  private updateStatus?: { latest: string; automatic: boolean };
+
+  /** Record a pending update and tell every client at once. */
+  setUpdateStatus(status: { latest: string; automatic: boolean } | undefined) {
+    this.updateStatus = status;
+    this.announceProviders();
+  }
+
+  /**
+   * Why this daemon is not safe to end right now, or undefined if it is.
+   *
+   * "Quiet" is the precondition for exiting to pick up a new binary. It is not
+   * about elapsed time: a session can be silent for minutes while an agent
+   * thinks or runs a long tool, and ending the process then loses that turn's
+   * work with no way to resume it mid-flight.
+   *
+   * Three things make a daemon busy, and each is a different kind of loss:
+   * a turn in flight (`working`) would be abandoned mid-write; an open
+   * permission is a question already on someone's screen, and killing it makes
+   * the tap do nothing; a session still opening has an agent process spawned
+   * and not yet usable, which would be leaked rather than closed cleanly.
+   *
+   * Returns a reason rather than a boolean so a caller can log *why* it is
+   * waiting — a daemon that never seems to update is otherwise unexplainable.
+   */
+  busyReason(): string | undefined {
+    for (const [sessionId, session] of this.sessions) {
+      if (session.working) return `session ${sessionId} is mid-turn`;
+      if ((session.permissions?.size ?? 0) > 0) {
+        return `session ${sessionId} is waiting on an approval`;
+      }
+      if (!session.agentSessionId) return `session ${sessionId} is still opening`;
+    }
+    return undefined;
+  }
+
+  /**
+   * End one conversation and release everything it holds.
+   *
+   * The single close path, because there are four callers — the idle reaper, the
+   * live-session cap, an agent being disabled, and shutdown — and each used to
+   * do its own subset. Only shutdown discarded the attachment files, so every
+   * photo sent to a conversation that was later reaped stayed in the tempdir for
+   * the daemon's lifetime.
+   *
+   * Deliberately silent: the callers batch one `announceProviders` per pass,
+   * because the message is a full snapshot of `activeSessions`.
+   */
+  private closeSession(sessionId: string, session: ActiveSession) {
+    if (session.replayTimer) clearTimeout(session.replayTimer);
+    session.replayTimer = undefined;
+    session.handle?.close();
+    // The files were only ever a delivery mechanism for the agent that is now
+    // gone. Best effort, and in the tempdir either way.
+    void discardAttachments(session.log.sessionId);
+    this.sessions.delete(sessionId);
+  }
+
+  /**
    * Close agents for conversations nobody has touched in a long time.
    *
    * The process is the expensive part, not the conversation: the transcript is
@@ -858,17 +1047,19 @@ export class Daemon {
     const reaped: string[] = [];
     for (const [sessionId, session] of this.sessions) {
       // A turn in flight is never idle, however quiet it has gone: an agent can
-      // spend minutes inside one tool call without emitting anything.
-      if (session.working) continue;
-      if (now - session.lastUsedAt < Daemon.SESSION_TTL_MS) continue;
+      // spend minutes inside one tool call without emitting anything. Unless it
+      // is not working at all but waiting on an approval nobody answered, which
+      // is the one kind of stopped that lasts for ever.
+      const blocked = (session.permissions?.size ?? 0) > 0;
+      if (session.working && !blocked) continue;
+      const ttl = blocked ? Daemon.BLOCKED_TTL_MS : Daemon.SESSION_TTL_MS;
+      if (now - session.lastUsedAt < ttl) continue;
       // Nothing to resume from means nothing to come back to. A conversation
       // the agent never named would be lost rather than closed, so it is kept
       // — these are rare and short-lived, since the id arrives during the
       // handshake.
       if (!session.agentSessionId) continue;
-      if (session.replayTimer) clearTimeout(session.replayTimer);
-      session.handle?.close();
-      this.sessions.delete(sessionId);
+      this.closeSession(sessionId, session);
       reaped.push(sessionId);
     }
     // Announce once for the whole pass, not once per session: the message is a
@@ -899,9 +1090,7 @@ export class Daemon {
     const excess = this.sessions.size - Daemon.MAX_LIVE_SESSIONS;
     const closed: string[] = [];
     for (const [sessionId, session] of closable.slice(0, Math.max(0, excess))) {
-      if (session.replayTimer) clearTimeout(session.replayTimer);
-      session.handle?.close();
-      this.sessions.delete(sessionId);
+      this.closeSession(sessionId, session);
       closed.push(sessionId);
     }
     // Same announce the reaper sends, and for the same reason: `activeSessions`
@@ -947,9 +1136,7 @@ export class Daemon {
       // work the user is waiting on, and the session is reaped on its own clock
       // once it finishes.
       if (session.working) continue;
-      if (session.replayTimer) clearTimeout(session.replayTimer);
-      session.handle?.close();
-      this.sessions.delete(sessionId);
+      this.closeSession(sessionId, session);
     }
   }
 
@@ -1003,6 +1190,9 @@ export class Daemon {
       // the daemon, so this is how it learns that an id it still shows died
       // with the previous process and must be resumed, not prompted.
       activeSessions: [...this.sessions.keys()],
+      // Omitted entirely when there is nothing to say, so an app that has been
+      // told once does not keep a stale banner when the update lands.
+      update: this.updateStatus,
     };
     this.send(announce);
   }
@@ -1159,17 +1349,106 @@ export class Daemon {
    * The gate on accepting a path from a client at all: it returns only strings
    * this process already published, so a caller cannot use it to ask whether
    * some other directory on the machine exists.
+   *
+   * Accepting one also records it (`known-projects.json`), because a client
+   * holds on to a chosen project far longer than this process lives — see that
+   * module for what the in-memory-only version broke. That record is not keyed
+   * by agent, matching `offeredWorkspaces`: a browsed directory was never
+   * per-agent either, and the containment this enforces is about which strings
+   * this machine published to this pairing, not about which agent asks.
    */
-  knownProject(providerId: string, cwd: string): string | undefined {
-    const known = this.projectHistory.get(providerId);
-    if (known?.some((session) => session.cwd === cwd)) return cwd;
+  async knownProject(providerId: string, cwd: string): Promise<string | undefined> {
+    const known = await this.projectsWithHistory(providerId);
+    if (known.some((session) => session.cwd === cwd)) return this.rememberProject(cwd);
     // A directory this daemon just offered in a `workspaces` answer counts for
     // the same reason: it published the string, so echoing it back reveals
     // nothing new. Without this a project reached by browsing is unknown until
     // its first session exists, and the composer would name the agent's
     // *previous* project while pointing at this one — which is worse than no
     // label, because it is confidently wrong.
-    return this.offeredWorkspaces.has(cwd) ? cwd : undefined;
+    if (this.offeredWorkspaces.has(cwd)) return this.rememberProject(cwd);
+    // Chosen in an earlier run of this daemon. The path was published then, by
+    // one of the two checks above; a restart is not consent being withdrawn.
+    return (await this.chosenProjects()).has(cwd) ? cwd : undefined;
+  }
+
+  /**
+   * The agent's own sessions, filled from the probe cache when no probe has
+   * landed yet.
+   *
+   * The app asks about a project the moment it reconnects — before the probe it
+   * asked for in the same breath has resolved — so reading the map alone made
+   * recognising a perfectly genuine project a race against a spawn. This reads
+   * the same file the probe would serve from and never starts an agent.
+   */
+  private async projectsWithHistory(providerId: string): Promise<AgentSession[]> {
+    const known = this.projectHistory.get(providerId);
+    if (known) return known;
+    const cached = (await readProbeCache(providerId, this.env))?.allSessions;
+    if (!cached?.length) return [];
+    this.projectHistory.set(providerId, cached);
+    return cached;
+  }
+
+  /**
+   * Where the agent itself recorded one of its conversations.
+   *
+   * A conversation's project is a property of the conversation, and the agent is
+   * the one that knows it — so reopening does not have to take a client's word
+   * for it, or guess. Guessing is what it used to do: an unrecognised `cwd` on
+   * resume fell through to the provider's *last* workspace, which reopens a
+   * conversation about one repo with the agent rooted in another. Every file
+   * tool in that turn then reads and writes the wrong project, and the
+   * `session.started` that follows tells every client to file the conversation
+   * there too.
+   *
+   * Answering from the same history the projects list is built from, so this
+   * costs a map lookup and never starts an agent.
+   */
+  async agentSessionCwd(providerId: string, agentSessionId: string): Promise<string | undefined> {
+    const known = await this.projectsWithHistory(providerId);
+    const recorded = known.find((session) => session.sessionId === agentSessionId)?.cwd;
+    // Recorded like an accepted project, because announcing it is publishing it:
+    // the client files the conversation under this path and sends it back later.
+    return recorded ? this.rememberProject(recorded) : undefined;
+  }
+
+  /**
+   * Projects a client has opened before, loaded once per daemon.
+   *
+   * Held as a promise so the concurrent asks a reconnect produces share one
+   * read, and so an unreadable file is a miss rather than a retry per message.
+   */
+  private chosenProjects(): Promise<Set<string>> {
+    this.chosen ??= readKnownProjects(this.env).then((paths) => new Set(paths));
+    return this.chosen;
+  }
+
+  /**
+   * File an accepted project, in memory and on disk, before answering with it.
+   *
+   * Awaited rather than left running: the answer *is* the publication, so a
+   * daemon that died between saying yes and writing it down would refuse the
+   * same path a second later. It costs one small write, once per project — and
+   * the caller is on its way to spawning an agent or running `git status`.
+   *
+   * Writes are chained rather than concurrent so two paths accepted in the same
+   * moment cannot read-modify-write over each other.
+   */
+  private async rememberProject(cwd: string): Promise<string> {
+    const chosen = await this.chosenProjects();
+    if (chosen.has(cwd)) return cwd;
+    chosen.add(cwd);
+    this.chosenWrites = this.chosenWrites
+      .then(() => rememberKnownProject(cwd, this.env))
+      // A daemon that cannot write its own state directory still has to run;
+      // the cost is that this project is forgotten at the next restart.
+      .then(
+        () => {},
+        () => {},
+      );
+    await this.chosenWrites;
+    return cwd;
   }
 
   /**
@@ -1222,8 +1501,10 @@ export class Daemon {
    * the connected app updates — pew2 stores no model names of its own — and lets
    * the empty state show real options instead of nothing.
    *
-   * Cached per provider for the daemon's lifetime: spawning an agent is slow,
-   * and a live session's own selectors always take precedence over this.
+   * Cached per provider: spawning an agent is slow, and a live session's own
+   * selectors always take precedence over this. The cache is stale-while-
+   * revalidate rather than permanent — see `PROBE_TTL_MS` — because the work
+   * this list describes is mostly done at the desk, while the daemon runs.
    */
   async probeProvider(
     providerId: string,
@@ -1233,9 +1514,20 @@ export class Daemon {
     // find out. The app should never ask \u2014 it is not announced \u2014 but a stale
     // client or a direct CLI call must not be able to boot it either.
     if (!this.isEnabled(providerId)) return EMPTY_CAPABILITIES;
-    if (refresh) this.probes.delete(providerId);
-    const cached = this.probes.get(providerId);
-    if (cached) return cached;
+    // A refresh runs *beside* the cached answer rather than replacing it up
+    // front. Clearing the slot first published the in-flight reprobe to every
+    // other reader: an ask arriving during a refresh waited on the agent's boot
+    // instead of being answered instantly, and a refresh that failed handed that
+    // reader nothing at all — which is how announcing a preference could go
+    // silent while the agent it belongs to was mid-restart. The new answer is
+    // installed below, once it exists.
+    const cached = refresh ? undefined : this.probes.get(providerId);
+    if (cached) {
+      // The answer is instant; whether it is still true is settled behind it.
+      // Without this the first probe after boot was the only one that ever ran.
+      this.revalidateIfStale(providerId);
+      return cached;
+    }
 
     const provider = this.providers.find((p) => p.manifest.id === providerId);
     if (!provider || !isAvailable(provider)) return EMPTY_CAPABILITIES;
@@ -1257,17 +1549,24 @@ export class Daemon {
       // permanently false, so the cache would never be used and every drawer
       // open would pay a full spawn.
       if (disk) {
+        // How old this answer is, so the staleness check below has something to
+        // measure. A file written days ago is stale the moment it is read.
+        this.markProbed(providerId, disk.probedAt);
         // Return disk history immediately while booting the matching provider.
         // The first tap can then adopt this process instead of starting cold.
         void this.warmProvider(providerId);
+        // Independent of the warm-up above, which returns early when a spare is
+        // already parked — that short circuit was the second way a stale list
+        // could survive: a provider warmed by anything else never refreshed.
+        this.revalidateIfStale(providerId);
         // Survives a daemon restart, so the first project chosen after a reboot
         // is answered from disk rather than waiting on the background reprobe.
         if (disk.allSessions?.length) this.projectHistory.set(providerId, disk.allSessions);
         const served = Promise.resolve<ProviderCapabilities>({
           // The agent's own values, uncorrected. Preferences are applied when a
           // caller is answered (`capabilitiesFor`), never baked in here: this
-          // promise is cached for the daemon's lifetime, so a value folded in
-          // now would still be reported after the user picked something else —
+          // promise outlives the ask that created it, so a value folded in now
+          // would still be reported after the user picked something else —
           // the pill would name a model the next prompt was not going to use.
           configOptions: disk.configOptions,
           sessions: disk.sessions,
@@ -1359,12 +1658,25 @@ export class Daemon {
         // Persist so the next ask — and the next daemon boot — answers from
         // disk instead of spawning again.
         void writeProbeCache(providerId, capabilities, this.env, all).catch(() => {});
+        // Installed only now that it exists, which is what lets a refresh leave
+        // the previous answer serving readers until this moment.
+        this.probes.set(providerId, Promise.resolve(capabilities));
+        // This is the answer the staleness clock is about: everything served
+        // from here until it expires is this moment's view of the agent's disk.
+        this.markProbed(providerId, Date.now());
         return capabilities;
       } catch (error) {
         // A probe is best-effort: this is what the app shows before a session
         // exists, and failing here must not stop the user starting a real one.
         console.error(`[${providerId}] capability probe failed:`, error);
-        this.probes.delete(providerId);
+        // A failed refresh changes nothing: whatever was serving before still
+        // is. Only a failed *first* probe has an entry to withdraw.
+        if (!refresh) this.probes.delete(providerId);
+        // Backs the next staleness check off by a full interval. Dropping the
+        // probe above sends the next ask back to the cache file, whose older
+        // timestamp would otherwise ask for another spawn immediately — an
+        // agent that fails to boot would be respawned on every drawer open.
+        this.markProbed(providerId, Date.now());
         // Releases anyone waiting on the boot. Harmless once already announced.
         announceSpare();
         return EMPTY_CAPABILITIES;
@@ -1373,7 +1685,17 @@ export class Daemon {
       }
     })();
 
-    this.probes.set(providerId, probe);
+    // A refresh deliberately does not park its pending promise here — readers
+    // must keep getting the last good answer while it runs.
+    if (!refresh) {
+      this.probes.set(providerId, probe);
+      // Stamped while the probe is still in flight, not just when it lands. A
+      // pending probe with no stamp reads as "never probed", so the next asker
+      // to arrive during the boot — the drawer opening while a project is being
+      // chosen — judged it stale and spawned a *second* agent alongside the one
+      // it was already waiting on. Stamped again when the answer lands.
+      this.markProbed(providerId, Date.now());
+    }
     return probe;
   }
 
@@ -1384,8 +1706,8 @@ export class Daemon {
    * The probe reports the agent's defaults, and a new session has this user's
    * remembered choices applied to it on connect — so an uncorrected reply
    * describes a state that never reaches the screen. Applied here, on every
-   * answer, because the probe behind it is cached for the daemon's lifetime
-   * while a preference changes whenever someone taps a pill.
+   * answer, because the probe behind it is cached while a preference changes
+   * whenever someone taps a pill.
    */
   async capabilitiesFor(
     providerId: string,
@@ -1557,6 +1879,12 @@ export class Daemon {
       await session.handle!.prompt(text, stored);
     } finally {
       session.working = false;
+      // A turn cannot end while the agent is still waiting to be let past a
+      // tool: it is blocked on that answer. So anything left here was killed
+      // with the turn — cancelled, or the agent errored out — and offering it
+      // to the next client to reconnect would be an approve button wired to a
+      // request no one is listening for any more.
+      session.permissions?.clear();
       // Touched again at the end, so the idle window is measured from when the
       // agent stopped rather than from when the user typed. A turn that ran for
       // twenty minutes would otherwise be reapable the moment it finished.
@@ -1618,7 +1946,14 @@ export class Daemon {
   }
 
   answerPermission(sessionId: string, requestId: string, optionId: string) {
-    return this.require(sessionId).handle?.answerPermission(requestId, optionId) ?? false;
+    const session = this.require(sessionId);
+    const answered = session.handle?.answerPermission(requestId, optionId) ?? false;
+    // Only on a real answer. A `false` means the connection had no such request
+    // — a stale sheet from a previous turn, or a second client answering one
+    // that was already resolved — and forgetting it here on that basis would
+    // hide a *different*, still-open request from the next catch-up.
+    if (answered) session.permissions?.delete(requestId);
+    return answered;
   }
 
   /**
@@ -1699,9 +2034,18 @@ export class Daemon {
       // would break the same invariant `markLive` exists to hold.
       if (!session || !session.live) continue;
       const events = this.replay(sessionId, cursor);
+      const permissions = [...(session.permissions ?? [])].map(([requestId, params]) => ({
+        requestId,
+        params,
+      }));
       // A client that missed nothing still needs the running flag: it may have
       // been away for the `session.idle` that ended the turn it last saw.
-      if (events.length === 0 && !session.working) continue;
+      //
+      // Every known session gets a frame, including one with nothing to report.
+      // "No events, not working, nothing pending" is not silence — it is the
+      // answer that dismisses an approval sheet the user resolved at the desk
+      // while this phone was away, and skipping it left that sheet up for ever,
+      // wired to a requestId the daemon has already forgotten.
       frames.push({
         t: "session.replay",
         sessionId,
@@ -1709,6 +2053,11 @@ export class Daemon {
         complete: true,
         catchUp: true,
         working: session.working === true,
+        // Always sent, empty array included. The app reads an *absent* field as
+        // "an older daemon says nothing, leave any open sheet alone" and an
+        // empty one as "nothing is pending, dismiss it" — so omitting it made
+        // the second case unreachable.
+        permissions,
       });
     }
     return frames;
@@ -1719,12 +2068,8 @@ export class Daemon {
       clearInterval(this.reaper);
       this.reaper = undefined;
     }
-    for (const session of this.sessions.values()) {
-      if (session.replayTimer) clearTimeout(session.replayTimer);
-      session.handle?.close();
-      // The files were only ever a delivery mechanism for the agent that is
-      // now gone. Best effort, and in the tempdir either way.
-      void discardAttachments(session.log.sessionId);
+    for (const [sessionId, session] of [...this.sessions]) {
+      this.closeSession(sessionId, session);
     }
     this.sessions.clear();
     for (const spare of this.spares.values()) {

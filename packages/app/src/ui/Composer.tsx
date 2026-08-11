@@ -143,7 +143,7 @@ function ComposerView({
   onSend,
   busy = false,
   onStop,
-  placeholder = "Ask me. Task me...",
+  placeholder = "Ask me anything...",
   editable = true,
   attachments = EMPTY_ATTACHMENTS,
   onAttach,
@@ -162,7 +162,14 @@ function ComposerView({
   const split = splitCommand(value);
 
   const [focused, setFocused] = useState(false);
-  const [contentHeight, setContentHeight] = useState<number>(theme.line.body);
+  // Whether the draft has reached the ceiling and the field scrolls internally.
+  //
+  // A boolean rather than the measured height it is derived from, because this
+  // is state: every distinct value re-renders the composer, and holding the
+  // height here meant a full React commit for every line the draft grew by — on
+  // the same JS thread the measurement has to cross to reach the UI thread.
+  // Flipping once, at the eighth line, is the whole of what the prop needs.
+  const [atCeiling, setAtCeiling] = useState(false);
   const reduceMotion = useReducedMotion();
 
   // Focus alone: the keyboard's visibility is a separate event stream with no
@@ -172,13 +179,21 @@ function ComposerView({
 
   // Grow with the text, then scroll internally rather than eat the thread.
   //
-  // A shared value and not the `contentHeight` state beside it, because state
-  // cannot reach the UI thread without a React commit: `contentSize` measured,
-  // `setContentHeight` re-rendered, `useAnimatedStyle` closed over the new
-  // number, and only then did the box move. That is a full JS round trip per
-  // wrapped line, and it showed as the box catching up a frame or more behind
-  // the caret while typing. Written straight from the native event, the next UI
-  // frame already has the number whatever the JS thread is busy with.
+  // A shared value and never React state. The measurement arrives on the JS
+  // thread either way — it is a native event — but what follows it is not the
+  // same amount of work. State meant a re-render, reconciliation of the whole
+  // composer, a fresh `useAnimatedStyle` closure and a commit before the box
+  // could move; a shared value is one write that Reanimated syncs to the UI
+  // runtime with no render at all. Per wrapped line, that difference showed as
+  // the box — and the caret riding inside it — lagging behind the text on every
+  // return and every auto-wrap.
+  //
+  // The first attempt at this kept a `contentHeight` state beside it for
+  // `scrollEnabled`, which put the same render back on the same path: every
+  // measurement was a distinct number, so every wrapped line still re-rendered
+  // the whole composer while the UI thread was mid-animation. `atCeiling`
+  // above is the same information reduced to what the prop actually needs, and
+  // it changes twice in a draft's life instead of once per line.
   //
   // Only meaningful once expanded: a multiline TextInput reports the natural
   // height of its own placeholder even while collapsed, wrapped into the narrow
@@ -263,7 +278,40 @@ function ComposerView({
 
       <Glass radius={theme.radius.composer} tier="raised">
         <Reanimated.View style={surface}>
+          {/* The pill is a text field, so the whole pill has to answer a tap on
+              it — not just the one line-box the glyphs occupy.
+
+              The input is a thin strip near the top: about a line tall, inset
+              between the two buttons. Every other point on the pill used to
+              land on the action row below, which spans the entire collapsed
+              height and, being an ordinary View, is itself the hit-test result
+              — React Native walks *up* from there for a responder, never
+              sideways to the input beneath. So most of the control was dead to
+              touch, and a tap that missed the strip did nothing at all rather
+              than doing something wrong. Pressing twice was the user finding
+              the strip by hand.
+
+              Under the input in z-order, so a tap on actual text still goes to
+              the field and places the caret where it was aimed. */}
+          <Pressable
+            accessible={false}
+            importantForAccessibility="no"
+            // A locked composer must not be focusable by the wider target
+            // either, or the keyboard would come up over a field that refuses
+            // every keystroke.
+            disabled={!editable}
+            style={StyleSheet.absoluteFill}
+            onPress={() => input.current?.focus()}
+          />
+
+          {/* `box-none` for the same reason as the action row below. This
+              wrapper stretches to the bottom of the pill while collapsed, but
+              the field inside it is a single line — so the band beneath the
+              text was the wrapper's own, and a tap there bubbled up to the
+              pill rather than sideways to the catcher above. Its `TextInput`
+              child still takes presses on the text itself. */}
           <Animated.View
+            pointerEvents="box-none"
             style={[
               styles.inputWrap,
               {
@@ -291,9 +339,11 @@ function ComposerView({
               onContentSizeChange={(event) => {
                 const measured = event.nativeEvent.contentSize.height;
                 if (expanded) textHeight.value = measured;
-                // Still state as well, because `scrollEnabled` below is a prop
-                // on the JS side of the tree and has to be re-rendered to change.
-                setContentHeight(measured);
+                // Only when the answer changes. `scrollEnabled` is a JS-side
+                // prop and needs a render, but it needs one twice in a draft's
+                // life — not once per wrapped line.
+                const capped = measured >= MAX_TEXT_HEIGHT;
+                if (capped !== atCeiling) setAtCeiling(capped);
               }}
               placeholder={placeholder}
               placeholderTextColor={theme.color.placeholder}
@@ -305,17 +355,23 @@ function ComposerView({
               // size, so while scrolling is on it always measures one line and the
               // box can never grow. Scrolling therefore stays off until the box
               // has actually reached its ceiling.
-              scrollEnabled={contentHeight >= MAX_TEXT_HEIGHT}
+              scrollEnabled={atCeiling}
             />
           </Animated.View>
 
           {/* Always the bottom 58pt: the entire pill when collapsed, the action
-              row once expanded. Anchoring it means the buttons never shift. */}
-          <View style={styles.actions}>
+              row once expanded. Anchoring it means the buttons never shift.
+
+              `box-none` because of that first case: while collapsed this row
+              covers the whole control, and as an ordinary View it answered for
+              every point on it that is not one of its buttons — which is what
+              stole taps from the field. Its children still take their own
+              presses; only the container itself steps out of the way. */}
+          <View style={styles.actions} pointerEvents="box-none">
             {/* Grouped, because the row is `space-between`: a third loose child
                 would scatter the three across the width instead of keeping the
                 badge next to the button it belongs beside. */}
-            <View style={styles.leading}>
+            <View style={styles.leading} pointerEvents="box-none">
               <Pressable
                 style={({ pressed }) => [
                   styles.actionButton,

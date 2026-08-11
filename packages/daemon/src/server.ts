@@ -20,6 +20,8 @@ import { handleMessage } from "./handler.js";
 import { RelayClient } from "./relay-client.js";
 import { hostname } from "node:os";
 import { daemonLogPaths, rotateLog } from "./logs.js";
+import { sweepOrphans } from "./children.js";
+import { startUpdateScheduler } from "./update/scheduler.js";
 import type { ServerWebSocket } from "bun";
 
 const PORT = Number(process.env.PEW2_PORT ?? 8787);
@@ -29,6 +31,14 @@ const PORT = Number(process.env.PEW2_PORT ?? 8787);
 // here, before anything is written.
 const rotations = await Promise.all(daemonLogPaths().map((path) => rotateLog(path)));
 const trimmed = rotations.reduce((total, r) => total + (r.rotated ? r.before - r.after : 0), 0);
+
+// Agents left behind by a daemon that died without running its shutdown
+// handler. Nothing inside a SIGKILL'd process can clean up after itself, so the
+// next start does it: children of daemons that are still running are untouched.
+const reaped = await sweepOrphans();
+if (reaped.length > 0) {
+  console.log(`[children] reaped ${reaped.length} orphaned agent(s) from a previous daemon`);
+}
 
 // Minted on first run and reused thereafter, so restarting the daemon does not
 // unpair the phone.
@@ -408,13 +418,44 @@ process.on("unhandledRejection", (error) => console.error("[unhandled]", error))
  * ordinary restarts left 33 of them holding 2.3GB, and nothing on screen said
  * so. SIGHUP is included for a terminal that closes on a foreground run.
  */
-function shutdown() {
+function releaseEverything() {
   stopWatching();
   relay?.stop();
   daemon.closeAll();
-  process.exit(0);
+}
+
+/**
+ * The half-second `closeAll` gets before the process ends.
+ *
+ * An agent mid-write deserves the chance to finish, and `children.ts`'s exit
+ * hook is the backstop for anything still up when it runs out. Safe to wait:
+ * launchd allows 20s, and a terminal will not notice.
+ */
+const GRACE_MS = 500;
+
+function shutdown() {
+  releaseEverything();
+  setTimeout(() => process.exit(0), GRACE_MS);
 }
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.on(signal, shutdown);
 }
+
+// Keep this machine on the current release without anyone re-running the curl
+// line. Inert unless this is a compiled macOS build, because ending the process
+// is only an update where launchd starts it again — see `update/apply.ts`.
+//
+// The exit reuses the signal path's grace period rather than inventing a second
+// one: an update is a restart, and a restart that abandons an agent mid-write is
+// the bug `shutdown` already exists to avoid.
+startUpdateScheduler({
+  busyReason: () => daemon.busyReason(),
+  shutdown: releaseEverything,
+  exit: (code) => setTimeout(() => process.exit(code), GRACE_MS),
+  // The daemon has no screen of its own. When it cannot install an update — no
+  // service registered, an unwritable prefix — the phone is the only place the
+  // person who could fix that will ever be told.
+  onStatus: (status) => daemon.setUpdateStatus(status),
+  log: (message) => console.log(message),
+});

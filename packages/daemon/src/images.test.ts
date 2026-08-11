@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { POSIX_PATHS } from "./testing/platform.js";
 import {
   historyImages,
   imageMimeType,
@@ -23,6 +24,12 @@ async function project() {
 }
 
 test("agent paths resolve the way agents actually write them", () => {
+  // POSIX literals: on Windows the same code correctly yields a backslash path
+  // with a drive letter attached, so the expectations here cannot be spelled
+  // portably without saying less than they mean. The Windows shape of this is
+  // covered by "a windows drive letter is a path, not a URI scheme" below.
+  if (!POSIX_PATHS) return;
+
   expect(toLocalPath("out/plot.png", "/work/app")).toBe("/work/app/out/plot.png");
   expect(toLocalPath("/work/app/out/plot.png", "/work/app")).toBe("/work/app/out/plot.png");
   expect(toLocalPath("file:///work/app/out/plot.png", "/work")).toBe("/work/app/out/plot.png");
@@ -164,4 +171,22 @@ test("a file swapped for a symlink after the check is not followed", async () =>
   expect((await loadImage("out/plot.png", { cwd: root, env: {}, fs })).mimeType).toBe(
     "image/png",
   );
+});
+
+test("a windows drive letter is a path, not a URI scheme", () => {
+  // `C:\Users\me\shot.png` matched the scheme test, so on Windows every
+  // absolute path was refused as "not a file on this machine" and no
+  // agent-produced image could load at all. A scheme needs two or more
+  // characters; a drive letter is exactly one.
+  expect(toLocalPath("C:\\Users\\me\\shot.png", "C:\\work")).toBeDefined();
+  expect(toLocalPath("c:/Users/me/shot.png", "C:\\work")).toBeDefined();
+
+  // The schemes it must still refuse, which is what the check is for.
+  expect(toLocalPath("https://x.dev/a.png", "/work")).toBeUndefined();
+  expect(toLocalPath("data:image/png;base64,AA", "/work")).toBeUndefined();
+  expect(toLocalPath("mcp://server/a.png", "/work")).toBeUndefined();
+
+  // Drive-relative: a path on C:'s *current directory*, wherever that is. Not
+  // something an agent means, and it would resolve outside the session's cwd.
+  expect(toLocalPath("C:notes.png", "/work")).toBeUndefined();
 });

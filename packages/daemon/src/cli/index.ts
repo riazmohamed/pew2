@@ -46,7 +46,14 @@ import {
 } from "./service.js";
 import { loadPairing, setRelay } from "../pairing.js";
 import { cmdPair } from "./pair.js";
-import { agentSections, outroFor, providerList } from "./setup-view.js";
+import {
+  agentSections,
+  bucketFor,
+  canPick,
+  outroFor,
+  pickerNote,
+  providerList,
+} from "./setup-view.js";
 import { rail, plural } from "./rail.js";
 import { setEnabled, readDisabled, writeDisabled } from "../providers/enabled.js";
 import { pickAgents } from "./pick-agents.js";
@@ -237,23 +244,6 @@ async function cmdValidate() {
 }
 
 
-/**
- * The parenthetical after an agent's name in the picker.
- *
- * Only for agents that cannot be chosen, and only ever a couple of words. This
- * screen answers "which of these do I want", so anything that is not about
- * being pickable is noise \u2014 what an agent needs before it will run is already
- * `pew2 setup`'s own report and `pew2 doctor`'s job.
- */
-function pickerNote(agent: {
-  notInstalled: boolean;
-  verify?: { status: string };
-}): string | undefined {
-  if (agent.notInstalled) return "not installed";
-  if (agent.verify?.status === "failed") return "not working";
-  return undefined;
-}
-
 async function cmdSetup(flags: Set<string>) {
   const json = flags.has("--json");
   if (json) {
@@ -296,6 +286,25 @@ async function cmdSetup(flags: Set<string>) {
   });
   progress.stop();
 
+  // Said before the agent list, because it changes what that list means.
+  //
+  // An earlier setup recorded an agent as "off" whenever its check failed —
+  // including the ordinary not-signed-in case, and a first `npx` download that
+  // outran a too-short timeout. Those entries were never the user's decision, so
+  // the old list has been retired. Announcing it is the point: a setting that
+  // changes itself without saying so is precisely the bug being undone.
+  if (result.restored.length > 0) {
+    const names = new Map(result.agents.map((agent) => [agent.id, agent.name]));
+    const listed = result.restored.map((id) => names.get(id) ?? id).join(", ");
+    for (const line of r.step("Turned back on", "an older setup switched these off for you")) {
+      console.log(line);
+    }
+    console.log(r.line(style.hex(PALETTE.faint, listed)));
+    console.log(
+      r.line(style.hex(PALETTE.faint, "Choose again below — your answer sticks from now on.")),
+    );
+  }
+
   // Interactive: ask which agents to offer, instead of printing a list and
   // leaving the user to discover `pew2 providers disable`. Every agent found on
   // this machine gets spawned whenever the phone connects, so the answer here
@@ -310,11 +319,14 @@ async function cmdSetup(flags: Set<string>) {
   let offNow = await readDisabled();
   if (interactive && pickable.length > 0) {
     const disabled = offNow;
+    // Selectability is decided once and reused below: the picker and the file it
+    // writes must agree on which rows the user was actually given a say over.
+    const offered = new Set(pickable.filter(canPick).map((agent) => agent.id));
     const chosen = await pickAgents(
       pickable.map((agent) => ({
         id: agent.id,
         name: agent.name,
-        selectable: !agent.notInstalled && agent.verify?.status !== "failed",
+        selectable: offered.has(agent.id),
         note: pickerNote(agent),
       })),
       { disabled },
@@ -323,28 +335,32 @@ async function cmdSetup(flags: Set<string>) {
     // `undefined` means the user backed out, which is not the same as choosing
     // none — the previous selection stands.
     if (chosen) {
-      // Only agents that could actually be picked are recorded. An agent that
-      // is not installed was never selectable, so writing it down as "off"
-      // would silently disable it the day the user installs it \u2014 the exact
-      // trap this file avoids by storing what is off rather than what is on.
-      //
-      // Anything already off and still not installed keeps its entry, so a
-      // deliberate choice is not lost by running setup on a machine where the
-      // agent happens to be missing.
-      const next = new Set(
-        [...disabled].filter((id) => {
-          const agent = result.agents.find((a) => a.id === id);
-          return !agent || agent.notInstalled;
-        }),
-      );
+      // Only rows the user could act on are rewritten. Anything else keeps the
+      // entry it already had, because recording an unpickable agent as "off"
+      // silently disables it the day it starts working — the exact trap this
+      // file avoids by storing what is off rather than what is on, and one a
+      // single slow first run used to spring: an agent whose check timed out
+      // was unselectable, so setup wrote it off on the user's behalf.
+      const next = new Set([...disabled].filter((id) => !offered.has(id)));
       // `pickable`, not every agent: a test fixture was never on the screen, so
       // recording it as a choice the user made would be a lie in a file they
       // can read.
       for (const agent of pickable) {
-        if (!agent.notInstalled && !chosen.has(agent.id)) next.add(agent.id);
+        if (offered.has(agent.id) && !chosen.has(agent.id)) next.add(agent.id);
       }
       await writeDisabled(next);
       offNow = next;
+    }
+
+    // The picker is the whole screen in a terminal, and its two-word notes were
+    // all the explanation anything got: someone with three agents they had not
+    // signed into saw three dim labels and no way to learn more. So the agents
+    // that are not ready get their sections printed underneath — not the ones
+    // that work, which the picker has just listed, and not the ones that are
+    // absent, which are not a problem to solve.
+    const unready = pickable.filter((agent) => bucketFor(agent) !== "ready" && !agent.notInstalled);
+    if (unready.length > 0) {
+      for (const line of agentSections(unready, view)) console.log(line);
     }
   } else {
     for (const line of agentSections(result.agents, view)) console.log(line);
@@ -679,6 +695,24 @@ async function cmdRegistry(command: string | undefined, flags: Set<string>) {
   return 0;
 }
 
+/**
+ * Become the daemon.
+ *
+ * Imported dynamically so the module is pulled into the compiled bundle — which
+ * is the fix: `server.ts` was reachable only as a *string* path in the plist
+ * builder, so `bun build --compile` never saw it and the binary shipped without
+ * a daemon in it at all.
+ *
+ * Never returns: `server.ts` starts listening at import and installs its own
+ * signal handlers, so returning a code here would exit the process out from
+ * under it.
+ */
+async function cmdServe(): Promise<number> {
+  await import("../server.js");
+  await new Promise(() => {});
+  return 0;
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
@@ -690,6 +724,21 @@ async function main() {
     console.log(VERSION);
     return 0;
   }
+
+  // The daemon itself.
+  //
+  // A compiled binary has no `server.ts` on disk to point launchd at — the
+  // module lives inside the executable — so the binary has to be able to *be*
+  // the daemon rather than describe where one is. Without this, a plist could
+  // only ever name a file that does not exist outside the process.
+  //
+  // `run` is accepted as well, and deliberately ignores its argument. Plists
+  // reading `pew2 run /$bunfs/server.ts` are already installed on users'
+  // machines, crash-looping; treating that as `serve` means installing this
+  // build repairs them on the next restart, with nothing for the user to run.
+  // A binary is the only thing that can reach those machines — nobody can be
+  // told to re-run a command they do not know they need.
+  if (group === "serve" || group === "run") return cmdServe();
 
   if (group === "setup") return cmdSetup(flags);
   if (group === "pair") return cmdPair(flags);
@@ -706,6 +755,7 @@ async function main() {
     console.log("    --no-wait                      Print the code and exit instead of waiting");
     console.log("  pew2 relay <url|off>             Reach this machine from anywhere");
     console.log("  pew2 service install|restart     Keep the daemon running across reboots");
+    console.log("  pew2 serve                       Run the daemon in this terminal");
     console.log("  pew2 doctor [--json]             What is wrong, and the command that fixes it");
     console.log("  pew2 detect [--json]             Find installed agents and configure them");
     console.log("  pew2 registry sync               Add every agent in the public ACP registry");

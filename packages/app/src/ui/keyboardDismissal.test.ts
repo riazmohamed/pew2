@@ -44,6 +44,35 @@ test("every sheet takes the keyboard down, from the one place they share", () =>
   }
 });
 
+test("tapping the transcript takes the keyboard down", () => {
+  // The list asks for this with `keyboardShouldPersistTaps="handled"`, which
+  // blurs on any tap a child does not claim.
+  expect(source("ChatThread.tsx")).toContain('keyboardShouldPersistTaps="handled"');
+
+  // So a message body must not claim one. Turns used to be wrapped in a
+  // Pressable for the copy-hold, and a Pressable claims the touch — messages
+  // cover nearly the whole transcript, so the one gesture the rule exists for,
+  // tapping away from the composer onto the conversation, was the one it never
+  // covered, and that wrapper had to re-implement the blur itself. Selection is
+  // the platform's now, the wrapper is gone, and the rule works unaided.
+  //
+  // What may remain is a *control*: a button occupying its own row, next to the
+  // message rather than over it. Two of them — the thought row, and the retry
+  // under a failed turn — plus the copy button, which is `CopyButton` and not
+  // written here at all. The count is asserted so that a third one has to be a
+  // deliberate addition; what it must never become again is a wrapper.
+  const turn = source("Turn.tsx");
+  expect(turn.match(/<Pressable/g) ?? []).toHaveLength(2);
+  expect(turn).toContain("Show thought process");
+  expect(turn).toContain("Send this message again");
+
+  // The shape that is actually forbidden, in the two places a message body is
+  // rendered: no `Pressable` may open before the markdown it would swallow.
+  for (const body of [/<View style={styles.agentRow}>[\s\S]*?<\/View>/, /<View\s+style={\[\s*styles.userBubble[\s\S]*?<\/View>/]) {
+    expect(body.exec(turn)?.[0] ?? "").not.toContain("<Pressable");
+  }
+});
+
 test("an anchored picker keeps the keyboard, on purpose", () => {
   // The opposite decision, and the more fragile one: it looks like an oversight,
   // so it is the one somebody would "fix". Switching model or project is not

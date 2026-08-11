@@ -140,6 +140,34 @@ export const ProviderAnnounce = z.object({
    * `agentSessionId`.
    */
   activeSessions: z.array(z.string()).default([]),
+  /**
+   * A newer pew2 has been published and this machine is not running it yet.
+   *
+   * Absent is the normal state, and deliberately means two different things:
+   * either there is nothing newer, or this daemon predates the field. Both are
+   * "say nothing", which is why it is optional rather than a nullable object —
+   * an older daemon must never make the app claim it is up to date.
+   *
+   * Only sent while that version is *not installed*. A daemon that can update
+   * itself does so within hours and this disappears on its own; one that cannot
+   * — no service registered, an unwritable install directory, a download that
+   * keeps failing — keeps saying so, because then a human has to re-run the
+   * install line. That is the whole reason this reaches the phone: the daemon
+   * has no screen of its own, and the person who can act is looking at this one.
+   */
+  update: z
+    .object({
+      /** The published version, e.g. "0.9.19". */
+      latest: z.string(),
+      /**
+       * Whether the daemon expects to install it without being asked.
+       *
+       * False is the actionable case, and it is what turns the notice from a
+       * status line into an instruction.
+       */
+      automatic: z.boolean(),
+    })
+    .optional(),
 });
 
 /**
@@ -578,6 +606,24 @@ export const Replay = z.object({
    * busy forever after catching up on a finished turn.
    */
   working: z.boolean().optional(),
+  /**
+   * Approval requests this session is still blocked on, on a catch-up frame.
+   *
+   * The one piece of a turn that a replayed event stream cannot carry. A
+   * permission request *is* in the log, but the app deliberately ignores it
+   * there: in a resumed transcript it was answered long ago, and raising it
+   * again is a phantom approve sheet over finished history. So a phone that
+   * dropped its signal at the wrong moment came back to a spinner, with the
+   * agent on the desktop waiting on an answer nobody could give — no timeout on
+   * either side, so the turn simply stopped.
+   *
+   * This is the daemon saying which requests are open *right now*, which only
+   * it can know: the resolver lives with the ACP connection. Same shape as the
+   * logged event's payload, so both paths render through one reader.
+   */
+  permissions: z
+    .array(z.object({ requestId: z.string(), params: z.unknown() }))
+    .optional(),
 });
 
 /**

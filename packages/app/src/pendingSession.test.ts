@@ -6,6 +6,7 @@ import {
   pendingSession,
   pendingSessionKey,
 } from "./pendingSession";
+import { sessionInProject } from "./projects";
 import type { Session, Turn } from "./useDaemon";
 
 const other: Session = {
@@ -79,8 +80,46 @@ test("requests that can no longer be answered are dropped on reconnect", () => {
   expect(dropPendingSessions(untouched)).toBe(untouched);
 });
 
+test("a request still queued offline survives the reconnect that will send it", () => {
+  const waiting = pendingSession("r1", "ggcoder", "Fix the bug", 10);
+  const keep = new Set([pendingSessionKey("r1")]);
+
+  expect(dropPendingSessions([other, waiting], keep)).toEqual([other, waiting]);
+  // A request that did reach the dead socket still goes: its answer was
+  // broadcast once, into nothing.
+  const abandoned = pendingSession("r2", "ggcoder", "Something else", 11);
+  expect(dropPendingSessions([waiting, abandoned], keep)).toEqual([waiting]);
+});
+
 test("pending ids are recognisable without being told", () => {
   expect(isPendingSession(pendingSessionKey("r1"))).toBe(true);
   expect(isPendingSession("agent:ggcoder:abc")).toBe(false);
   expect(isPendingSession("sess-9")).toBe(false);
+});
+
+test("a new conversation is visible under the project it was started in", () => {
+  const row = pendingSession("r1", "ggcoder", "Fix the bug", 10, "/Users/me/work/api");
+
+  // Without this the drawer drops the row entirely whenever a project is
+  // selected: `sessionInProject` matches on `cwd`, and a session with none
+  // matches nothing. The row existed and still could not be found.
+  expect(sessionInProject(row, { name: "api", path: "/Users/me/work/api" })).toBe(true);
+});
+
+test("the project survives adoption, so the row does not vanish when it is named", () => {
+  const waiting = pendingSession("r1", "ggcoder", "Fix the bug", 10, "/Users/me/work/api");
+  const next = adoptPendingSession([waiting], "r1", live("sess-9"));
+
+  expect(next![0]!.cwd).toBe("/Users/me/work/api");
+});
+
+test("a project the daemon resolved wins over the one that was asked for", () => {
+  const waiting = pendingSession("r1", "ggcoder", "Fix the bug", 10, "/Users/me/guess");
+  const resolved = { ...live("sess-9"), cwd: "/Users/me/work/api" };
+  const next = adoptPendingSession([waiting], "r1", resolved);
+
+  // An unrecognised path falls back to the agent's last workspace on the
+  // daemon, so the answer knows where the work really started and the request
+  // only knows where it was aimed.
+  expect(next![0]!.cwd).toBe("/Users/me/work/api");
 });

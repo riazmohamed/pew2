@@ -103,7 +103,10 @@ export function PairingScreen({ onPaired, onBack, notice }: Props) {
   };
 
   return (
-    <View style={styles.root}>
+    // Side insets here rather than on each row: this screen is a single column
+    // and, held sideways, a notch would otherwise sit over the pairing command
+    // the user is being asked to read out and type.
+    <View style={[styles.root, { paddingLeft: insets.left, paddingRight: insets.right }]}>
       {/* Fixed nav bar. Outside the scroll view so back stays reachable however
           far the form is scrolled, and on the same top inset as the drawer
           header so the two agree across screens. */}

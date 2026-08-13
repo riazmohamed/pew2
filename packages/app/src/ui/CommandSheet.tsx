@@ -17,7 +17,7 @@ import { memo } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { theme } from "../theme";
 import { touchSlop } from "./controls";
-import { Sheet, SHEET_ROW_HEIGHT, SHEET_VISIBLE_ROWS, sheetCardStyle } from "./Sheet";
+import { Sheet, SHEET_ROW_HEIGHT, sheetCardStyle, useSheetVisibleRows } from "./Sheet";
 import type { SlashCommand } from "../slashCommands";
 
 interface CommandSheetProps {
@@ -28,10 +28,12 @@ interface CommandSheetProps {
 }
 
 function CommandSheetView({ visible, commands, onSelect, onClose }: CommandSheetProps) {
-  // Only as tall as it needs to be, up to five rows. A short project should not
-  // get a half-empty sheet.
-  const listHeight = Math.min(commands.length, SHEET_VISIBLE_ROWS) * SHEET_ROW_HEIGHT;
-  const scrolls = commands.length > SHEET_VISIBLE_ROWS;
+  // Only as tall as it needs to be, up to what the screen can hold — five rows
+  // upright, fewer in landscape. A short project should not get a half-empty
+  // sheet, and a long list must not push its own title off the top edge.
+  const visibleRows = useSheetVisibleRows();
+  const listHeight = Math.min(commands.length, visibleRows) * SHEET_ROW_HEIGHT;
+  const scrolls = commands.length > visibleRows;
 
   return (
     <Sheet visible={visible} title="Commands" onClose={onClose} dismissLabel="Close commands">

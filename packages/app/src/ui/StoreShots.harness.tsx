@@ -22,7 +22,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { theme } from "../theme";
 import { ChatThread, type ChatThreadRef } from "./ChatThread";
 import { Composer } from "./Composer";
-import { Sidebar, DRAWER_WIDTH } from "./Sidebar";
+import { Sidebar } from "./Sidebar";
+import { useDrawerWidth } from "./useDrawerWidth";
 import { NewChatSheet } from "./NewChatSheet";
 import { CircleButton } from "./controls";
 import type { Project } from "../projects";
@@ -136,6 +137,7 @@ function NavBar({ onMenu }: { onMenu: () => void }) {
 /** Pose one and two share the conversation behind them; only the drawer moves. */
 function Conversation({ drawerOpen }: { drawerOpen: boolean }) {
   const insets = useSafeAreaInsets();
+  const drawerWidth = useDrawerWidth();
   const list = useRef<ChatThreadRef>(null);
   const navHeight = insets.top + 64;
   const dockHeight = 96 + insets.bottom;
@@ -171,7 +173,7 @@ function Conversation({ drawerOpen }: { drawerOpen: boolean }) {
           // Off-screen entirely when the drawer is showing. Sliding it only
           // partway left its edge on top of the drawer's right side, cutting
           // every chat title mid-word.
-          drawerOpen && { transform: [{ translateX: DRAWER_WIDTH + 400 }] },
+          drawerOpen && { transform: [{ translateX: drawerWidth + 400 }] },
         ]}
       >
         <NavBar onMenu={() => {}} />

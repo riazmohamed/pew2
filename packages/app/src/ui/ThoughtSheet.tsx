@@ -11,7 +11,7 @@ import { memo, useRef } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { MarkdownText } from "./MarkdownText";
 import { theme } from "../theme";
-import { Sheet, SHEET_CARD_HEIGHT, sheetCardStyle } from "./Sheet";
+import { Sheet, sheetCardStyle, useSheetCardHeight } from "./Sheet";
 
 interface ThoughtSheetProps {
   visible: boolean;
@@ -25,6 +25,10 @@ function ThoughtSheetView({ visible, text, onClose }: ThoughtSheetProps) {
   // thought until another one replaces it.
   const held = useRef(text);
   if (text) held.current = text;
+  // Fixed for a given screen rather than hugging its text: a two-line thought
+  // and a two-page one open the same object. It still answers to the screen's
+  // shape, so the card does not outgrow a phone turned on its side.
+  const cardHeight = useSheetCardHeight();
 
   return (
     <Sheet
@@ -34,7 +38,7 @@ function ThoughtSheetView({ visible, text, onClose }: ThoughtSheetProps) {
       dismissLabel="Close thought process"
     >
       <View style={styles.card}>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        <ScrollView style={{ height: cardHeight }} contentContainerStyle={styles.content}>
           {/* The dim thinking tone it had inline, so opening it does not promote
               reasoning to the same weight as the agent's answer. */}
           <MarkdownText text={held.current.trimEnd()} tone="thought" />
@@ -46,9 +50,6 @@ function ThoughtSheetView({ visible, text, onClose }: ThoughtSheetProps) {
 
 const styles = StyleSheet.create({
   card: sheetCardStyle,
-  // Fixed rather than hugging: a two-line thought and a two-page one should
-  // open the same object, or the sheet's size becomes a surprise every time.
-  scroll: { height: SHEET_CARD_HEIGHT },
   content: { padding: theme.space(4) },
 });
 

@@ -38,7 +38,7 @@ import Animated, {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { theme } from "../theme";
 import { touchSlop } from "./controls";
-import { Sheet, SHEET_ROW_HEIGHT, SHEET_VISIBLE_ROWS, sheetCardStyle } from "./Sheet";
+import { Sheet, SHEET_ROW_HEIGHT, sheetCardStyle, useSheetVisibleRows } from "./Sheet";
 import { haptics } from "./haptics";
 import { useReducedMotion } from "./useReducedMotion";
 import type { Project } from "../projects";
@@ -142,10 +142,12 @@ function NewChatSheetView({
     step$.value = STEP_CHOICES;
   }, [visible, step$]);
 
-  // Only as tall as it needs to be, up to five rows — the same rule as the
-  // command sheet, so the two read as one object at different lengths.
-  const listHeight = Math.min(projects.length, SHEET_VISIBLE_ROWS) * SHEET_ROW_HEIGHT;
-  const scrolls = projects.length > SHEET_VISIBLE_ROWS;
+  // Only as tall as it needs to be, up to what the screen can hold — the same
+  // rule as the command sheet, so the two read as one object at different
+  // lengths, and neither grows past the top edge in landscape.
+  const visibleRows = useSheetVisibleRows();
+  const listHeight = Math.min(projects.length, visibleRows) * SHEET_ROW_HEIGHT;
+  const scrolls = projects.length > visibleRows;
 
   // The browser adds an "up" row below a root, which occupies list space and is
   // counted here or the card comes out a row short.
@@ -154,8 +156,8 @@ function NewChatSheetView({
   // showing where the user was.
   const browseRows =
     browseEntries.length + (browse?.parent ? 1 : 0) + (browse?.refused ? 1 : 0);
-  const browseHeight = Math.max(1, Math.min(browseRows, SHEET_VISIBLE_ROWS)) * SHEET_ROW_HEIGHT;
-  const browseScrolls = browseRows > SHEET_VISIBLE_ROWS;
+  const browseHeight = Math.max(1, Math.min(browseRows, visibleRows)) * SHEET_ROW_HEIGHT;
+  const browseScrolls = browseRows > visibleRows;
 
   // Explicit only once there is something real to be explicit about.
   //

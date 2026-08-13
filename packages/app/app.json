@@ -9,7 +9,8 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "orientation": "portrait",
+    "//orientation": "Unlocked, so the app follows the device. Half of what an agent replies with is wide — a table, a diff, a fenced command line — and on a 390-point screen those wrap into a column of fragments; turning the phone is the one thing the reader can do about that which costs nothing. The layout follows rather than assuming: the drawer's width and the sheets' row counts are read per render (useDrawerWidth, useSheetVisibleRows) instead of sampled once at import, and the conversation pane takes left/right safe-area insets, because a notch on a long edge does not fade content out like the CanvasCovers do at top and bottom — it hides it.",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {

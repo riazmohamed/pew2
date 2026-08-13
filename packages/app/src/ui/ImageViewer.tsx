@@ -102,7 +102,15 @@ export function ImageViewer({
           onPress={onClose}
         />
 
-        <View style={[styles.closeRow, { top: insets.top + theme.headerInset }]}>
+        <View
+          style={[
+            styles.closeRow,
+            // Right as well as top: held sideways one long edge is the notch,
+            // and this is the only way out of a viewer whose backdrop is
+            // otherwise a photograph.
+            { top: insets.top + theme.headerInset, right: theme.gutter + insets.right },
+          ]}
+        >
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close image"
@@ -130,7 +138,16 @@ export function ImageViewer({
           />
         </View>
 
-        <View style={[styles.actions, { paddingBottom: insets.bottom + theme.space(4) }]}>
+        <View
+          style={[
+            styles.actions,
+            {
+              paddingBottom: insets.bottom + theme.space(4),
+              paddingLeft: theme.gutter + insets.left,
+              paddingRight: theme.gutter + insets.right,
+            },
+          ]}
+        >
           {!!feedback && (
             <Text
               style={[
@@ -196,7 +213,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.94)",
     justifyContent: "center",
   },
-  closeRow: { position: "absolute", right: theme.gutter, zIndex: 2 },
+  closeRow: { position: "absolute", zIndex: 2 },
   closeButton: {
     width: theme.size.control,
     height: theme.size.control,
@@ -208,7 +225,6 @@ const styles = StyleSheet.create({
   image: { flex: 1, width: "100%" },
   imageFill: { flex: 1, width: "100%" },
   actions: {
-    paddingHorizontal: theme.gutter,
     paddingTop: theme.space(3),
     gap: theme.space(2),
     alignItems: "center",

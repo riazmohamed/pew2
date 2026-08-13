@@ -16,7 +16,15 @@
  * Metrics and colours are sampled from the reference build: 36pt buttons inset
  * 11pt from the pill edge, #e0e0e0 glyphs, #828282 placeholder.
  */
-import { forwardRef, memo, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef,
+  memo,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Animated,
   Easing,
@@ -24,6 +32,7 @@ import {
   StyleSheet,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import Reanimated, {
   Easing as ReanimatedEasing,
@@ -33,7 +42,7 @@ import Reanimated, {
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { theme } from "../theme";
-import { composerHeight, type ComposerBounds } from "./composerHeight";
+import { composerHeight, composerMaxLines, type ComposerBounds } from "./composerHeight";
 import { touchSlop } from "./controls";
 import { haptics } from "./haptics";
 import { Glass } from "./Glass";
@@ -84,9 +93,6 @@ const heightForLines = (lines: number) => lines * theme.line.body + CHROME;
 
 /** Floor: one line of text above the action row. */
 const MIN_HEIGHT = heightForLines(1);
-const MAX_HEIGHT = heightForLines(MAX_LINES);
-/** Text height at which the box stops growing and the input starts scrolling. */
-const MAX_TEXT_HEIGHT = MAX_LINES * theme.line.body;
 
 /**
  * The theme's metrics, resolved once for the height worklet below.
@@ -95,12 +101,15 @@ const MAX_TEXT_HEIGHT = MAX_LINES * theme.line.body;
  * function and a worklet cannot reach back into JS to call one. See
  * `composerHeight.ts` for the arithmetic itself, which lives there so it can be
  * tested without importing this file — the runner cannot parse `react-native`.
+ *
+ * The ceiling is the one part that is not fixed: it comes from the screen the
+ * phone is currently held on, because eight lines is a third of an upright
+ * phone and most of a sideways one.
  */
-const BOUNDS: ComposerBounds = {
+const BOUNDS: Omit<ComposerBounds, "max"> = {
   collapsed: COLLAPSED,
   chrome: CHROME,
   min: MIN_HEIGHT,
-  max: MAX_HEIGHT,
 };
 
 /**
@@ -171,6 +180,31 @@ function ComposerView({
   // Flipping once, at the eighth line, is the whole of what the prop needs.
   const [atCeiling, setAtCeiling] = useState(false);
   const reduceMotion = useReducedMotion();
+
+  // The ceiling, on the screen as it is currently held. Eight lines is a third
+  // of an upright phone and most of a sideways one, where the keyboard has
+  // already taken half — a box grown to eight lines there covers the whole
+  // conversation it is being written about.
+  //
+  // Both numbers come from the same line count deliberately: `bounds.max` is
+  // where the box stops growing and `maxTextHeight` is where the field starts
+  // scrolling its own text, so any gap between the two is a draft that is
+  // clipped with no way to reach the rest of it.
+  const { height: viewportHeight } = useWindowDimensions();
+  const maxLines = composerMaxLines({
+    viewportHeight,
+    lineHeight: theme.line.body,
+    chrome: CHROME,
+    maxLines: MAX_LINES,
+  });
+  const maxTextHeight = maxLines * theme.line.body;
+  // A new object only when the count changes: the animated style closes over
+  // this, and a fresh one per render would rebuild the worklet on every
+  // keystroke.
+  const bounds = useMemo<ComposerBounds>(
+    () => ({ ...BOUNDS, max: heightForLines(maxLines) }),
+    [maxLines],
+  );
 
   // Focus alone: the keyboard's visibility is a separate event stream with no
   // fixed ordering against it, and mixing the two left the placeholder resting
@@ -253,7 +287,7 @@ function ComposerView({
   }, [expanded, reduceMotion, openness, textHeight]);
 
   const surface = useAnimatedStyle(() => ({
-    height: composerHeight(BOUNDS, openness.value, textHeight.value),
+    height: composerHeight(bounds, openness.value, textHeight.value),
   }));
 
   useEffect(() => {
@@ -342,7 +376,7 @@ function ComposerView({
                 // Only when the answer changes. `scrollEnabled` is a JS-side
                 // prop and needs a render, but it needs one twice in a draft's
                 // life — not once per wrapped line.
-                const capped = measured >= MAX_TEXT_HEIGHT;
+                const capped = measured >= maxTextHeight;
                 if (capped !== atCeiling) setAtCeiling(capped);
               }}
               placeholder={placeholder}

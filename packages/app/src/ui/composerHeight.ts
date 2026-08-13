@@ -24,6 +24,48 @@ export interface ComposerBounds {
 }
 
 /**
+ * The most of the screen the composer may ever take, as a fraction of it.
+ *
+ * Held upright this never binds — eight lines is barely a third of a phone. It
+ * exists for the phone turned on its side, where the screen is shorter than the
+ * box's own ceiling and a fully grown composer covers the conversation it is
+ * being written about, keyboard and all.
+ */
+export const COMPOSER_MAX_SCREEN_FRACTION = 0.45;
+
+/**
+ * Never fewer than this, however short the screen is. Below three lines the box
+ * stops being somewhere to write and becomes a slot to type into.
+ */
+export const COMPOSER_MIN_LINES = 3;
+
+/**
+ * Lines the box may grow to before its text scrolls, on a screen this tall.
+ *
+ * Lines rather than points because two things have to agree on the answer: the
+ * height the box stops at, and the measured text height at which the input turns
+ * its own scrolling on. Derived separately, the gap between them is a draft that
+ * is clipped — grown as far as it may go, with no way to reach the rest of
+ * itself.
+ */
+export function composerMaxLines({
+  viewportHeight,
+  lineHeight,
+  chrome,
+  maxLines,
+}: {
+  viewportHeight: number;
+  lineHeight: number;
+  /** Everything in the control that is not text. */
+  chrome: number;
+  /** The ceiling on a screen with room for it. */
+  maxLines: number;
+}): number {
+  const room = viewportHeight * COMPOSER_MAX_SCREEN_FRACTION - chrome;
+  return Math.max(COMPOSER_MIN_LINES, Math.min(maxLines, Math.floor(room / lineHeight)));
+}
+
+/**
  * A worklet, so the UI thread can evaluate it on its own frames without asking
  * JS for anything.
  *

@@ -32,7 +32,14 @@
  * what the platform spends too.
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Dimensions, Keyboard, Pressable, StyleSheet, View } from "react-native";
+import {
+  Dimensions,
+  Keyboard,
+  Pressable,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
@@ -49,13 +56,63 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { theme } from "../theme";
 import { CircleButton } from "./controls";
 import { haptics } from "./haptics";
+import { SHEET_MAX_ROWS, sheetContentHeight, sheetVisibleRows } from "./sheetRows";
 import { useReducedMotion } from "./useReducedMotion";
 
-/** Rows visible in a list sheet before it scrolls. */
-export const SHEET_VISIBLE_ROWS = 5;
 export const SHEET_ROW_HEIGHT = 60;
-/** The card's height when a sheet is full: five rows. */
-export const SHEET_CARD_HEIGHT = SHEET_VISIBLE_ROWS * SHEET_ROW_HEIGHT;
+
+/**
+ * Everything in a list sheet that is not list, in points: the grabber and the
+ * gap above it, the header row, the card's own bottom padding, and the clearance
+ * left above the card so it never reaches the status bar. Safe-area insets are
+ * added by the hook, which is the only part of this that varies by device.
+ */
+const SHEET_CHROME =
+  theme.space(2) +
+  4 + // grabber
+  theme.space(3) * 2 +
+  theme.size.chip + // header
+  theme.space(3) + // card bottom padding
+  theme.space(4); // clearance above the card
+
+/**
+ * Rows a list sheet may show before it scrolls, on this screen as it is held.
+ *
+ * Five on any phone held upright; fewer in landscape, where five rows plus the
+ * chrome is taller than the whole screen. See `sheetRows.ts` for why that has to
+ * be measured rather than assumed.
+ */
+export function useSheetVisibleRows(): number {
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  return sheetVisibleRows({
+    viewportHeight: height,
+    chrome: SHEET_CHROME + insets.top + insets.bottom,
+    rowHeight: SHEET_ROW_HEIGHT,
+    maxRows: SHEET_MAX_ROWS,
+  });
+}
+
+/** The height of a full list sheet's scrolling area. */
+export function useSheetCardHeight(): number {
+  return useSheetVisibleRows() * SHEET_ROW_HEIGHT;
+}
+
+/**
+ * The tallest a non-list sheet's content may be before it scrolls.
+ *
+ * Uncapped by rows: an approval's options are the one thing in this app that
+ * must never be off screen, and on a phone held sideways the card is only a few
+ * hundred points tall.
+ */
+export function useSheetMaxContentHeight(): number {
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  return Math.max(
+    SHEET_ROW_HEIGHT,
+    sheetContentHeight(height, SHEET_CHROME + insets.top + insets.bottom),
+  );
+}
 
 interface SheetProps {
   visible: boolean;
@@ -125,8 +182,15 @@ const INSTANT = { duration: 0 } as const;
  * Only ever used for the first frame of the first open, and only as a distance
  * to start *from* — so an overestimate is invisible (the card is off screen
  * either way) and there is no underestimate that could leave it peeking.
+ *
+ * The longer edge, not the height: this is read once at import and the app
+ * rotates, so the height sampled here is the short edge for every sheet opened
+ * in landscape — which is the one case an underestimate is possible.
  */
-const OFF_SCREEN = Dimensions.get("window").height;
+const OFF_SCREEN = Math.max(
+  Dimensions.get("window").height,
+  Dimensions.get("window").width,
+);
 
 function SheetView({ visible, title, onClose, onBack, dismissLabel, children }: SheetProps) {
   const insets = useSafeAreaInsets();
@@ -290,7 +354,15 @@ function SheetView({ visible, title, onClose, onBack, dismissLabel, children }: 
           // The home indicator's clearance is inside the sheet, not under it,
           // so the content clears the indicator while the surface still
           // reaches the physical edge.
-          { paddingBottom: insets.bottom + theme.space(3) },
+          //
+          // The side insets are the opposite rule and only apply sideways: the
+          // card is already held off both edges by a gutter, and a notch on a
+          // long edge would eat into that gutter and then into the card itself.
+          {
+            paddingBottom: insets.bottom + theme.space(3),
+            marginLeft: theme.gutter + insets.left,
+            marginRight: theme.gutter + insets.right,
+          },
           cardStyle,
         ]}
       >
@@ -407,7 +479,6 @@ const styles = StyleSheet.create({
   // Square where it meets that edge, for the same reason — rounding a corner
   // there implies a boundary the sheet does not actually have.
   sheet: {
-    marginHorizontal: theme.gutter,
     backgroundColor: theme.color.surface,
     borderTopLeftRadius: theme.radius.pane,
     borderTopRightRadius: theme.radius.pane,

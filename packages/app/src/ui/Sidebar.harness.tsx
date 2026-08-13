@@ -14,7 +14,8 @@ import { StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { theme } from "../theme";
-import { Sidebar, DRAWER_WIDTH } from "./Sidebar";
+import { Sidebar } from "./Sidebar";
+import { useDrawerWidth } from "./useDrawerWidth";
 import type { Project } from "../projects";
 import type { Provider, Session } from "../useDaemon";
 
@@ -51,8 +52,11 @@ const SESSIONS: Session[] = [
 }));
 
 function Mount({ label, children }: { label: string; children: React.ReactNode }) {
+  // The drawer sizes itself from the window now, so the slot it is shown in has
+  // to ask the same question rather than hold a copy of the answer.
+  const width = useDrawerWidth();
   return (
-    <View style={styles.slot}>
+    <View style={[styles.slot, { width }]}>
       <Text style={styles.label}>{label}</Text>
       <View style={styles.mount}>{children}</View>
     </View>
@@ -130,7 +134,7 @@ const styles = StyleSheet.create({
     padding: theme.space(6),
     backgroundColor: theme.color.bg,
   },
-  slot: { width: DRAWER_WIDTH, height: 760 },
+  slot: { height: 760 },
   label: {
     color: theme.color.textDim,
     fontSize: theme.font.tiny,

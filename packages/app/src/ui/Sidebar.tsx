@@ -13,7 +13,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Animated,
-  Dimensions,
   Easing,
   FlatList,
   Pressable,
@@ -33,14 +32,13 @@ import { HistorySkeleton } from "./Skeleton";
 import { orderProvidersByRecency } from "../providerRecency";
 import { formatHistoryMetadata } from "../historyMetadata";
 import { recentSessionsForProvider } from "../sessionHistory";
+import { useDrawerWidth } from "./useDrawerWidth";
 import { useReducedMotion } from "./useReducedMotion";
 import { useAppActive } from "./useAppActive";
 import { ProjectSelect } from "./ProjectSelect";
 import { ProjectMenu } from "./ProjectMenu";
 import { sessionsInProject, type Project } from "../projects";
 import type { Provider, Session, Status } from "../useDaemon";
-
-export const DRAWER_WIDTH = Math.min(Dimensions.get("window").width * 0.88, 380);
 
 interface SidebarProps {
   open: boolean;
@@ -402,6 +400,7 @@ function SidebarView({
   reduceMotion = false,
 }: SidebarProps) {
   const insets = useSafeAreaInsets();
+  const width = useDrawerWidth();
   const appActive = useAppActive();
   // Nothing in a row should be animating when the drawer is shut behind the
   // conversation, or when the app is not on screen at all. Resolved once here
@@ -498,7 +497,7 @@ function SidebarView({
 
   return (
     <View
-      style={[styles.panel, { width: DRAWER_WIDTH }]}
+      style={[styles.panel, { width }]}
       pointerEvents={open ? "auto" : "none"}
       // Hidden from assistive tech while closed: it is still mounted, but it is
       // not on screen and must not be reachable by swipe navigation.
@@ -519,6 +518,10 @@ function SidebarView({
             // one action that recovers a dead pairing was the one unreachable
             // thing in the app.
             paddingBottom: insets.bottom + theme.space(4),
+            // The drawer starts at the physical left edge, which in landscape
+            // is under the notch on one of the two ways round. Every row below
+            // shares `theme.gutter`, so the inset belongs once, here.
+            paddingLeft: insets.left,
           },
         ]}
       >

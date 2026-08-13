@@ -12,10 +12,10 @@
  * alone.
  */
 import { memo, useRef } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { theme } from "../theme";
 import { touchSlop } from "./controls";
-import { Sheet, SHEET_ROW_HEIGHT, sheetCardStyle } from "./Sheet";
+import { Sheet, SHEET_ROW_HEIGHT, sheetCardStyle, useSheetMaxContentHeight } from "./Sheet";
 import { isDenyApprovalOption, selectApprovalOptions } from "../approvalOptions";
 import type { PermissionRequest } from "../useDaemon";
 
@@ -30,10 +30,22 @@ function ApprovalSheetView({ permission, onAnswer }: ApprovalSheetProps) {
   // — clearing on the same frame would empty the card mid-travel.
   const shown = useLastDefined(permission);
   const options = shown ? selectApprovalOptions(shown.options) : [];
+  // A long request plus four options is taller than a phone held sideways, and
+  // this card is anchored to the bottom edge — so a screen too short to hold it
+  // loses the *top*, which is the request being approved. Scrolling instead
+  // keeps the question and every answer reachable in either orientation.
+  const maxHeight = useSheetMaxContentHeight();
 
   return (
     <Sheet visible={permission !== undefined} title="Approval needed">
-      <View style={styles.body} accessibilityLiveRegion="assertive">
+      <ScrollView
+        style={{ maxHeight }}
+        contentContainerStyle={styles.body}
+        accessibilityLiveRegion="assertive"
+        // Nothing here is a feed, and this sheet cannot be dismissed: a card
+        // that springs under the thumb would be promising a way out of it.
+        bounces={false}
+      >
         <Text style={styles.request}>{shown?.title ?? ""}</Text>
 
         <View style={styles.card}>
@@ -62,7 +74,7 @@ function ApprovalSheetView({ permission, onAnswer }: ApprovalSheetProps) {
             );
           })}
         </View>
-      </View>
+      </ScrollView>
     </Sheet>
   );
 }

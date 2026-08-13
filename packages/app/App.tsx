@@ -63,11 +63,12 @@ import { ThoughtSheet } from "./src/ui/ThoughtSheet";
 import { applyCommand, type SlashCommand } from "./src/slashCommands";
 import { CircleButton, Pill } from "./src/ui/controls";
 import { haptics } from "./src/ui/haptics";
-import { Sidebar, DRAWER_WIDTH } from "./src/ui/Sidebar";
+import { Sidebar } from "./src/ui/Sidebar";
 import { projectsForProvider, projectSourceKey } from "./src/projects";
 import { greetingFor, hashSeed } from "./src/greeting";
 import { showsStop } from "./src/composerState";
 import { ConfigPicker, summarise, valueName } from "./src/ui/ConfigPicker";
+import { useDrawerWidth } from "./src/ui/useDrawerWidth";
 import { useReducedMotion } from "./src/ui/useReducedMotion";
 import { CanvasCover } from "./src/ui/CanvasCover";
 import { withLayoutX, type PillX } from "./src/ui/pillAnchor";
@@ -574,6 +575,9 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   // `typing` rather than after a measurement.
   const [dockHeights, setDockHeights] = useState<DockHeights>({ typing: 0, resting: 0 });
   const insets = useSafeAreaInsets();
+  // Re-read on rotation, and shared by the panel's own width and the distance
+  // the pane is pushed — the two must be one number or the drawer opens to a gap.
+  const drawerWidth = useDrawerWidth();
   const keyboard = useKeyboardLift(insets.bottom);
   const scroller = useRef<ChatThreadRef>(null);
   // Identifies the conversation on screen for remount purposes. Every other way
@@ -821,8 +825,13 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
 
   // Translate only. The conversation keeps its exact size as it moves, so no
   // text reflows or resamples mid-animation.
+  //
+  // The distance is read per render rather than once at import, because the app
+  // follows the device's rotation: a pane pushed by the portrait width would
+  // stop short of a landscape drawer, leaving a band of drawer under the
+  // conversation it is supposed to reveal.
   const paneSlide = useAnimatedStyle(() => ({
-    transform: [{ translateX: drawer$.value * DRAWER_WIDTH }],
+    transform: [{ translateX: drawer$.value * drawerWidth }],
   }));
 
   useEffect(() => {
@@ -889,7 +898,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
           const base = menuOpen ? 1 : 0;
           drawer$.value = Math.min(
             1,
-            Math.max(0, base + event.translationX / DRAWER_WIDTH),
+            Math.max(0, base + event.translationX / drawerWidth),
           );
         })
         .onEnd((event) => {
@@ -898,14 +907,14 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
           // committing on distance alone.
           const toward = menuOpen ? -event.translationX : event.translationX;
           const thrown = menuOpen ? -event.velocityX : event.velocityX;
-          const commit = toward > DRAWER_WIDTH / 2 || thrown > FLICK;
+          const commit = toward > drawerWidth / 2 || thrown > FLICK;
           const open = commit ? !menuOpen : menuOpen;
           runOnJS(releaseDrawer)(
             open,
             open !== menuOpen,
             // Normalised to the same 0..1 scale the drawer moves on, or the
             // spring would be handed a number in points and leave immediately.
-            event.velocityX / DRAWER_WIDTH,
+            event.velocityX / drawerWidth,
           );
         })
         .onFinalize((_event, success) => {
@@ -918,7 +927,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
           runOnJS(settleDrawer)(menuOpen);
         })
     );
-  }, [menuOpen, drawer$, releaseDrawer, settleDrawer, dismissKeyboard]);
+  }, [menuOpen, drawerWidth, drawer$, releaseDrawer, settleDrawer, dismissKeyboard]);
 
   // Two instances of the same gesture rather than one shared between the edge
   // strip and the overlay. A GestureDetector stamps its own handler tag onto the
@@ -1258,12 +1267,19 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
           <View style={[styles.edgeSwipe, { top: insets.top + navHeight }]} />
         </GestureDetector>
       )}
-      {/* Full-bleed on both edges: the thread runs behind the status bar and
+      {/* Full-bleed top and bottom: the thread runs behind the status bar and
           down to the home indicator, and a CanvasCover covers each of those
           regions, so content fades out into the canvas colour at both ends
           rather than meeting a solid band. The dock carries the bottom inset
-          itself. */}
-      <SafeAreaView style={styles.paneInner} edges={[]}>
+          itself.
+
+          Left and right are the opposite case, and only exist because the app
+          rotates: held sideways, one long edge is the notch and the other is
+          nothing to fade into. Text under a notch is not softened by a gradient,
+          it is simply gone — so the whole pane is inset, and the edge-swipe
+          strip above stays outside this to keep its target on the screen edge
+          where the thumb actually lands. */}
+      <SafeAreaView style={styles.paneInner} edges={["left", "right"]}>
 
       {/* Absolute over the thread: messages scroll beneath the nav and fade
           out under the CanvasCover instead of hitting a panel edge, so the

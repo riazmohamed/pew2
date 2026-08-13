@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { composerHeight, type ComposerBounds } from "./composerHeight";
+import {
+  COMPOSER_MIN_LINES,
+  composerHeight,
+  composerMaxLines,
+  type ComposerBounds,
+} from "./composerHeight";
 
 /**
  * Close to the real control's proportions without depending on the theme, which
@@ -49,4 +54,34 @@ test("a wrap partway through an open lands whole rather than easing", () => {
 test("openness runs the whole way between the pill and the fitted height", () => {
   expect(composerHeight(bounds, 0, LINE * 3)).toBe(48);
   expect(composerHeight(bounds, 1, LINE * 3)).toBe(112);
+});
+
+test("a phone held upright reaches the full ceiling", () => {
+  // 45% of 852 is 383 points — more than eight lines and the chrome need, so
+  // the screen never enters into it.
+  expect(composerMaxLines({ viewportHeight: 852, lineHeight: LINE, chrome: 52, maxLines: 8 })).toBe(
+    8,
+  );
+});
+
+test("a phone held sideways stops the box short of the conversation", () => {
+  const lines = composerMaxLines({
+    viewportHeight: 393,
+    lineHeight: LINE,
+    chrome: 52,
+    maxLines: 8,
+  });
+
+  expect(lines).toBeLessThan(8);
+  // What it is actually for: the grown box plus its chrome leaves most of a
+  // short screen to the transcript.
+  expect(lines * LINE + 52).toBeLessThanOrEqual(393 * 0.45);
+});
+
+test("three lines survive a screen with no room for them", () => {
+  // Split view, a landscape keyboard on a small phone, or an accessibility text
+  // size: the floor holds rather than collapsing to a single typing slot.
+  expect(composerMaxLines({ viewportHeight: 200, lineHeight: LINE, chrome: 52, maxLines: 8 })).toBe(
+    COMPOSER_MIN_LINES,
+  );
 });

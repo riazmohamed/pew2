@@ -1,9 +1,9 @@
 {
   "$schema": "../schemas/provider.schema.json",
   "id": "ggcoder",
-  "name": "GG Coder",
+  "name": "OG Coder",
   "version": "1.0.0",
-  "description": "GG Coder, and its OG Coder fork. Speaks ACP natively over stdio - no adapter process.",
+  "description": "OG Coder, and the GG Coder it forks. Speaks ACP natively over stdio - no adapter process.",
   "distribution": {
     "type": "command",
     "command": "ogcoder",

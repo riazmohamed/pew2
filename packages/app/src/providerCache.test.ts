@@ -52,6 +52,20 @@ test("an agent is only ready if the record explicitly says so", () => {
   expect(fromCachedProviders('[{"id":"a","name":"A","available":"yes"}]')[0]?.available).toBe(false);
 });
 
+test("a rename changes the payload, so it can drive the write", () => {
+  // `useDaemon` keys the keychain write on this string. It used to build its
+  // own from id + availability, which a rename leaves identical — so the daemon
+  // renaming an agent never reached the cache, and the next cold start offline
+  // showed the old label. Whatever the picker draws with must move this.
+  const before = toCachedProviders([provider("ggcoder", { name: "GG Coder", color: "#4ade80" })]);
+  expect(toCachedProviders([provider("ggcoder", { name: "OG Coder", color: "#4ade80" })])).not.toBe(
+    before,
+  );
+  expect(toCachedProviders([provider("ggcoder", { name: "GG Coder", color: "#d97757" })])).not.toBe(
+    before,
+  );
+});
+
 test("an implausible list is capped at both ends", () => {
   const many = Array.from({ length: MAX_CACHED_PROVIDERS + 10 }, (_, i) => provider(`p${i}`));
   expect(fromCachedProviders(toCachedProviders(many))).toHaveLength(MAX_CACHED_PROVIDERS);

@@ -57,6 +57,7 @@ import {
   saveCachedProviders,
   saveLastProvider,
 } from "./preferences";
+import { toCachedProviders } from "./providerCache";
 import {
   offeredCommands,
   readAvailableCommands,
@@ -894,9 +895,17 @@ export function useDaemon(
   }, []);
 
   // Written back whenever the machine answers, so the memory is of the last
-  // truth rather than the first. Keyed on the ids and their availability, not
-  // the array — which is rebuilt by frames that change neither.
-  const providerKey = state.providers.map((p) => `${p.id}:${p.available}`).join(",");
+  // truth rather than the first. Keyed on what would actually be stored, not
+  // the array — which is rebuilt by frames that change nothing here.
+  //
+  // The key has to be the payload itself. Hand-listing the fields that matter
+  // missed the two the picker draws with: renaming an agent on the daemon
+  // changes neither its id nor its availability, so the write never fired and
+  // the keychain kept the old label. The live list showed the new name and the
+  // next cold start offline showed the old one back again, from a machine that
+  // has not called it that since. Deriving the key means any field added to
+  // the cache is covered without anyone having to remember to.
+  const providerKey = toCachedProviders(state.providers);
   useEffect(() => {
     if (!providerKey) return;
     // The ref, not `state.providers`: reading it here keeps the list out of the

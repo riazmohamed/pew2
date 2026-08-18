@@ -160,3 +160,35 @@ test("a renamed conversation does ask for a rewrite", () => {
     sessionCacheKey([session()]),
   );
 });
+
+test("every stored field moves the key, so none can change unwritten", () => {
+  // The key is hand-built, and the same shape of key on the provider cache was
+  // silently missing two fields: a rename changed what would be stored and not
+  // the key, so the write never fired and the phone restored the old name.
+  // Here the failure would be quieter still — a title or a message count that
+  // is right on screen and wrong after a restart.
+  //
+  // One mutation per field `toCachedSessions` writes. The count is asserted
+  // below, so adding a field to the cache without covering it fails here
+  // rather than in someone's drawer.
+  const moves: Record<string, Partial<Session>> = {
+    providerId: { providerId: "claude-code" },
+    agentSessionId: { agentSessionId: "agent-2" },
+    title: { title: "Renamed" },
+    startedAt: { startedAt: NOW + 1 },
+    cwd: { cwd: "/repo/other" },
+    folder: { folder: "other" },
+    messageCount: { messageCount: 7 },
+    unread: { unread: true },
+  };
+
+  const base = sessionCacheKey([session()]);
+  for (const [field, change] of Object.entries(moves)) {
+    expect(`${field}: ${sessionCacheKey([session(change)])}`).not.toBe(`${field}: ${base}`);
+  }
+
+  // `id` is not listed because it is not independent: it is derived from
+  // providerId + agentSessionId, both of which are covered above.
+  const stored = toCachedSessions([session({ folder: "pew2", messageCount: 3, unread: true })])[0]!;
+  expect(Object.keys(stored).sort()).toEqual(["id", ...Object.keys(moves)].sort());
+});

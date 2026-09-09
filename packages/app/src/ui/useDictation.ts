@@ -22,6 +22,14 @@ export interface UseDictationOptions {
   onDraftChange: (draft: string) => void;
   /** Shown to the user; empty string means "say nothing". */
   onMessage: (message: string) => void;
+  /**
+   * Fired as the mic is asked for, before the recogniser starts. Spoken cues
+   * use it to stop talking. Not awaited: the recogniser must never wait on
+   * playback, because a stop that never confirms would look like a dead mic.
+   */
+  onCaptureStart?: () => void;
+  /** Fired whenever listening ends, however it ended. */
+  onCaptureEnd?: () => void;
 }
 
 export interface Dictation {
@@ -33,8 +41,17 @@ export interface Dictation {
   cancel: () => void;
 }
 
-export function useDictation({ draft, onDraftChange, onMessage }: UseDictationOptions): Dictation {
+export function useDictation({ draft, onDraftChange, onMessage, onCaptureStart, onCaptureEnd }: UseDictationOptions): Dictation {
   const [listening, setListening] = useState(false);
+  const captureStartRef = useRef(onCaptureStart);
+  captureStartRef.current = onCaptureStart;
+  const captureEndRef = useRef(onCaptureEnd);
+  captureEndRef.current = onCaptureEnd;
+  // One place for "listening ended": stop, cancel, error and end all clear the
+  // flag, and a hook on the flag catches every one of them.
+  useEffect(() => {
+    if (!listening) captureEndRef.current?.();
+  }, [listening]);
   const session = useRef<DictationSession | undefined>(undefined);
   const state = useRef<DictationState>(beginDictation(""));
   // Read at start rather than captured in a dep: the draft changes on every
@@ -86,6 +103,7 @@ export function useDictation({ draft, onDraftChange, onMessage }: UseDictationOp
     state.current = beginDictation(draftRef.current());
     setListening(true);
     haptics.sent();
+    captureStartRef.current?.();
 
     void startDictation({
       // `isFinal` is not cosmetic: under `continuous`, the recogniser restarts
@@ -96,11 +114,11 @@ export function useDictation({ draft, onDraftChange, onMessage }: UseDictationOp
         state.current = next.state;
         changeRef.current(next.draft);
       },
-      onError: (code) => {
+      onError: (code, detail) => {
         wanted.current = false;
         session.current = undefined;
         setListening(false);
-        const message = dictationMessage(code);
+        const message = dictationMessage(code, detail);
         if (message) {
           messageRef.current(message);
           haptics.failed();

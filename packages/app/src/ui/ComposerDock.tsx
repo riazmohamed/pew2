@@ -37,6 +37,8 @@ import type { Workspace } from "../useDaemon";
 import type { Dictation } from "./useDictation";
 import { Composer, type ComposerHandle } from "./Composer";
 import { ContextBar } from "./ContextBar";
+import { SpokenReplyControls } from "./SpokenReplyControls";
+import type { ReadAloudControls } from "./useReadAloud";
 
 export interface ComposerDockHandle {
   /**
@@ -79,6 +81,7 @@ interface Props {
   onAttach: () => void;
   onRemoveAttachment: (id: string) => void;
   dictation: Dictation;
+  readAloud?: ReadAloudControls;
   style?: StyleProp<ViewStyle>;
   /**
    * This dock's height, reported once it has stopped changing.
@@ -107,6 +110,7 @@ function ComposerDockView(
     onAttach,
     onRemoveAttachment,
     dictation,
+    readAloud,
     style,
     onHeightSettled,
   }: Props,
@@ -182,6 +186,7 @@ function ComposerDockView(
           onCommands={onCommands}
         />
       )}
+      {readAloud && <SpokenReplyControls voice={readAloud} />}
       <Composer
         ref={composer}
         value={draft}

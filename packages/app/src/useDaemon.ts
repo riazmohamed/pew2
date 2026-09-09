@@ -41,6 +41,7 @@ import {
   type TurnReceipt,
 } from "./activity";
 import { advance, alreadySeen, type Cursors } from "./cursors";
+import type { SpokenCompletion } from "./spokenReply";
 import { findDuplicateError } from "./errorDedup";
 import { isEmptyChunk, readChunk } from "./chunks";
 import type { ChatImage } from "./images";
@@ -514,6 +515,8 @@ function firstUserText(turns: Turn[]): string | undefined {
  */
 export interface TurnFinished {
   sessionId: string;
+  /** Set only when live events preceded this idle: a duplicate idle carries none. */
+  spoken?: SpokenCompletion;
   /** Project folder as the daemon stamped it, e.g. "pew2". */
   folder?: string;
   /** Display name of the agent that ran it. */
@@ -840,6 +843,9 @@ export function useDaemon(
   // anything, and it is written from the socket handler where an updater's
   // "may run twice" rule would corrupt an accumulation.
   const turnText = useRef(new Map<string, string>());
+  // Seq of the last live event per session, cleared on idle. Replay batches
+  // never write it, so a resumed transcript cannot speak.
+  const liveTurn = useRef(new Map<string, number>());
 
   // Whether this connection has already told the daemon where to push.
   //
@@ -1378,6 +1384,7 @@ export function useDaemon(
         // twice — appending twice would duplicate the text.
         if (message.t === "session.event") {
           const chunk = readChunk(message.payload);
+          liveTurn.current.set(message.sessionId, message.seq);
           if (chunk?.role === "agent" && chunk.text) {
             const seen = turnText.current.get(message.sessionId) ?? "";
             // Only the opening line is ever shown, so a long turn must not
@@ -1420,13 +1427,18 @@ export function useDaemon(
         if (message.t === "session.idle") {
           const finished: string = message.sessionId;
           const lastText = turnText.current.get(finished);
+          const lastSeq = liveTurn.current.get(finished);
           // One turn's worth: the next prompt in this session starts empty.
           turnText.current.delete(finished);
+          liveTurn.current.delete(finished);
           const providerId =
             (message.providerId as string | undefined) ??
             sessionsRef.current.find((entry) => entry.id === finished)?.providerId;
           onTurnFinished.current?.({
             sessionId: finished,
+            spoken: lastSeq === undefined
+              ? undefined
+              : { id: `${finished}:${lastSeq}`, sessionId: finished, text: lastText ?? "" },
             folder: message.folder,
             agentName: providersRef.current.find((p) => p.id === providerId)?.name,
             lastText,

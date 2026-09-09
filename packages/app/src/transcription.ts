@@ -147,8 +147,13 @@ export function cancelDictation(state: DictationState): string {
  * onto. Anything unrecognised gets the generic line rather than a raw code:
  * "error: audio-capture" in a composer helps nobody.
  */
-export function dictationMessage(code: string): string {
+export function dictationMessage(code: string, detail?: string): string {
   switch (code) {
+    // The recogniser closed the mic with no result and no error of its own.
+    // Samsung's default (Bixby) does this on a continuous session; the name
+    // is included because which service answered is the whole diagnosis.
+    case "ended-early":
+      return `Speech recognition stopped before hearing anything${detail ? ` (${detail})` : ""}. Try again, or change the voice recognition service in Android settings.`;
     case "not-allowed":
     case "service-not-allowed":
       return "Microphone or speech access is off for pew2. Turn it on in Settings to dictate.";

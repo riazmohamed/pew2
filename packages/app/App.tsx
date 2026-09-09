@@ -58,6 +58,7 @@ import { AttachmentSheet, type AttachmentSource } from "./src/ui/AttachmentSheet
 import { addAttachments, MAX_ATTACHMENTS, type PendingAttachment } from "./src/attachments";
 import { pickFiles, pickPhotos, takePhoto } from "./src/ui/attachmentPicker";
 import { useDictation } from "./src/ui/useDictation";
+import { useReadAloud } from "./src/ui/useReadAloud";
 import { ApprovalSheet } from "./src/ui/ApprovalSheet";
 import { ThoughtSheet } from "./src/ui/ThoughtSheet";
 import { applyCommand, type SlashCommand } from "./src/slashCommands";
@@ -452,6 +453,8 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   // `app.push`, and suppressing the local banner for a push that can never come
   // would leave the phone silent.
   const pushExpected = useRef(false);
+  const voice = useReadAloud();
+  const completeSpokenReply = voice.complete;
 
   /**
    * Announce a turn that ended somewhere the user cannot see it.
@@ -467,7 +470,11 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
       pushExpected: pushExpected.current,
     });
     if (notice) void notify(notice);
-  }, []);
+    if (turn.spoken) {
+      const label = [turn.agentName, turn.folder].filter(Boolean).join(", ");
+      completeSpokenReply({ ...turn.spoken, label: label || undefined });
+    }
+  }, [completeSpokenReply]);
 
   // The relay identifies devices by this, and it must match the id baked into
   // the stored pairing URL or the two look like different clients.
@@ -1025,6 +1032,8 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
    * mid-sentence.
    */
   const dictation = useDictation({
+    onCaptureStart: voice.captureStarted,
+    onCaptureEnd: voice.captureEnded,
     draft: useCallback(() => composer.current?.getDraft() ?? "", []),
     onDraftChange: useCallback((text: string) => composer.current?.setDraft(text), []),
     onMessage: useCallback((message: string) => {
@@ -1544,6 +1553,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
             onAttach={openAttach}
             onRemoveAttachment={removeAttachment}
             dictation={dictation}
+            readAloud={voice.controls}
           />
         </View>
       </Reanimated.View>

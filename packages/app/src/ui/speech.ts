@@ -62,10 +62,20 @@ export function speechAvailable(): boolean {
   }
 }
 
+function recogniserName(module: SpeechModule): string | undefined {
+  if (Platform.OS !== "android") return undefined;
+  try {
+    return module.ExpoSpeechRecognitionModule.getDefaultRecognitionService().packageName || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface DictationHandlers {
   /** Fires repeatedly: each call is a revised transcript of the whole utterance. */
   onTranscript: (transcript: string, isFinal: boolean) => void;
-  onError: (code: string) => void;
+  /** `detail` names the recogniser when the failure is one it did not report. */
+  onError: (code: string, detail?: string) => void;
   onEnd: () => void;
 }
 
@@ -100,6 +110,12 @@ export async function startDictation(
 
   const subscriptions: EventSubscription[] = [];
   let released = false;
+  // A session that ends with no result, no error and no stop asked for is a
+  // failure the recogniser did not report: the mic flips off as it is tapped
+  // and nothing says why. Named after the service, since that is the diagnosis.
+  let heard = false;
+  let failed = false;
+  let stopAsked = false;
   const release = () => {
     if (released) return;
     released = true;
@@ -109,13 +125,16 @@ export async function startDictation(
   subscriptions.push(
     ExpoSpeechRecognitionModule.addListener("result", (event) => {
       const transcript = event.results[0]?.transcript ?? "";
+      heard = true;
       handlers.onTranscript(transcript, event.isFinal);
     }),
     ExpoSpeechRecognitionModule.addListener("error", (event) => {
+      failed = true;
       handlers.onError(event.error);
     }),
     ExpoSpeechRecognitionModule.addListener("end", () => {
       release();
+      if (!heard && !failed && !stopAsked) handlers.onError("ended-early", recogniserName(module));
       handlers.onEnd();
     }),
   );
@@ -148,6 +167,7 @@ export async function startDictation(
 
   return {
     stop: () => {
+      stopAsked = true;
       try {
         ExpoSpeechRecognitionModule.stop();
       } catch {

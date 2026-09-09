@@ -175,6 +175,12 @@ describe("dictationMessage", () => {
     expect(dictationMessage("aborted")).toBe("");
   });
 
+  test("a silent early end names the recogniser that did it", () => {
+    expect(dictationMessage("ended-early", "com.samsung.android.bixby.agent"))
+      .toMatch(/before hearing anything \(com\.samsung\.android\.bixby\.agent\)/);
+    expect(dictationMessage("ended-early")).not.toContain("(");
+  });
+
   test("an unknown code never leaks the code itself", () => {
     const message = dictationMessage("some-new-code");
     expect(message).not.toContain("some-new-code");

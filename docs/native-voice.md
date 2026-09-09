@@ -4,24 +4,23 @@ Implemented on `feat/native-voice-replies`, based on `a9e9ac4a19ab92346160162235
 
 ## Behaviour
 
-- **Spoken cues: off** is the default on every app launch. The switch above the composer enables system text-to-speech. It is not a hands-free conversation mode.
-- A cue is a pointer, not a reading: agent and project, the first sentence of the reply (at most 120 characters), then "On screen." It exists so a user who is out and about knows a step finished; the full reply stays on screen.
-- Any conversation that finishes a turn while the app is on screen cues, including ones not currently displayed, which is why each cue names its agent and project. Enabling the switch does not read old messages. Replay is explicit and repeats the latest cue; backgrounding clears it.
+- **Spoken replies: off** is the default on every app launch. The switch above the composer enables system text-to-speech. It is not a hands-free conversation mode.
+- Replies now read the prose rather than just the first sentence. The current conversation has no agent/project prefix and no routine "On screen" suffix.
+- Any conversation that finishes a turn while the app is on screen may speak. Only another conversation's reply names its project. Enabling the switch does not read old messages. Replay repeats the latest reply; backgrounding clears it.
 - With the app closed or backgrounded, nothing is spoken: the existing notification is the whole signal. Reopening does not speak what was missed.
-- **Stop speaking** interrupts output. Afterwards **Replay cue** repeats it. Turning the switch off also stops output.
+- **Stop speaking** interrupts output. Afterwards **Replay reply** repeats it. Turning the switch off also stops output.
 - Dictation still inserts an editable draft. It never submits, approves a permission, or sends audio to the coding agent. Typed prompts, offline queuing and ordinary text replies are unchanged.
 - Tapping the mic asks playback to stop and starts the recogniser at once; it does not wait for the stop to confirm. An earlier version gated the recogniser on a confirmed stop, and on a Samsung phone the mic then closed the instant it was tapped. Dictation is the feature the app exists for, so it never waits on playback. Playback stays blocked while listening, and a completion during capture is not queued for later.
 - Backgrounding and unmounting invalidate pending playback; switching conversations cancels dictation only. Unpairing unmounts the connected app.
 - A recogniser session that ends with no result, no error and no stop asked for is reported as a failure that names the service, since which service answered is the whole diagnosis.
-- Native cancellation must acknowledge `end` before another capture or playback is allowed. An unacknowledged cancellation after three seconds fails closed for voice and asks for an app restart; typing remains available.
 
 ## What is read
 
-The cue reuses the per-session opening-text buffer that notifications already keep (`lastText`, 2,000 characters, live events only). Existing cursor deduplication runs before it is written, replay batches never write it, and it is consumed on idle. The completion key is the session ID plus the last live sequence number, so a duplicate idle carries no key and is silent.
+Speech reuses the per-session opening-text buffer that notifications already keep (`lastText`, live events only). Collection stops once it reaches 6,000 UTF-16 code units; the formatter reads only the first 6,000. Cursor deduplication runs before collection, replay batches never write it, and idle consumes it. The completion key combines session ID and last live sequence number, so duplicate idle is silent.
 
-The formatter parses Markdown with the already installed `markdown-it`. It skips fenced/indented code, image descriptions and link destinations, and removes raw URLs and HTML tags. It speaks the first sentence of actual agent prose, not an invented success summary; a decimal point inside a number is not a sentence end. Code-only, image-only or tool-only answers get “<agent, project>: response ready. On screen.”
+The formatter uses the installed `markdown-it` to skip fenced/indented code, image descriptions and link destinations, then removes raw URLs and HTML tags. It reads agent prose, not a generated summary. Code-only, image-only or tool-only answers get "response ready, on screen."
 
-A first sentence longer than 120 characters is cut at a word boundary. Spoken output is a pointer only and never a substitute for reviewing the transcript.
+Prose longer than 1,500 Unicode characters is cut at a sentence end (or word boundary), followed by "More on screen." Content past the input ceiling is not read, even when code consumes most of that ceiling. Spoken output can omit later caveats and is not a substitute for reviewing consequential instructions.
 
 ## Native requirements and limits
 
@@ -38,9 +37,9 @@ References: [Expo SDK 54 Speech](https://docs.expo.dev/versions/v54.0.0/sdk/spee
 
 Baseline before implementation: `npm test`, `npm run typecheck`, `npm run lint` all passed after installing the frozen lockfile in this isolated worktree.
 
-Final checks: `npm test` passed (1,234 tests across 117 files); `npm run typecheck`, `npm run lint` and `git diff --check` passed. Temporary simulator harness wiring was removed and the normal app entry point restored.
+The user confirmed manual dictation and the earlier short cues on Android after restoring the original dictation hook. The longer spoken replies still require device verification.
 
-Automated coverage includes bounded Markdown/Unicode formatting, failure wording, code-only fallback, default-off and explicit replay, current-session/foreground gating, duplicate completions, blocked capture, pending permission cancellation, stale native callbacks, native stop/error/rejection handling and unmount cleanup. Pure tests do not import Expo or React Native.
+Automated coverage includes bounded Markdown/Unicode formatting, failure wording, code-only fallback, default-off and explicit replay, foreground gating, duplicate completions, playback suppression during capture, stale playback callbacks, native stop/error/rejection handling and unmount cleanup. Pure tests do not import Expo or React Native; they do not prove microphone behaviour.
 
 ```sh
 bun test packages/app/src/spokenReply.test.ts packages/app/src/transcription.test.ts

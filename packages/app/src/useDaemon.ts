@@ -41,7 +41,7 @@ import {
   type TurnReceipt,
 } from "./activity";
 import { advance, alreadySeen, type Cursors } from "./cursors";
-import type { SpokenCompletion } from "./spokenReply";
+import { SPOKEN_INPUT_LIMIT, type SpokenCompletion } from "./spokenReply";
 import { findDuplicateError } from "./errorDedup";
 import { isEmptyChunk, readChunk } from "./chunks";
 import type { ChatImage } from "./images";
@@ -528,12 +528,12 @@ export interface TurnFinished {
 }
 
 /**
- * How much of an agent's turn is kept for a notification body.
- *
- * Only the first usable line is ever rendered, so this only has to be long
- * enough to contain it past any leading blank lines or a fenced block.
+ * How much of an agent's turn is kept for a notification body and for reading
+ * aloud. The notification renders only the first usable line; the spoken
+ * reply reads prose up to `SPOKEN_LIMIT`, and this has to hold that much past
+ * any leading fenced block. Per open session, in memory, cleared on idle.
  */
-const NOTICE_BUFFER = 2000;
+const NOTICE_BUFFER = SPOKEN_INPUT_LIMIT;
 
 
 /** Where the daemon should push when this phone's app is asleep. */

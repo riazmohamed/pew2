@@ -8,27 +8,27 @@ export const SpokenReplyControls = memo(function SpokenReplyControls({ voice }: 
     <View style={styles.row}>
       <Pressable
         accessibilityRole="switch"
-        accessibilityLabel="Spoken cues"
+        accessibilityLabel="Spoken replies"
         accessibilityState={{ checked: voice.enabled, disabled: !voice.available }}
         disabled={!voice.available}
         onPress={voice.toggle}
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
       >
         <Text style={styles.text}>
-          {!voice.available ? "Speech needs a native rebuild" : `Spoken cues: ${voice.enabled ? "on" : "off"}`}
+          {!voice.available ? "Speech needs a native rebuild" : `Spoken replies: ${voice.enabled ? "on" : "off"}`}
         </Text>
       </Pressable>
       {voice.enabled && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={voice.speaking ? "Stop speaking" : "Replay last cue"}
+          accessibilityLabel={voice.speaking ? "Stop speaking" : "Replay last reply"}
           accessibilityState={{ disabled: !voice.speaking && !voice.canReplay }}
           disabled={!voice.speaking && !voice.canReplay}
           onPress={voice.speaking ? voice.stop : voice.replay}
           style={({ pressed }) => [styles.button, pressed && styles.pressed]}
         >
           <Text style={[styles.text, !voice.speaking && !voice.canReplay && styles.disabled]}>
-            {voice.speaking ? "Stop speaking" : "Replay cue"}
+            {voice.speaking ? "Stop speaking" : "Replay reply"}
           </Text>
         </Pressable>
       )}

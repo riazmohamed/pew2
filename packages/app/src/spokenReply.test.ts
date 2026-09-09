@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { CUE_LIMIT, SpokenPlayback, spokenCue, type ReadAloudDriver } from "./spokenReply";
+import { SPOKEN_LIMIT, SpokenPlayback, spokenReply, type ReadAloudDriver } from "./spokenReply";
 
-const turn = { id: "one:2", sessionId: "one", text: "The tests failed. Do not deploy.", label: "Codex, pew2" };
+const turn = { id: "one:2", sessionId: "one", text: "The tests failed. Do not deploy." };
 
 function fixture(stop: () => Promise<void> = async () => {}) {
   const spoken: string[] = [];
@@ -30,29 +30,36 @@ function deferred() {
   return { promise, resolve };
 }
 
-describe("spoken cue", () => {
+describe("spoken reply", () => {
   for (const text of [undefined, "", "```ts\nthrow new Error('secret code');\n```", "~~~\ncode\n~~~", "    indented code", "```\nunclosed code"]) {
     test(`honest fallback for ${JSON.stringify(text)}`, () => {
-      expect(spokenCue(text, "Codex, pew2")).toBe("Codex, pew2: response ready. On screen.");
-      expect(spokenCue(text)).toBe("response ready. On screen.");
+      expect(spokenReply(text, "pew2")).toBe("pew2: response ready, on screen.");
+      expect(spokenReply(text)).toBe("response ready, on screen.");
     });
   }
-  test("first sentence only, named, without decoration or destinations", () => {
-    const result = spokenCue("## **Step 1 done**, tests pass. See [details](https://private.example/token).\n```sh\nrm dangerous\n```\nMore prose.", "Codex, pew2");
-    expect(result).toBe("Codex, pew2: Step 1 done, tests pass. On screen.");
+  test("the whole prose is read, without decoration, code or destinations", () => {
+    const result = spokenReply("## **Step 1 done**, tests pass. See [details](https://private.example/token).\n```sh\nrm dangerous\n```\nMore prose.", "pew2");
+    expect(result).toBe("pew2: Step 1 done, tests pass. See details. More prose.");
   });
-  test("a number with a decimal point is not a sentence end", () => {
-    expect(spokenCue("Coverage is 3.14 percent now. Next step.")).toBe("Coverage is 3.14 percent now. On screen.");
+  test("a short reply is not followed by a pointer to the screen", () => {
+    expect(spokenReply("Done.")).toBe("Done.");
   });
-  test("a long first sentence is cut at a word, in Unicode characters", () => {
-    const result = spokenCue("🙂 café 未確認 ".repeat(100));
-    expect(Array.from(result).length).toBeLessThanOrEqual(CUE_LIMIT + " On screen.".length + 1);
-    expect(result.endsWith("… On screen.")).toBe(true);
+  test("a long reply is cut at a sentence end and says the rest is on screen", () => {
+    const sentence = "Coverage is 3.14 percent now, which is fine. ";
+    const result = spokenReply(sentence.repeat(60));
+    expect(result.endsWith("which is fine. More on screen.")).toBe(true);
+    expect(result).not.toContain("3. More");
+    expect(Array.from(result).length).toBeLessThanOrEqual(SPOKEN_LIMIT + " More on screen.".length);
+  });
+  test("a long run without sentence ends is cut at a word, in Unicode characters", () => {
+    const result = spokenReply("🙂 café 未確認 ".repeat(300));
+    expect(Array.from(result).length).toBeLessThanOrEqual(SPOKEN_LIMIT + " More on screen.".length + 1);
+    expect(result.endsWith("… More on screen.")).toBe(true);
     expect(result).not.toContain("�");
   });
   test("images, reference destinations and autolinks are not spoken", () => {
-    const result = spokenCue("![private image](https://secret/image)\nRead [report][r] <https://secret/link>\n\n[r]: https://secret/reference");
-    expect(result).toBe("Read report On screen.");
+    const result = spokenReply("![private image](https://secret/image)\nRead [report][r] <https://secret/link>\n\n[r]: https://secret/reference");
+    expect(result).toBe("Read report");
   });
 });
 
@@ -65,9 +72,9 @@ describe("playback lifecycle", () => {
     expect(spoken).toEqual([]);
     playback.replay();
     await settled();
-    expect(spoken).toEqual([spokenCue(turn.text, turn.label)]);
+    expect(spoken).toEqual([spokenReply(turn.text)]);
   });
-  test("any conversation cues while on screen; background and duplicates are silent", async () => {
+  test("any conversation is read while on screen; background and duplicates are silent", async () => {
     const { playback, spoken } = fixture();
     playback.toggle();
     playback.context(false);
@@ -75,11 +82,11 @@ describe("playback lifecycle", () => {
     playback.context(true);
     await settled();
     expect(spoken).toEqual([]);
-    playback.complete({ ...turn, sessionId: "other", id: "other:1", label: "Claude, brah" });
+    playback.complete({ ...turn, sessionId: "other", id: "other:1", label: "brah" });
     await settled();
-    playback.complete({ ...turn, sessionId: "other", id: "other:1", label: "Claude, brah" });
+    playback.complete({ ...turn, sessionId: "other", id: "other:1", label: "brah" });
     await settled();
-    expect(spoken).toEqual(["Claude, brah: The tests failed. On screen."]);
+    expect(spoken).toEqual(["brah: The tests failed. Do not deploy."]);
   });
   test("dictation blocks automatic and manual playback, without deferred audio", async () => {
     const { playback, spoken } = fixture();

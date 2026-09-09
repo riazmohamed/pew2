@@ -471,8 +471,10 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
     });
     if (notice) void notify(notice);
     if (turn.spoken) {
-      const label = [turn.agentName, turn.folder].filter(Boolean).join(", ");
-      completeSpokenReply({ ...turn.spoken, label: label || undefined });
+      // Name the project only for a reply from a conversation not on screen.
+      // Agent names are left out: TTS mangles "GG Coder" into nonsense.
+      const elsewhere = turn.sessionId !== turn.activeSessionId;
+      completeSpokenReply({ ...turn.spoken, label: elsewhere ? turn.folder : undefined });
     }
   }, [completeSpokenReply]);
 

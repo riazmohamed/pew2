@@ -1,16 +1,21 @@
 import MarkdownIt from "markdown-it";
 
-/** Matches the notification buffer: a cue only ever needs the opening line. */
-export const SPOKEN_INPUT_LIMIT = 2000;
-export const CUE_LIMIT = 120;
+/** Matches the live-turn buffer in `useDaemon`; anything past it is never read. */
+export const SPOKEN_INPUT_LIMIT = 6000;
+/** About ninety seconds of speech. Stop is always one tap away. */
+export const SPOKEN_LIMIT = 1500;
+const MORE = " More on screen.";
 const markdown = new MarkdownIt({ html: false, linkify: false });
 
 /**
- * A pointer, not a reading: "<who>: <first sentence>. On screen." The user is
- * out and about and wants to know a step finished, not hear the whole answer.
- * Parse Markdown so fenced/indented code and link targets stay silent.
+ * The reply's prose, read out. The user is driving or walking and wants to
+ * hear what the agent said, not a pointer to it: a first-sentence cue turned
+ * out to be one word most of the time. Parse Markdown so fenced/indented code
+ * and link targets stay silent; a long reply is cut at a sentence end and
+ * says that the rest is on screen. `label` names the project only when the
+ * reply is from a conversation other than the one being looked at.
  */
-export function spokenCue(text: string | undefined, label?: string): string {
+export function spokenReply(text: string | undefined, label?: string): string {
   const parts: string[] = [];
   for (const block of markdown.parse((text ?? "").slice(0, SPOKEN_INPUT_LIMIT), {})) {
     if (block.type !== "inline") continue;
@@ -25,14 +30,17 @@ export function spokenCue(text: string | undefined, label?: string): string {
     .replace(/<\/?[a-z][^>]*>/gi, "")
     .replace(/\s+/g, " ").trim();
   const who = label ? `${label}: ` : "";
-  if (!prose) return `${who}response ready. On screen.`;
-  // First sentence: a real character before the stop, so "3.14" is not a boundary.
-  const first = /^.*?[^\d\s][.!?](?=\s|$)/.exec(prose)?.[0] ?? prose;
-  const points = Array.from(first);
-  const cue = points.length <= CUE_LIMIT
-    ? first
-    : points.slice(0, CUE_LIMIT).join("").replace(/\s+\S*$/, "") + "…";
-  return `${who}${cue} On screen.`;
+  if (!prose) return `${who}response ready, on screen.`;
+  const points = Array.from(prose);
+  if (points.length <= SPOKEN_LIMIT) return who + prose;
+  // Cut at the last sentence end inside the budget (a real character before
+  // the stop, so "3.14" is not one), or at a word when the sentences run long.
+  const head = points.slice(0, SPOKEN_LIMIT).join("");
+  const sentence = /^[\s\S]*[^\d\s][.!?](?=\s)/.exec(head)?.[0];
+  const cut = sentence && sentence.length >= head.length / 2
+    ? sentence
+    : head.replace(/\s+\S*$/, "") + "…";
+  return `${who}${cut}${MORE}`;
 }
 
 export interface SpokenCompletion {
@@ -40,7 +48,7 @@ export interface SpokenCompletion {
   id: string;
   sessionId: string;
   text: string;
-  /** Agent and project, so a cue from another conversation says which. */
+  /** Project name, set only when the reply is not from the conversation on screen. */
   label?: string;
 }
 
@@ -151,7 +159,7 @@ export class SpokenPlayback {
     };
     try {
       await this.driver.speak(
-        spokenCue(turn.text, turn.label), () => finish(false), () => finish(true),
+        spokenReply(turn.text, turn.label), () => finish(false), () => finish(true),
         () => ticket === this.generation && this.canReplay && !this.disposed,
       );
     } catch {

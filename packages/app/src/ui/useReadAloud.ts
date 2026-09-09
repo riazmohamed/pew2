@@ -17,7 +17,7 @@ export function useReadAloud() {
   const [, redraw] = useReducer((n: number) => n + 1, 0);
   const [available] = useState(readAloudAvailable);
   const [playback] = useState(() => new SpokenPlayback(readAloud, redraw,
-    (message) => Alert.alert("Spoken cues", message)));
+    (message) => Alert.alert("Spoken replies", message)));
   useEffect(() => {
     playback.activate();
     playback.context(AppState.currentState === "active");

@@ -92,6 +92,9 @@ export function useDictation({ draft, onDraftChange, onMessage }: UseDictationOp
       // from empty after every final result, so a final that is not folded into
       // the base gets overwritten by the next sentence.
       onTranscript: (transcript, isFinal) => {
+        // An empty final result can arrive when the recogniser stops. Keep the
+        // words already in the draft instead of resetting to the starting text.
+        if (!transcript.trim()) return;
         const next = applyTranscript(state.current, transcript, isFinal);
         state.current = next.state;
         changeRef.current(next.draft);

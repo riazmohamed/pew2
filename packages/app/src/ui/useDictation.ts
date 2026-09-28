@@ -117,9 +117,15 @@ export function useDictation({ draft, onDraftChange, onMessage, onCaptureStart, 
       const started = await startDictation({
         canStart: () => current() && wanted.current,
         onStart: () => { if (current()) observer?.started(); },
-        // Keep the existing merge rule: isFinal alone is never a boundary.
+        // `isFinal` is not cosmetic: under `continuous`, the recogniser restarts
+        // from empty after every final result, so a final that is not folded into
+        // the base gets overwritten by the next sentence.
         onTranscript: (transcript, isFinal) => {
           if (!current()) return;
+          // An empty final result can arrive when the recogniser stops. Keep the
+          // words already in the draft instead of resetting to the starting text,
+          // and do not count it as speech for the hands-free pause timer.
+          if (!transcript.trim()) return;
           const next = applyTranscript(state.current, transcript, isFinal);
           state.current = next.state;
           changeRef.current(next.draft);

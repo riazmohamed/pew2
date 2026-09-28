@@ -208,7 +208,12 @@ function ComposerDockView(
           onDetails={onProjectDetails}
         />
       )}
-      {readAloud && <SpokenReplyControls voice={readAloud} handsFree={handsFree} hasDraft={!!draft.trim()} />}
+      {/* Hidden while typing for the same reason as the context row, unless
+          something is live that the user may need to stop: a reply being
+          spoken, or a hands-free loop with its pause and cancel-send. */}
+      {readAloud && (!typing || readAloud.speaking || handsFree?.enabled) && (
+        <SpokenReplyControls voice={readAloud} handsFree={handsFree} hasDraft={!!draft.trim()} />
+      )}
       <Composer
         ref={composer}
         value={draft}

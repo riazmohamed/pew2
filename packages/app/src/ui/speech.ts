@@ -77,6 +77,10 @@ export interface DictationHandlers {
   /** `detail` names the recogniser when the failure is one it did not report. */
   onError: (code: string, detail?: string) => void;
   onEnd: () => void;
+  /** Native start, not the optimistic button state. */
+  onStart?: () => void;
+  /** Recheck intent after a permission promise, before opening the mic. */
+  canStart?: () => boolean;
 }
 
 export interface DictationSession {
@@ -103,6 +107,7 @@ export async function startDictation(
   const { ExpoSpeechRecognitionModule } = module;
 
   const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+  if (handlers.canStart && !handlers.canStart()) return undefined;
   if (!permission.granted) {
     handlers.onError("not-allowed");
     return undefined;
@@ -123,9 +128,10 @@ export async function startDictation(
   };
 
   subscriptions.push(
+    ExpoSpeechRecognitionModule.addListener("start", () => handlers.onStart?.()),
     ExpoSpeechRecognitionModule.addListener("result", (event) => {
       const transcript = event.results[0]?.transcript ?? "";
-      heard = true;
+      heard ||= transcript.trim().length > 0;
       handlers.onTranscript(transcript, event.isFinal);
     }),
     ExpoSpeechRecognitionModule.addListener("error", (event) => {

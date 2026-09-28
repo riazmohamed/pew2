@@ -39,6 +39,12 @@ import { Composer, type ComposerHandle } from "./Composer";
 import { ContextBar } from "./ContextBar";
 import { SpokenReplyControls } from "./SpokenReplyControls";
 import type { ReadAloudControls } from "./useReadAloud";
+import type { HandsFreeControls } from "./useHandsFree";
+
+export interface AutomaticSend {
+  sessionId: string;
+  draftVersion: number;
+}
 
 export interface ComposerDockHandle {
   /**
@@ -49,6 +55,8 @@ export interface ComposerDockHandle {
    * that needs the text, and it needs it once, at the moment of sending.
    */
   getDraft(): string;
+  getDraftVersion(): number;
+  sendAutomatic(sessionId: string, draftVersion: number): boolean;
   /** Replace the draft, as a slash command or dictation does. */
   setDraft(text: string): void;
   focus(): void;
@@ -72,7 +80,8 @@ interface Props {
    * leave the words in the box: they were never delivered, and clearing them
    * would destroy a message the user still needs.
    */
-  onSend: (text: string) => boolean;
+  onSend: (text: string, automatic?: AutomaticSend) => boolean;
+  onManualEdit?: () => void;
   busy?: boolean;
   onStop?: () => void;
   editable?: boolean;
@@ -82,6 +91,7 @@ interface Props {
   onRemoveAttachment: (id: string) => void;
   dictation: Dictation;
   readAloud?: ReadAloudControls;
+  handsFree?: HandsFreeControls;
   style?: StyleProp<ViewStyle>;
   /**
    * This dock's height, reported once it has stopped changing.
@@ -102,6 +112,7 @@ function ComposerDockView(
     showCommands,
     onCommands,
     onSend,
+    onManualEdit,
     busy,
     onStop,
     editable,
@@ -111,36 +122,42 @@ function ComposerDockView(
     onRemoveAttachment,
     dictation,
     readAloud,
+    handsFree,
     style,
     onHeightSettled,
   }: Props,
   ref: React.Ref<ComposerDockHandle>,
 ) {
-  const [draft, setDraft] = useState("");
-  // Mirrors the draft for the handle below. Reading state through a ref keeps
-  // `getDraft` stable across renders, so a parent holding this handle is not
-  // itself re-rendered by every character \u2014 which would undo the whole point.
+  const [draft, updateDraft] = useState("");
   const draftRef = useRef(draft);
-  draftRef.current = draft;
+  const draftVersion = useRef(0);
   const composer = useRef<ComposerHandle>(null);
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      getDraft: () => draftRef.current,
-      setDraft,
-      focus: () => composer.current?.focus(),
-    }),
-    [],
-  );
-
-  const send = useCallback(() => {
-    // Cleared here rather than by the parent, because the draft belongs to this
-    // component now — but only once the message has actually gone. A send the
-    // parent refuses leaves the words where they are, which is the difference
-    // between a message that did not send and a message that was destroyed.
-    if (onSend(draftRef.current.trim())) setDraft("");
-  }, [onSend]);
+  // Native final results can be followed by end in the same JS turn. Update
+  // the handle synchronously, not on the next render, before automatic send.
+  const setDraft = useCallback((text: string) => {
+    draftRef.current = text;
+    draftVersion.current++;
+    updateDraft(text);
+  }, []);
+  const send = useCallback((automatic?: AutomaticSend): boolean => {
+    const version = draftVersion.current;
+    if (automatic && automatic.draftVersion !== version) return false;
+    if (!onSend(draftRef.current.trim(), automatic)) return false;
+    if (version === draftVersion.current) setDraft("");
+    return true;
+  }, [onSend, setDraft]);
+  const manualSend = useCallback(() => { send(); }, [send]);
+  const manualEdit = useCallback((text: string) => {
+    onManualEdit?.();
+    setDraft(text);
+  }, [onManualEdit, setDraft]);
+  useImperativeHandle(ref, () => ({
+    getDraft: () => draftRef.current,
+    getDraftVersion: () => draftVersion.current,
+    setDraft,
+    sendAutomatic: (sessionId, version) => send({ sessionId, draftVersion: version }),
+    focus: () => composer.current?.focus(),
+  }), [send, setDraft]);
 
   // The last height handed upwards, and the timer waiting to hand up the next.
   //
@@ -186,12 +203,12 @@ function ComposerDockView(
           onCommands={onCommands}
         />
       )}
-      {readAloud && <SpokenReplyControls voice={readAloud} />}
+      {readAloud && <SpokenReplyControls voice={readAloud} handsFree={handsFree} hasDraft={!!draft.trim()} />}
       <Composer
         ref={composer}
         value={draft}
-        onChangeText={setDraft}
-        onSend={send}
+        onChangeText={manualEdit}
+        onSend={manualSend}
         busy={busy}
         onStop={onStop}
         editable={editable}

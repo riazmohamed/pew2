@@ -52,9 +52,15 @@ export interface SpokenCompletion {
   label?: string;
 }
 
+export interface PlaybackCompletion {
+  id: string;
+  sessionId: string;
+  outcome: "done" | "stopped" | "error";
+}
+
 export interface ReadAloudDriver {
   stop(): Promise<void>;
-  speak(text: string, done: () => void, error: () => void, current: () => boolean): Promise<void>;
+  speak(text: string, done: () => void, error: () => void, current: () => boolean, stopped: () => void): Promise<void>;
 }
 
 /** Owns cancellation outside React so native/permission races can be tested. */
@@ -64,6 +70,7 @@ export class SpokenPlayback {
   capturing = false;
   private foreground = true;
   private latest: SpokenCompletion | undefined;
+  private playing: SpokenCompletion | undefined;
   private generation = 0;
   private stopping: Promise<boolean> = Promise.resolve(true);
   private disposed = false;
@@ -72,6 +79,7 @@ export class SpokenPlayback {
     private readonly driver: ReadAloudDriver,
     private readonly changed: () => void,
     private readonly report: (message: string) => void,
+    private readonly completed: (event: PlaybackCompletion) => void = () => {},
   ) {}
 
   get canReplay(): boolean {
@@ -119,7 +127,10 @@ export class SpokenPlayback {
   async stop(): Promise<boolean> {
     ++this.generation;
     this.speaking = false;
+    const interrupted = this.playing;
+    this.playing = undefined;
     if (!this.disposed) this.changed();
+    if (interrupted) this.completed({ id: interrupted.id, sessionId: interrupted.sessionId, outcome: "stopped" });
     const previous = this.stopping;
     const stop = async (): Promise<boolean> => {
       await previous;
@@ -148,22 +159,34 @@ export class SpokenPlayback {
   private async play(turn: SpokenCompletion): Promise<void> {
     const stopped = this.stop();
     const ticket = this.generation;
-    if (!await stopped || ticket !== this.generation || !this.canReplay || this.disposed) return;
+    this.playing = turn;
+    const didStop = await stopped;
+    if (ticket !== this.generation || this.disposed) return;
+    if (!didStop || !this.canReplay) {
+      this.playing = undefined;
+      this.completed({ id: turn.id, sessionId: turn.sessionId, outcome: "error" });
+      return;
+    }
     this.speaking = true;
     this.changed();
-    const finish = (failed: boolean): void => {
-      if (ticket !== this.generation || this.disposed) return;
+    let finished = false;
+    const finish = (outcome: PlaybackCompletion["outcome"]): void => {
+      if (finished || ticket !== this.generation || this.disposed) return;
+      finished = true;
+      this.playing = undefined;
       this.speaking = false;
       this.changed();
-      if (failed) this.report("Speech is unavailable or was interrupted. Read the response on screen.");
+      if (outcome === "error") this.report("Speech is unavailable or was interrupted. Read the response on screen.");
+      this.completed({ id: turn.id, sessionId: turn.sessionId, outcome });
     };
     try {
       await this.driver.speak(
-        spokenReply(turn.text, turn.label), () => finish(false), () => finish(true),
+        spokenReply(turn.text, turn.label), () => finish("done"), () => finish("error"),
         () => ticket === this.generation && this.canReplay && !this.disposed,
+        () => finish("stopped"),
       );
     } catch {
-      finish(true);
+      finish("error");
     }
   }
 }

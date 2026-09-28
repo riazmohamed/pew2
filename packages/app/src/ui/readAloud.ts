@@ -21,7 +21,7 @@ export const readAloud: ReadAloudDriver = {
   async stop(): Promise<void> {
     await speechModule()?.stop();
   },
-  async speak(text, done, error, current): Promise<void> {
+  async speak(text, done, error, current, stopped): Promise<void> {
     const speech = speechModule();
     if (!speech) { error(); return; }
     const voices = await speech.getAvailableVoicesAsync();
@@ -29,7 +29,7 @@ export const readAloud: ReadAloudDriver = {
     if (!voices.length || text.length > speech.maxSpeechInputLength) { error(); return; }
     speech.speak(text, {
       onDone: done,
-      onStopped: done,
+      onStopped: stopped,
       onError: error,
       // Let iOS manage interruptions rather than reuse the recogniser's session.
       useApplicationAudioSession: false,

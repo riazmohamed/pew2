@@ -1,22 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { SPOKEN_LIMIT, SpokenPlayback, spokenReply, type ReadAloudDriver } from "./spokenReply";
+import { SPOKEN_LIMIT, SpokenPlayback, spokenReply, type ReadAloudDriver, type PlaybackCompletion } from "./spokenReply";
 
 const turn = { id: "one:2", sessionId: "one", text: "The tests failed. Do not deploy." };
 
 function fixture(stop: () => Promise<void> = async () => {}) {
   const spoken: string[] = [];
-  const callbacks: Array<{ done: () => void; error: () => void; current: () => boolean }> = [];
+  const callbacks: Array<{ done: () => void; error: () => void; stopped: () => void; current: () => boolean }> = [];
+  const outcomes: PlaybackCompletion[] = [];
   const errors: string[] = [];
   const driver: ReadAloudDriver = {
     stop,
-    async speak(text, done, error, current): Promise<void> {
+    async speak(text, done, error, current, stopped): Promise<void> {
       spoken.push(text);
-      callbacks.push({ done, error, current });
+      callbacks.push({ done, error, current, stopped });
     },
   };
-  const playback = new SpokenPlayback(driver, () => {}, (message) => errors.push(message));
+  const playback = new SpokenPlayback(driver, () => {}, (message) => errors.push(message), (event) => outcomes.push(event));
   playback.context(true);
-  return { playback, spoken, callbacks, errors };
+  return { playback, spoken, callbacks, errors, outcomes };
 }
 
 // Drain the finite native promise chain without wall-clock timing.
@@ -64,6 +65,24 @@ describe("spoken reply", () => {
 });
 
 describe("playback lifecycle", () => {
+  for (const outcome of ["done", "stopped", "error"] as const) {
+    test(`native ${outcome} reports the reply identity exactly once`, async () => {
+      const f = fixture(); f.playback.toggle(); f.playback.complete(turn); await settled();
+      f.callbacks[0]![outcome](); f.callbacks[0]!.done();
+      expect(f.outcomes).toEqual([{ id: turn.id, sessionId: turn.sessionId, outcome }]);
+    });
+  }
+  test("explicit stop reports stopped and ignores late natural completion", async () => {
+    const f = fixture(); f.playback.toggle(); f.playback.complete(turn); await settled();
+    await f.playback.stop(); f.callbacks[0]!.done();
+    expect(f.outcomes).toEqual([{ id: turn.id, sessionId: turn.sessionId, outcome: "stopped" }]);
+  });
+  test("failed pre-playback stop reports an error instead of silently losing a reply", async () => {
+    const f = fixture(async () => { throw new Error("native"); });
+    f.playback.toggle(); f.playback.complete(turn); await settled();
+    expect(f.outcomes).toEqual([{ id: turn.id, sessionId: turn.sessionId, outcome: "error" }]);
+    expect(f.spoken).toEqual([]);
+  });
   test("off by default; enabling does not automatically read old text", async () => {
     const { playback, spoken } = fixture();
     playback.complete(turn);

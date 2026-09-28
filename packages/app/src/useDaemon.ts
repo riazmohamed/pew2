@@ -42,6 +42,7 @@ import {
 } from "./activity";
 import { advance, alreadySeen, type Cursors } from "./cursors";
 import { SPOKEN_INPUT_LIMIT, type SpokenCompletion } from "./spokenReply";
+import { promptDelivery, type PromptDeliveryPolicy } from "./promptDelivery";
 import { findDuplicateError } from "./errorDedup";
 import { isEmptyChunk, readChunk } from "./chunks";
 import type { ChatImage } from "./images";
@@ -2234,7 +2235,7 @@ export function useDaemon(
    * message that is going nowhere.
    */
   const deliverPrompt = useCallback(
-    (sessionId: string, text: string, attachments: readonly PendingAttachment[]): boolean => {
+    (sessionId: string, text: string, attachments: readonly PendingAttachment[], policy: PromptDeliveryPolicy = "queue"): boolean => {
       // Attempted first, because its answer decides everything below. A
       // conversation with no id yet cannot be addressed at all, so it does not
       // even try: `session.started` re-addresses this entry later.
@@ -2242,8 +2243,12 @@ export function useDaemon(
       const sent =
         !isPendingSession(sessionId) &&
         post({ t: "session.prompt", sessionId, text, attachments: wire });
+      // Refuse BEFORE assigning a turn id, writing an outbox entry or changing
+      // optimistic state. A disconnect race must not queue a voice instruction.
+      const delivery = promptDelivery(sent, policy);
+      if (delivery === "refused") return false;
       const turn = localTurn(localSeq.current++, text, attachmentImages(attachments), !sent);
-      if (!sent) {
+      if (delivery === "queue") {
         const queue = enqueue(outbox.current, {
           kind: "prompt",
           turnKey: turn.key!,
@@ -2415,14 +2420,19 @@ export function useDaemon(
        * answers "Unknown session". The caller still has the text and can open
        * the conversation instead of losing it.
        */
-      prompt: (text: string, to?: string, attachments: readonly PendingAttachment[] = []): boolean => {
+      prompt: (text: string, to?: string, attachments: readonly PendingAttachment[] = [], policy: PromptDeliveryPolicy = "queue"): boolean => {
         const sessionId = to ?? sessionRef.current;
         if (!sessionId) return false;
+        if (policy === "online-only") {
+          const target = sessionsRef.current.find((entry) => entry.id === sessionId);
+          if (sessionId !== sessionRef.current || !target || target.busy || target.permission ||
+            attachments.length || needsResume(target, liveSessions.current)) return false;
+        }
         if (to && to !== sessionRef.current) {
           const target = sessionsRef.current.find((entry) => entry.id === to);
           if (!target || needsResume(target, liveSessions.current)) return false;
         }
-        return deliverPrompt(sessionId, text, attachments);
+        return deliverPrompt(sessionId, text, attachments, policy);
       },
 
       cancel: () => {

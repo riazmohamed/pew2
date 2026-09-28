@@ -48,7 +48,8 @@ import {
 } from "./src/ui/notifier";
 import { pushAddress } from "./src/ui/push";
 import { Orb } from "./src/ui/Orb";
-import { ComposerDock, type ComposerDockHandle } from "./src/ui/ComposerDock";
+import { ComposerDock, type ComposerDockHandle, type AutomaticSend } from "./src/ui/ComposerDock";
+import { useHandsFree, type HandsFreeBinding } from "./src/ui/useHandsFree";
 import { ChatThread, type ChatThreadRef } from "./src/ui/ChatThread";
 import { ImageResolverProvider } from "./src/ui/ChatImage";
 import { CommandSheet } from "./src/ui/CommandSheet";
@@ -453,7 +454,12 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   // `app.push`, and suppressing the local banner for a push that can never come
   // would leave the phone silent.
   const pushExpected = useRef(false);
-  const voice = useReadAloud();
+  const handsFreeBridge = useRef<HandsFreeBinding | null>(null);
+  const pauseHandsFree = useCallback(() => handsFreeBridge.current?.pause(), []);
+  const voice = useReadAloud({
+    onComplete: (event) => handsFreeBridge.current?.playbackEnded(event),
+    onAction: pauseHandsFree,
+  });
   const completeSpokenReply = voice.complete;
 
   /**
@@ -470,7 +476,8 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
       pushExpected: pushExpected.current,
     });
     if (notice) void notify(notice);
-    if (turn.spoken) {
+    const maySpeak = handsFreeBridge.current?.completion(turn.spoken, turn.sessionId) ?? true;
+    if (turn.spoken && maySpeak) {
       // Name the project only for a reply from a conversation not on screen.
       // Agent names are left out: TTS mangles "GG Coder" into nonsense.
       const elsewhere = turn.sessionId !== turn.activeSessionId;
@@ -1053,7 +1060,13 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   // conversation with — leaves the words in the box instead of destroying a
   // message that was never delivered.
   const send = useCallback(
-    (text: string): boolean => {
+    (text: string, automatic?: AutomaticSend): boolean => {
+      if (automatic) {
+        if (daemon.sessionId !== automatic.sessionId ||
+          !handsFreeBridge.current?.canSend(automatic.sessionId, automatic.draftVersion)) return false;
+      } else {
+        pauseHandsFree();
+      }
       // A photo on its own is a message; "look at this" is implied by attaching it.
       if (!text && attachmentsRef.current.length === 0) return false;
       const staged = attachmentsRef.current;
@@ -1068,7 +1081,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
       // Asked at the moment it earns itself: the user is about to wait on an
       // agent, which is the only thing this app notifies about. Not awaited — the
       // prompt must go out whatever the system decides.
-      void ensureNotificationPermission();
+      if (!automatic) void ensureNotificationPermission();
 
       // Offline the message is queued rather than sent, which still counts as
       // taken: it is on screen, marked as waiting, and goes out on reconnect.
@@ -1076,7 +1089,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
       // draft and its attachments stay put, because destroying a message that
       // was never delivered is the one outcome there is no way back from.
       const taken = daemon.sessionId
-        ? promptDaemon(text, undefined, staged)
+        ? promptDaemon(text, automatic?.sessionId, staged, automatic ? "online-only" : "queue")
         : // No session yet: start one with the chosen available agent and let
           // the daemon deliver this prompt as soon as it is ready.
           startDaemon(active!.id, text, staged);
@@ -1086,8 +1099,35 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
     },
     // Attachments are read through their ref, so staging a photo does not
     // rebuild this and re-render the memoised dock beneath it.
-    [cancelDictation, daemon.sessionId, promptDaemon, startDaemon, active],
+    [cancelDictation, daemon.sessionId, promptDaemon, startDaemon, active, pauseHandsFree],
   );
+
+  const handsFree = useHandsFree({
+    dictation,
+    stopPlayback: voice.stopPlayback,
+    send: (sessionId, version) => composer.current?.sendAutomatic(sessionId, version) ?? false,
+    read: () => ({
+      sessionId: daemon.sessionId,
+      contextKey: JSON.stringify([activeId, selectedProjectPath, threadKey, inThread]),
+      foreground: foreground.current,
+      online: daemon.status === "online" && !daemon.fatal,
+      live: !!daemon.sessionId && daemon.liveSessionIds.includes(daemon.sessionId) && inThread,
+      busy: daemon.busy,
+      loading: daemon.loadingSession,
+      permission: !!daemon.permission,
+      interruption: menuOpen || picker || commandsOpen || newChatOpen || attachOpen || thought
+        ? "Close the open menu or sheet, then resume hands-free."
+        : !daemon.busy && daemon.turns.at(-1)?.role === "system"
+          ? "The conversation reported an error. Check it before using hands-free." : undefined,
+      voiceEnabled: voice.read().enabled,
+      speaking: voice.read().speaking,
+      manualRecording: dictation.listening,
+      draft: composer.current?.getDraft() ?? "",
+      draftVersion: composer.current?.getDraftVersion() ?? 0,
+      attachments: attachmentsRef.current.length,
+    }),
+  });
+  handsFreeBridge.current = handsFree.binding;
 
   /**
    * Sending a failed prompt again, from the transcript.
@@ -1120,9 +1160,10 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   }, [daemon.sessionId, cancelDictation]);
 
   const openAttach = useCallback(() => {
+    pauseHandsFree();
     Keyboard.dismiss();
     setAttachOpen(true);
-  }, []);
+  }, [pauseHandsFree]);
   const closeAttach = useCallback(() => setAttachOpen(false), []);
 
   const removeAttachment = useCallback((id: string) => {
@@ -1529,8 +1570,9 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
             showCommands={daemon.commands.length > 0}
             onCommands={openCommands}
             onSend={send}
+            onManualEdit={pauseHandsFree}
             busy={showsStop(daemon)}
-            onStop={daemon.cancel}
+            onStop={() => { pauseHandsFree(); daemon.cancel(); }}
             // Never locked by the network. A dead socket used to disable the
             // whole composer — no keyboard, no typing, nothing — which is the
             // one moment a phone is most likely to be in a tunnel and the user
@@ -1554,8 +1596,9 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
             attachments={attachments}
             onAttach={openAttach}
             onRemoveAttachment={removeAttachment}
-            dictation={dictation}
+            dictation={handsFree.dictation}
             readAloud={voice.controls}
+            handsFree={handsFree.controls}
           />
         </View>
       </Reanimated.View>

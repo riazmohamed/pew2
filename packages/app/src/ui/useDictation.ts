@@ -32,6 +32,14 @@ export interface UseDictationOptions {
   onCaptureEnd?: () => void;
 }
 
+export interface AutomaticDictationObserver {
+  current(): boolean;
+  started(): void;
+  transcript(utterance: string): void;
+  ended(): void;
+  failed(): void;
+}
+
 export interface Dictation {
   /** False on a device with no recogniser, so the button can be hidden entirely. */
   available: boolean;
@@ -41,17 +49,23 @@ export interface Dictation {
   cancel: () => void;
 }
 
-export function useDictation({ draft, onDraftChange, onMessage, onCaptureStart, onCaptureEnd }: UseDictationOptions): Dictation {
+export interface AutomaticDictation extends Dictation {
+  startAutomatic: (observer: AutomaticDictationObserver) => Promise<boolean>;
+  /** Requests final results; only native onEnd confirms completion. */
+  finishAutomatic: () => void;
+}
+
+export function useDictation({ draft, onDraftChange, onMessage, onCaptureStart, onCaptureEnd }: UseDictationOptions): AutomaticDictation {
   const [listening, setListening] = useState(false);
   const captureStartRef = useRef(onCaptureStart);
   captureStartRef.current = onCaptureStart;
   const captureEndRef = useRef(onCaptureEnd);
   captureEndRef.current = onCaptureEnd;
-  // One place for "listening ended": stop, cancel, error and end all clear the
-  // flag, and a hook on the flag catches every one of them.
-  useEffect(() => {
-    if (!listening) captureEndRef.current?.();
-  }, [listening]);
+  const generation = useRef(0);
+  const releaseCapture = useCallback(() => {
+    setListening(false);
+    captureEndRef.current?.();
+  }, []);
   const session = useRef<DictationSession | undefined>(undefined);
   const state = useRef<DictationState>(beginDictation(""));
   // Read at start rather than captured in a dep: the draft changes on every
@@ -78,80 +92,97 @@ export function useDictation({ draft, onDraftChange, onMessage, onCaptureStart, 
   const wanted = useRef(false);
 
   const stopSession = useCallback(() => {
+    ++generation.current;
     wanted.current = false;
     session.current?.cancel();
     session.current = undefined;
-    setListening(false);
-  }, []);
+    releaseCapture();
+  }, [releaseCapture]);
 
   // A mic left open outlives the screen that opened it.
   useEffect(() => stopSession, [stopSession]);
 
-  const toggle = useCallback(() => {
-    if (wanted.current) {
-      wanted.current = false;
-      // A deliberate stop asks for the final result, so the last few words the
-      // recogniser had not committed still land in the draft.
-      session.current?.stop();
-      session.current = undefined;
-      setListening(false);
-      haptics.finished();
-      return;
-    }
-
+  const start = useCallback(async (observer?: AutomaticDictationObserver): Promise<boolean> => {
+    if (wanted.current || (observer && !observer.current())) return false;
+    const ticket = ++generation.current;
+    let ended = false;
+    const current = () => ticket === generation.current && !ended && (!observer || observer.current());
     wanted.current = true;
     state.current = beginDictation(draftRef.current());
     setListening(true);
     haptics.sent();
     captureStartRef.current?.();
 
-    void startDictation({
-      // `isFinal` is not cosmetic: under `continuous`, the recogniser restarts
-      // from empty after every final result, so a final that is not folded into
-      // the base gets overwritten by the next sentence.
-      onTranscript: (transcript, isFinal) => {
-        const next = applyTranscript(state.current, transcript, isFinal);
-        state.current = next.state;
-        changeRef.current(next.draft);
-      },
-      onError: (code, detail) => {
-        wanted.current = false;
-        session.current = undefined;
-        setListening(false);
-        const message = dictationMessage(code, detail);
-        if (message) {
-          messageRef.current(message);
-          haptics.failed();
+    try {
+      const started = await startDictation({
+        canStart: () => current() && wanted.current,
+        onStart: () => { if (current()) observer?.started(); },
+        // Keep the existing merge rule: isFinal alone is never a boundary.
+        onTranscript: (transcript, isFinal) => {
+          if (!current()) return;
+          const next = applyTranscript(state.current, transcript, isFinal);
+          state.current = next.state;
+          changeRef.current(next.draft);
+          observer?.transcript(transcript);
+        },
+        onError: (code, detail) => {
+          if (!current()) return;
+          wanted.current = false;
+          releaseCapture();
+          observer?.failed();
+          const message = dictationMessage(code, detail);
+          if (message) { messageRef.current(message); haptics.failed(); }
+        },
+        onEnd: () => {
+          if (!current()) return;
+          ended = true;
+          wanted.current = false;
+          session.current = undefined;
+          releaseCapture();
+          observer?.ended();
+        },
+      });
+      if (!current() || !wanted.current || !started) {
+        started?.cancel();
+        if (ticket === generation.current) {
+          wanted.current = false;
+          releaseCapture();
         }
-      },
-      onEnd: () => {
-        wanted.current = false;
-        session.current = undefined;
-        setListening(false);
-      },
-    }).then((started) => {
-      if (!started) {
-        // Permission refused, or the module is missing. `onError` has already
-        // said so; this only clears the optimistic listening state.
-        wanted.current = false;
-        setListening(false);
-        return;
-      }
-      // Tapped off while the permission dialog was up: the recogniser started
-      // anyway and would otherwise hold the microphone with nothing watching.
-      if (!wanted.current) {
-        started.cancel();
-        return;
+        return false;
       }
       session.current = started;
-    });
-  }, []);
+      return true;
+    } catch {
+      if (current()) {
+        wanted.current = false;
+        releaseCapture();
+        observer?.failed();
+        messageRef.current(dictationMessage("audio-capture"));
+      }
+      return false;
+    }
+  }, [releaseCapture]);
+
+  const toggle = useCallback(() => {
+    if (wanted.current) {
+      wanted.current = false;
+      session.current?.stop();
+      // Manual UI remains optimistic, but keep the handle until native end so
+      // cancellation can still invalidate the final-result listeners.
+      releaseCapture();
+      haptics.finished();
+      return;
+    }
+    void start(); // Never wait on playback to start manual dictation.
+  }, [releaseCapture, start]);
+
+  const finishAutomatic = useCallback(() => { session.current?.stop(); }, []);
 
   // Memoized: `Composer` is memoized precisely because streamed chunks
   // re-render this screen many times a second, and a fresh object here would
   // re-render it on every one of them.
   return useMemo(
-    () => ({ available, listening, toggle, cancel: stopSession }),
-    [available, listening, toggle, stopSession],
+    () => ({ available, listening, toggle, cancel: stopSession, startAutomatic: start, finishAutomatic }),
+    [available, listening, toggle, stopSession, start, finishAutomatic],
   );
 }

@@ -568,6 +568,62 @@ export const Workspace = z.object({
 });
 
 /**
+ * App -> daemon. Which dev servers are listening on the desktop right now?
+ *
+ * The phone cannot reach `localhost:3000` in a transcript — that is its own
+ * loopback. The daemon is the only party that can say what is actually
+ * listening on the machine and what its LAN address is, so the app can open the
+ * same page over Wi-Fi, or ask for a rendered snapshot when it is not there.
+ *
+ * Asked on demand, alongside `workspace.status`: the set changes as the agent
+ * starts and stops servers, so it is re-asked whenever a turn ends.
+ */
+export const PreviewListRequest = z.object({
+  t: z.literal("preview.list"),
+  /** Echoed so a client can drop an answer for a conversation it left. */
+  sessionId: z.string().optional(),
+});
+
+/** One TCP port a process on the desktop is listening on. */
+export const PreviewServer = z.object({
+  port: z.number().int().positive(),
+  /** The listening process's command name (`node`, `bun`, `python3`). */
+  process: z.string(),
+});
+
+/** Daemon -> app. The answer to `preview.list`. */
+export const PreviewServers = z.object({
+  t: z.literal("preview.servers"),
+  sessionId: z.string().optional(),
+  /**
+   * Addresses the desktop answers on from the same network, in the order the
+   * daemon prints them when pairing. Empty when it has no LAN interface.
+   */
+  lanHosts: z.array(z.string()),
+  servers: z.array(PreviewServer),
+});
+
+/**
+ * App -> daemon. Render a page from a local dev server as a picture.
+ *
+ * For a phone that is not on the desktop's network. Only a *port* is named,
+ * never a URL: the daemon renders `http://127.0.0.1:<port><path>` and refuses
+ * a port nothing is listening on, so this cannot be turned into a fetch of an
+ * arbitrary address from inside the user's LAN. Answered with `image`, the same
+ * reply as `image.fetch`, and for the same reason never a session event.
+ */
+export const PreviewSnapshotRequest = z.object({
+  t: z.literal("preview.snapshot"),
+  requestId: z.string(),
+  sessionId: z.string().optional(),
+  port: z.number().int().positive(),
+  /** Absolute path on that server, `/` when absent. */
+  path: z.string().optional(),
+  /** CSS viewport width in pixels; the phone's own width by default. */
+  width: z.number().int().positive().optional(),
+});
+
+/**
  * Daemon -> relay -> app. An ordered, append-only event for a session.
  * `payload` mirrors the ACP `session/update` notification so the app renders
  * agent output without pew2 inventing a second content model.
@@ -747,6 +803,8 @@ export const ClientMessage = z.discriminatedUnion("t", [
   WorkspaceRequest,
   WorkspacesRequest,
   PushRegister,
+  PreviewListRequest,
+  PreviewSnapshotRequest,
 ]);
 
 export const ServerMessage = z.discriminatedUnion("t", [
@@ -762,6 +820,7 @@ export const ServerMessage = z.discriminatedUnion("t", [
   ImageData,
   Workspace,
   Workspaces,
+  PreviewServers,
   DeviceJoined,
   ErrorMessage,
 ]);
@@ -797,5 +856,9 @@ export type PushRegister = z.output<typeof PushRegister>;
 export type DeviceJoined = z.output<typeof DeviceJoined>;
 export type WorkspaceEntry = z.output<typeof WorkspaceEntry>;
 export type Workspaces = z.output<typeof Workspaces>;
+export type PreviewListRequest = z.output<typeof PreviewListRequest>;
+export type PreviewServer = z.output<typeof PreviewServer>;
+export type PreviewServers = z.output<typeof PreviewServers>;
+export type PreviewSnapshotRequest = z.output<typeof PreviewSnapshotRequest>;
 export type ClientMessage = z.output<typeof ClientMessage>;
 export type ServerMessage = z.output<typeof ServerMessage>;

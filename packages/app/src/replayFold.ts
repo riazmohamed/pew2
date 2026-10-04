@@ -10,7 +10,7 @@
  * Pure and React-free so the fold is directly testable.
  */
 import { foldActivity, IDLE_ACTIVITY, type Activity } from "./activity";
-import { isEmptyChunk, readChunk, type Chunk } from "./chunks";
+import { isEmptyChunk, readChunk, readPlan, type Chunk, type PlanEntry } from "./chunks";
 import { joinChunks } from "./chunkJoin";
 import { readUsage, type ContextUsage } from "./contextUsage";
 import { dedupeImages } from "./images";
@@ -141,6 +141,7 @@ interface FoldState {
   busy: boolean;
   permission?: unknown;
   usage?: ContextUsage;
+  plan?: PlanEntry[];
 }
 
 /**
@@ -339,6 +340,9 @@ export function foldSessionEvents<S extends FoldState>(
   // reconnect until the agent happened to send another one — which, mid-
   // conversation, is the moment it is most worth knowing.
   let usage = prev.usage;
+  // The plan is the same case: each statement is the whole list, so the last
+  // one in the batch is the agent's current plan.
+  let plan = prev.plan;
   // `busy` and `permission` are deliberately left alone. They describe a turn
   // in progress *now*: a replay is history, so its last chunk is not work
   // being done (a looping "working" indicator on every resumed thread) and a
@@ -353,6 +357,11 @@ export function foldSessionEvents<S extends FoldState>(
     const replayedUsage = readUsage(payload);
     if (replayedUsage) {
       usage = replayedUsage;
+      continue;
+    }
+    const replayedPlan = readPlan(payload);
+    if (replayedPlan) {
+      plan = replayedPlan;
       continue;
     }
     const chunk = readChunk(payload);
@@ -370,6 +379,7 @@ export function foldSessionEvents<S extends FoldState>(
     ...prev,
     turns,
     usage,
+    plan,
     sessions: prev.sessions.map((session) => byId.get(session.id) ?? session),
   };
 }

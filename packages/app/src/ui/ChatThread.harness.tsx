@@ -122,6 +122,7 @@ export default function ChatThreadHarness() {
           onAtBottomChange={setAtBottom}
           onOpenThought={() => {}}
           onRetry={() => {}}
+          onOpenTools={() => {}}
         />
 
         <View style={styles.fixtures}>

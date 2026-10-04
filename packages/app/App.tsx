@@ -62,6 +62,9 @@ import { pickFiles, pickPhotos, takePhoto } from "./src/ui/attachmentPicker";
 import { useDictation } from "./src/ui/useDictation";
 import { ApprovalSheet } from "./src/ui/ApprovalSheet";
 import { ThoughtSheet } from "./src/ui/ThoughtSheet";
+import { PreviewSheet } from "./src/ui/PreviewSheet";
+import { ToolSheet } from "./src/ui/ToolSheet";
+import { setDesktopLanHosts } from "./src/ui/links";
 import { applyCommand, type SlashCommand } from "./src/slashCommands";
 import { CircleButton } from "./src/ui/controls";
 import { haptics } from "./src/ui/haptics";
@@ -569,6 +572,8 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   // under it instead of always at the gutter.
   const [picker, setPicker] = useState<"model" | "mode" | null>(null);
   const [commandsOpen, setCommandsOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [newChatOpen, setNewChatOpen] = useState(false);
   // The reasoning currently being read, if any. Held here rather than per turn
   // so the sheet lives outside the recycling list — a cell scrolled off screen
@@ -1220,6 +1225,16 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   // every keystroke of the draft, which a fresh handler each render would undo.
   const openCommands = useCallback(() => setCommandsOpen(true), []);
   const closeCommands = useCallback(() => setCommandsOpen(false), []);
+  const openPreview = useCallback(() => {
+    Keyboard.dismiss();
+    setPreviewOpen(true);
+  }, []);
+  const closePreview = useCallback(() => setPreviewOpen(false), []);
+  const openTools = useCallback(() => {
+    Keyboard.dismiss();
+    setToolsOpen(true);
+  }, []);
+  const closeTools = useCallback(() => setToolsOpen(false), []);
 
   // Stable across renders: the transcript's cells memo on this callback, and a
   // fresh identity per render would re-render every turn on every chunk.
@@ -1253,6 +1268,11 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
     }),
     [daemon.images, daemon.fetchImage, daemon.retryImage],
   );
+
+  // A `localhost` link in a transcript is re-addressed to the desktop when
+  // tapped; the addresses are read at tap time so the markdown stays memoised.
+  const lanHosts = daemon.preview?.lanHosts;
+  useEffect(() => setDesktopLanHosts(lanHosts ?? []), [lanHosts]);
 
   return (
     <ImageResolverProvider value={imageResolver}>
@@ -1406,6 +1426,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
             onAtBottomChange={setAtBottom}
             onOpenThought={openThought}
             onRetry={retrySend}
+            onOpenTools={openTools}
           />
         ) : !daemon.loadingSession ? (
           // Cancels half the pane's lift, so the greeting settles in the middle
@@ -1518,6 +1539,9 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
             onCommands={openCommands}
             onProjectDetails={openContext}
             selectors={composerSelectors}
+            showPreview={(daemon.preview?.servers.length ?? 0) > 0}
+            onPreview={openPreview}
+            plan={daemon.plan}
             onSend={send}
             busy={showsStop(daemon)}
             onStop={daemon.cancel}
@@ -1571,6 +1595,24 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
       <AttachmentSheet visible={attachOpen} onSelect={pickAttachment} onClose={closeAttach} />
 
       <ThoughtSheet visible={thought !== null} text={thought ?? ""} onClose={closeThought} />
+
+      {/* Live while the turn runs, then the receipt's copy: the activity is
+          reset to idle the moment a turn ends, and the sheet must not go
+          blank under the user's thumb at that instant. */}
+      <ToolSheet
+        visible={toolsOpen}
+        tools={daemon.activity.tools.length > 0 ? daemon.activity.tools : (daemon.receipt?.runs ?? [])}
+        onClose={closeTools}
+      />
+
+      <PreviewSheet
+        visible={previewOpen}
+        lanHosts={daemon.preview?.lanHosts ?? []}
+        servers={daemon.preview?.servers ?? []}
+        images={daemon.images}
+        onSnapshot={daemon.snapshotPreview}
+        onClose={closePreview}
+      />
 
       {/* One picker, pointed at whichever pill opened it. The mode selector is
           excluded from the model menu so each pill owns exactly one list. */}

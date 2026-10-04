@@ -202,6 +202,7 @@ function Conversation({ drawerOpen }: { drawerOpen: boolean }) {
           onAtBottomChange={() => {}}
           onOpenThought={() => {}}
           onRetry={() => {}}
+          onOpenTools={() => {}}
         />
         <View style={styles.dock}>
           <Composer value="" onChangeText={() => {}} onSend={() => {}} />

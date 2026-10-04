@@ -16,8 +16,11 @@ export interface ContextBarProps {
   showCommands: boolean;
   onCommands: () => void;
   onDetails: () => void;
+  /** Preview button is offered only while something is listening on the desktop. */
+  showPreview?: boolean;
+  onPreview?: () => void;
 }
-function ContextBarView({ workspace, usage, showCommands, onCommands, onDetails }: ContextBarProps) {
+function ContextBarView({ workspace, usage, showCommands, onCommands, onDetails, showPreview, onPreview }: ContextBarProps) {
   const details = contextDetails(workspace, usage);
   const { fontScale } = useWindowDimensions();
   // Keep each control on one line, but let the row grow at accessibility text
@@ -27,6 +30,10 @@ function ContextBarView({ workspace, usage, showCommands, onCommands, onDetails 
   const items: Array<{ key: string; node: React.ReactNode; elastic?: boolean }> = [];
   if (showCommands) items.push({ key: "commands", node: <Pressable style={({ pressed }) => [styles.item, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Show commands" onPress={onCommands}>
     <Text style={styles.label} numberOfLines={1}>Commands</Text>
+    <Ionicons name="chevron-forward" size={12} color={theme.color.textDim} style={styles.chevron} />
+  </Pressable> });
+  if (showPreview && onPreview) items.push({ key: "preview", node: <Pressable style={({ pressed }) => [styles.item, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Preview the running site" onPress={onPreview}>
+    <Text style={styles.label} numberOfLines={1}>Preview</Text>
     <Ionicons name="chevron-forward" size={12} color={theme.color.textDim} style={styles.chevron} />
   </Pressable> });
   items.push({ key: "project", elastic: true, node: <Pressable style={({ pressed }) => [styles.item, styles.project, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`${details.project}. Show project details`} onPress={onDetails}>

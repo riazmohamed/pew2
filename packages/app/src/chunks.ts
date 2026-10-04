@@ -115,3 +115,31 @@ export function readChunk(payload: any): Chunk | undefined {
   }
   return undefined;
 }
+
+/**
+ * An ACP plan: the agent's own to-do list for the task, restated in full on
+ * every change. The whole `entries` list replaces the last one; there is no
+ * per-entry update, so the caller holds the latest and nothing else.
+ */
+export interface PlanEntry {
+  content: string;
+  status: "pending" | "in_progress" | "completed" | "cancelled";
+}
+
+export function readPlan(payload: any): PlanEntry[] | undefined {
+  const update = payload?.update;
+  if (update?.sessionUpdate !== "plan" || !Array.isArray(update.entries)) return undefined;
+  const entries: PlanEntry[] = [];
+  for (const entry of update.entries) {
+    if (typeof entry?.content !== "string" || !entry.content.trim()) continue;
+    const status = entry.status;
+    entries.push({
+      content: entry.content.trim(),
+      status:
+        status === "in_progress" || status === "completed" || status === "cancelled"
+          ? status
+          : "pending",
+    });
+  }
+  return entries;
+}

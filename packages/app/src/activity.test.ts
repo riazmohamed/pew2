@@ -76,6 +76,44 @@ describe("foldActivity", () => {
     const state = foldActivity(IDLE_ACTIVITY, { _meta: { usage: { input: 900, output: 600 } } }, 0);
     expect(state.tokens).toBe(1500);
   });
+
+  test("keeps a diff, output text and locations; an update's content replaces", () => {
+    const state = fold([
+      call("a", {
+        kind: "edit",
+        locations: [{ path: "/repo/a.ts", line: 3 }],
+        content: [{ type: "diff", path: "/repo/a.ts", oldText: "x\n", newText: "y\n" }],
+      }),
+      call("b", { kind: "execute", content: [{ type: "content", content: { type: "text", text: "1 of 1" } }] }),
+      update("b", {
+        status: "completed",
+        content: [
+          { type: "content", content: { type: "text", text: "1 of 1\nok" } },
+          { type: "terminal", terminalId: "t1" },
+          { type: "content", content: { type: "image", data: "..." } },
+        ],
+      }),
+    ]);
+    expect(state.tools[0]).toMatchObject({
+      locations: ["/repo/a.ts"],
+      content: [{ type: "diff", path: "/repo/a.ts", oldText: "x\n", newText: "y\n" }],
+    });
+    expect(state.tools[1]!.content).toEqual([
+      { type: "content", text: "1 of 1\nok" },
+      { type: "terminal" },
+    ]);
+  });
+
+  test("a diff with no old text is a new file, and huge text is clipped", () => {
+    const big = "x".repeat(70_000);
+    const state = fold([
+      call("a", { content: [{ type: "diff", path: "/n", oldText: null, newText: big }] }),
+    ]);
+    const diff = state.tools[0]!.content![0]!;
+    expect(diff.type === "diff" && diff.oldText).toBe("");
+    expect(diff.type === "diff" && diff.newText.length).toBeLessThan(big.length);
+    expect(diff.type === "diff" && diff.newText.endsWith("more characters)")).toBe(true);
+  });
 });
 
 describe("currentTool", () => {

@@ -66,6 +66,8 @@ type Props = {
   onOpenThought: (text: string) => void;
   /** Sends a failed prompt again. Must be stable: cells memo on it. */
   onRetry: (text: string) => void;
+  /** Opens the tool sheet for the running turn or the receipt's turn. */
+  onOpenTools: () => void;
 };
 
 function ChatThreadView(
@@ -83,6 +85,7 @@ function ChatThreadView(
     onAtBottomChange,
     onOpenThought,
     onRetry,
+    onOpenTools,
   }: Props,
   ref: React.Ref<ChatThreadRef>,
 ) {
@@ -193,11 +196,11 @@ function ChatThreadView(
   // changing tool re-renders the same footer instead of remounting it — which
   // would restart the sheen mid-sweep and lose the crossfade between tools.
   const footer = useMemo(() => {
-    if (working) return <ActivityLine activity={activity} />;
+    if (working) return <ActivityLine activity={activity} onPress={onOpenTools} />;
     // Never absent: the footer's own style carries the bottom reading inset, and
     // FlashList only lays that out around a footer that exists.
-    return receipt ? <TurnReceipt receipt={receipt} /> : <SpacerOnly />;
-  }, [activity, receipt, working]);
+    return receipt ? <TurnReceipt receipt={receipt} onPress={onOpenTools} /> : <SpacerOnly />;
+  }, [activity, receipt, working, onOpenTools]);
 
   // The composer grows when it takes focus, and the dock it lives in is an
   // overlay pinned to the bottom edge — so it expands *upwards*, over the

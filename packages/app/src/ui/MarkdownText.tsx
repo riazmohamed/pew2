@@ -14,7 +14,8 @@ import { ChatImage } from "./ChatImage";
 import { isDisplayableImage } from "../images";
 import { writeToClipboard } from "./clipboard";
 import { CopyButton } from "./CopyButton";
-import { linkTarget } from "./links";
+import { lanHostsForLinks, linkTarget } from "./links";
+import { rewriteLocalhost } from "../preview";
 import { fencedCodeContainerStyle, fencedCodeTextStyle } from "./markdownCodeStyles";
 import { boundedMarkdownParagraphStyle, boundedMarkdownRootStyle } from "./messageLayoutStyles";
 import { splitMarkdownBlocks } from "./markdownBlocks";
@@ -336,8 +337,11 @@ export const markdownStyles: Record<MarkdownTone, Partial<MarkdownStyles>> = {
  * unopenable. The alert carries the URL and offers the clipboard, so a link to
  * an app this phone does not have is still a link the user can use.
  */
-export function openLink(url: string): void {
+export function openLink(link: string): void {
   void (async () => {
+    // `localhost` is the desktop's, so the tap goes to the desktop's LAN
+    // address instead. Anything else passes through untouched.
+    const url = rewriteLocalhost(link, lanHostsForLinks());
     const target = linkTarget(url);
     try {
       if (target === "browser") {

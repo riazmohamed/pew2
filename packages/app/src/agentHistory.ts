@@ -58,6 +58,17 @@ export function needsResume(
   return liveSessionIds !== undefined && !liveSessionIds.has(session.id);
 }
 
+/**
+ * The live-session list with one more id, for a conversation the daemon has
+ * just opened.
+ *
+ * Returns the same array when the id is already there, so a caller holding it
+ * in React state can skip the re-render rather than publish an identical list.
+ */
+export function withLiveSession(ids: string[], sessionId: string): string[] {
+  return ids.includes(sessionId) ? ids : [...ids, sessionId];
+}
+
 /** Replace a disk-history stub with its live session without losing its project. */
 export function replaceAgentSessionStub(existing: Session[], live: Session): Session[] {
   if (!live.agentSessionId) return [live, ...existing];

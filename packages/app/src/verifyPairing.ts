@@ -28,8 +28,14 @@ import type { Pairing } from "./pairingLink";
  * Long enough for a phone on mobile data to reach a relay and wake a sleeping
  * Durable Object, short enough that a dead code is not mistaken for a slow one.
  * The user is watching a spinner for this whole time, so it cannot grow much.
+ *
+ * Above Android's 10 second per-address connect timeout on purpose. At 8s, a
+ * Wi-Fi network with dead IPv6 failed every pairing before OkHttp reached the
+ * IPv4 address. The app now tries IPv4 first (`plugins/withIpv4FirstWebSocket`),
+ * and this margin covers the reverse case: a network where IPv4 is the dead
+ * family and IPv6 the working one.
  */
-export const VERIFY_TIMEOUT_MS = 8000;
+export const VERIFY_TIMEOUT_MS = 15_000;
 
 /**
  * What the user sees when the handshake never happens.

@@ -14,7 +14,12 @@ import { SecureChannel, e2e, envelopeHeader, wire } from "@pew2/protocol";
 
 const { WIRE_VERSION } = wire;
 import { USE_FIXTURES, isFixtureSession, sampleSessions } from "./fixtures";
-import { mergeAgentSessions, needsResume, replaceAgentSessionStub } from "./agentHistory";
+import {
+  mergeAgentSessions,
+  needsResume,
+  replaceAgentSessionStub,
+  withLiveSession,
+} from "./agentHistory";
 import { sessionCacheKey, toCachedSessions, type CachedSession } from "./sessionCache";
 import { receiptOnOpen, receiptOnReplay, recordReceipt } from "./turnReceipts";
 import {
@@ -298,12 +303,17 @@ const LOADING_SESSION_TIMEOUT = 20_000;
 /**
  * How long a socket may stay in CONNECTING before it is treated as dead.
  *
- * Ten seconds is well past any real handshake, including a relay cold start,
- * and well short of the operating system's own connect timeout — which is the
- * point. The platform does eventually give up; it just does so on a timescale
- * where the user has already decided the app is broken.
+ * Fifteen seconds is well past any real handshake, including a relay cold
+ * start, and well short of the operating system's own connect timeout — which
+ * is the point. The platform does eventually give up; it just does so on a
+ * timescale where the user has already decided the app is broken.
+ *
+ * It must stay above Android's 10 second per-address connect timeout. At
+ * exactly 10s this raced OkHttp's fallback from a dead address to a working
+ * one, and lost on any Wi-Fi with broken IPv6. The app now tries IPv4 first
+ * (`plugins/withIpv4FirstWebSocket`); this margin covers the reverse case.
  */
-const CONNECT_TIMEOUT = 10_000;
+const CONNECT_TIMEOUT = 15_000;
 
 /**
  * `WebSocket.CONNECTING`, by value.
@@ -1560,6 +1570,16 @@ export function useDaemon(
         // before the announcement that would otherwise still call it stale.
         if (message.t === "session.started" && message.sessionId) {
           liveSessions.current = new Set(liveSessions.current ?? []).add(message.sessionId);
+          // The state copy too, not only the ref. Hands-free reads
+          // `liveSessionIds` to decide whether the conversation on screen can
+          // take a turn, and it used to learn of a new or resumed one only at
+          // the next `providers` announcement, so it refused with "Open a live
+          // conversation first" in the conversation the user had just opened.
+          const startedId = message.sessionId;
+          setState((s) => {
+            const ids = withLiveSession(s.liveSessionIds, startedId);
+            return ids === s.liveSessionIds ? s : { ...s, liveSessionIds: ids };
+          });
 
           // This conversation has a real id now, so the messages waiting on the
           // name it used to have are addressed to it and can go. Two names lead

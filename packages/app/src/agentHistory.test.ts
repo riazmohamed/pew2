@@ -10,6 +10,7 @@ import {
   isAgentSessionStub,
   needsResume,
   replaceAgentSessionStub,
+  withLiveSession,
 } from "./agentHistory";
 import type { Session } from "./useDaemon";
 
@@ -211,4 +212,13 @@ test("a resumed conversation keeps what the phone knew about it", () => {
   // The turn this device timed before the daemon forgot the session. Losing it
   // here is why "Answered in 5s" vanished on every reopen that resumes.
   expect(resumed!.receipt).toEqual({ verb: "Answered", duration: "5s", tools: 0, failed: 0, runs: [] });
+});
+
+test("a conversation the daemon just opened joins the live list", () => {
+  expect(withLiveSession(["a"], "b")).toEqual(["a", "b"]);
+});
+
+test("an id already live returns the same list, so state does not re-render", () => {
+  const ids = ["a", "b"];
+  expect(withLiveSession(ids, "b")).toBe(ids);
 });

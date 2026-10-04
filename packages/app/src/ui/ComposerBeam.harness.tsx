@@ -42,7 +42,7 @@ function Screen() {
         <Pressable style={styles.fixture} onPress={() => {composer.current?.setDraft(Array.from({length:12},(_,i)=>`Line ${i+1}: keep the draft visible.`).join("\n")); composer.current?.focus();}}><Text style={styles.label}>Long draft</Text></Pressable>
         <Pressable style={styles.fixture} onPress={() => {setActivityIndex((prev)=>(prev+1)%KINDS.length);setBusy(true);}}><Text style={styles.label}>Next activity</Text></Pressable>
       </View>
-      {busy && <ActivityLine activity={activity} />}
+      {busy && <ActivityLine activity={activity} onPress={noop} />}
       <View style={styles.space} />
       <ComposerDock
         ref={composer} style={{paddingHorizontal:theme.gutter,paddingBottom:insets.bottom + 8}}

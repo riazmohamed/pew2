@@ -396,3 +396,28 @@ test("reconnecting with a rotated token replaces the old one", async () => {
 
   expect(daemon.pushTargets.list()).toEqual([{ token: "ExponentPushToken[new]", platform: "ios" }]);
 });
+
+test("preview.list answers with what is listening and how to reach it", async () => {
+  const { daemon } = stubbed();
+
+  const out = await send(daemon, { t: "preview.list", sessionId: "s1" });
+
+  expect(out[0]?.t).toBe("preview.servers");
+  expect(out[0]?.sessionId).toBe("s1");
+  expect(Array.isArray(out[0]?.lanHosts)).toBe(true);
+  expect(Array.isArray(out[0]?.servers)).toBe(true);
+});
+
+test("preview.snapshot refuses a port nothing listens on, as an image error", async () => {
+  // The whole security posture of the snapshot: a client names a port, never a
+  // host, and even the port is only honoured when something is bound to it.
+  // Answered in the `image` shape so the app shows the reason in the frame.
+  const { daemon } = stubbed();
+
+  const out = await send(daemon, { t: "preview.snapshot", requestId: "r1", port: 1 });
+
+  expect(out[0]?.t).toBe("image");
+  expect(out[0]?.requestId).toBe("r1");
+  expect(out[0]?.dataUri).toBeUndefined();
+  expect(out[0]?.error).toContain("Nothing is listening on port 1");
+});

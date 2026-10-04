@@ -33,10 +33,12 @@ import { View, type StyleProp, type ViewStyle } from "react-native";
 import { SETTLE_MS, heightAction } from "../settledHeight";
 import type { PendingAttachment } from "../attachments";
 import type { ContextUsage } from "../contextUsage";
+import type { PlanEntry } from "../chunks";
 import type { Workspace } from "../useDaemon";
 import type { Dictation } from "./useDictation";
 import { Composer, type ComposerHandle, type ComposerSelector } from "./Composer";
 import { ContextBar } from "./ContextBar";
+import { PlanCard } from "./PlanCard";
 import { SpokenReplyControls } from "./SpokenReplyControls";
 import type { ReadAloudControls } from "./useReadAloud";
 import type { HandsFreeControls } from "./useHandsFree";
@@ -70,6 +72,10 @@ interface Props {
   showCommands: boolean;
   onCommands: () => void;
   onProjectDetails: () => void;
+  showPreview?: boolean;
+  onPreview?: () => void;
+  /** The agent's plan for this conversation, when it sent one. */
+  plan?: readonly PlanEntry[];
   /**
    * Send the draft, answering whether it actually went.
    *
@@ -114,6 +120,9 @@ function ComposerDockView(
     showCommands,
     onCommands,
     onProjectDetails,
+    showPreview,
+    onPreview,
+    plan,
     onSend,
     onManualEdit,
     busy,
@@ -199,13 +208,18 @@ function ComposerDockView(
           fill, uncommitted work, and the commands the agent offers (an empty
           sheet is worse than no button). Never while typing: the draft is the
           subject then, and the row would only crowd it. */}
-      {!typing && (showCommands || workspace || usage) && (
+      {/* The plan, when there is one in progress; hidden while typing for the
+          same reason as the row below. */}
+      {!typing && plan && <PlanCard plan={plan} />}
+      {!typing && (showCommands || showPreview || workspace || usage) && (
         <ContextBar
           workspace={workspace}
           usage={usage}
           showCommands={showCommands}
           onCommands={onCommands}
           onDetails={onProjectDetails}
+          showPreview={showPreview}
+          onPreview={onPreview}
         />
       )}
       {/* Hidden while typing for the same reason as the context row, unless

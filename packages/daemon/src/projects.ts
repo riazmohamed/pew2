@@ -72,3 +72,50 @@ export function sessionsInProject<T extends SessionLike>(
 ): T[] {
   return sessions.filter((session) => session.cwd === cwd).slice(0, limit);
 }
+
+/**
+ * The capped recent list, with one row guaranteed per project.
+ *
+ * A flat "newest N" cap is a recent-work window only while the user works in
+ * one or two repos: with twenty-eight projects sharing thirty rows, a repo
+ * nobody touched for a week has no row at all, and its conversations read as
+ * lost rather than as old. So the first pass takes the newest conversation of
+ * every project, oldest projects last, and the second pass spends whatever is
+ * left on the newest conversations overall. A quiet repo keeps exactly one
+ * visible row however busy everything else is; a busy repo keeps as many as
+ * its share of the remainder.
+ *
+ * The result is sorted newest first regardless of which pass picked a row, so
+ * the drawer reads as a timeline rather than as a round-robin. Sessions with
+ * no project share one anonymous group: an unplaced conversation is still one
+ * the user started, and hiding all of them to save a single slot would trade a
+ * row for a disappearance.
+ */
+export function stratifiedSessions<T extends SessionLike>(
+  sessions: readonly T[],
+  limit: number,
+): T[] {
+  if (limit <= 0) return [];
+  const ordered = [...sessions].sort((a, b) =>
+    (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""),
+  );
+
+  const picked: T[] = [];
+  const taken = new Set<T>();
+  const represented = new Set<string>();
+  for (const session of ordered) {
+    if (picked.length >= limit) break;
+    const group = session.cwd?.trim() ? session.cwd : "";
+    if (represented.has(group)) continue;
+    represented.add(group);
+    picked.push(session);
+    taken.add(session);
+  }
+  for (const session of ordered) {
+    if (picked.length >= limit) break;
+    if (taken.has(session)) continue;
+    picked.push(session);
+  }
+
+  return picked.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+}

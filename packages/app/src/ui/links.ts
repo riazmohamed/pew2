@@ -49,3 +49,23 @@ export function linkTarget(url: string): LinkTarget {
   if (scheme === "http" || scheme === "https") return "browser";
   return "external";
 }
+
+/**
+ * The desktop's LAN addresses, for re-addressing `localhost` links.
+ *
+ * `http://localhost:3000` in a transcript is the desktop's loopback and a dead
+ * link on the phone. The daemon reports the addresses it answers on, and a tap
+ * swaps the host at the moment of opening (`preview.ts`). Held here, not
+ * threaded through props: the link handler is module-level so every markdown
+ * block can stay memoised on its text, and this is a fact about the machine
+ * that a tap reads once.
+ */
+let desktopLanHosts: readonly string[] = [];
+
+export function setDesktopLanHosts(hosts: readonly string[]): void {
+  desktopLanHosts = hosts;
+}
+
+export function lanHostsForLinks(): readonly string[] {
+  return desktopLanHosts;
+}

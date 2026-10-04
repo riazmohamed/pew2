@@ -10,7 +10,7 @@
  * It is replaced by the activity line again the moment the next prompt is sent.
  */
 import { memo, useEffect, useRef } from "react";
-import { Animated, StyleSheet, Text } from "react-native";
+import { Animated, Pressable, StyleSheet, Text } from "react-native";
 import { theme } from "../theme";
 import { receiptText, type TurnReceipt as Receipt } from "../activity";
 import { useReducedMotion } from "./useReducedMotion";
@@ -20,7 +20,14 @@ import { useStatusRowHeight } from "./useStatusRowHeight";
 /** Slower than a control's transition: this arrives, it does not respond. */
 const FADE_DURATION = 260;
 
-function TurnReceiptView({ receipt }: { receipt: Receipt }) {
+function TurnReceiptView({
+  receipt,
+  onPress,
+}: {
+  receipt: Receipt;
+  /** Opens the turn's tools: each one's title, and its diff or output. */
+  onPress: () => void;
+}) {
   const reduceMotion = useReducedMotion();
   const height = useStatusRowHeight();
   const fade = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
@@ -42,6 +49,13 @@ function TurnReceiptView({ receipt }: { receipt: Receipt }) {
   const text = receiptText(receipt);
 
   return (
+    <Pressable
+      onPress={onPress}
+      // A plain answer has nothing to open; the tap only exists with tools.
+      disabled={receipt.runs.length === 0}
+      accessibilityRole={receipt.runs.length > 0 ? "button" : undefined}
+      accessibilityHint={receipt.runs.length > 0 ? "Shows what each tool did" : undefined}
+    >
     <Animated.View
       style={[styles.row, { height, opacity: fade }]}
       accessible
@@ -57,6 +71,7 @@ function TurnReceiptView({ receipt }: { receipt: Receipt }) {
         {text}
       </Text>
     </Animated.View>
+    </Pressable>
   );
 }
 

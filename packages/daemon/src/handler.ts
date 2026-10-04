@@ -17,6 +17,8 @@ import { loadImage } from "./images.js";
 import { workspaceStatus } from "./git.js";
 import { resolveWorkspace } from "./workspace.js";
 import { discoverRepos, listDirectory } from "./workspaces.js";
+import { listeningPorts, snapshot } from "./preview.js";
+import { lanAddresses } from "./pairing.js";
 import { wire } from "@pew2/protocol";
 import { pushFinishedTurn } from "./push.js";
 
@@ -441,6 +443,39 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           sessionId: message.sessionId,
           ...(await workspaceStatus(root)),
         });
+        break;
+      }
+
+      case "preview.list": {
+        // What is listening on this machine, plus how to reach it over the
+        // LAN. Replied, not logged: it describes the machine now, and a replay
+        // would restate servers long since stopped.
+        reply({
+          t: "preview.servers",
+          sessionId: message.sessionId,
+          lanHosts: lanAddresses(),
+          servers: await listeningPorts(),
+        });
+        break;
+      }
+
+      case "preview.snapshot": {
+        // Rendered from a port, never a URL, and the port is re-checked
+        // against what is listening *now* rather than what was announced: a
+        // stale list would let a request name whatever took the port since.
+        // Same reply shape as `image.fetch`, for the same reason it is a reply.
+        const uri = `http://127.0.0.1:${message.port}${message.path ?? "/"}`;
+        try {
+          const image = await snapshot({
+            port: message.port,
+            path: message.path,
+            width: message.width,
+            listening: await listeningPorts(),
+          });
+          reply({ t: "image", requestId: message.requestId, uri, ...image });
+        } catch (error) {
+          reply({ t: "image", requestId: message.requestId, uri, error: humanError(error) });
+        }
         break;
       }
 

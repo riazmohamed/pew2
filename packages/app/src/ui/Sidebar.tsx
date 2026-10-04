@@ -563,10 +563,11 @@ function SidebarView({
             }}
           />
 
-          {/* "Latest chats", not "Chat history": the list is capped at the
-              newest conversations, and calling that history promises an archive
-              it does not have — the project selector above is what reaches the
-              rest. */}
+          {/* "Latest chats", not "Chat history": the list is a capped window,
+              and calling that history promises an archive it does not have.
+              The window guarantees every project its newest conversation, so a
+              quiet repo cannot vanish from it — but a project's full archive
+              is still the project selector above, not this list. */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionLabel}>Latest chats</Text>
 

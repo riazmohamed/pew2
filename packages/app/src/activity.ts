@@ -31,12 +31,74 @@ export type ToolKind =
 
 export type ToolStatus = "pending" | "in_progress" | "completed" | "failed";
 
+/**
+ * What a tool produced, as ACP `ToolCallContent`.
+ *
+ * A `diff` is the file's old and new text (never a patch); `content` is the
+ * tool's own text output; a `terminal` is only a handle, since this client
+ * does not host terminals, so it is kept for the count and shown as such.
+ */
+export type ToolContent =
+  | { type: "diff"; path: string; oldText: string; newText: string }
+  | { type: "content"; text: string }
+  | { type: "terminal" };
+
 export interface ToolRun {
   id: string;
   /** The agent's own human-readable title, e.g. "Reading configuration file". */
   title: string;
   kind: ToolKind;
   status: ToolStatus;
+  /** Files the tool named, e.g. the path an edit touched. */
+  locations?: string[];
+  /** Present once the tool has reported output. Absent means none yet. */
+  content?: ToolContent[];
+}
+
+/**
+ * Per text field. A diff of a generated lockfile is megabytes, and every turn's
+ * runs stay in memory for the receipt; past this the tail is cut and marked.
+ */
+const MAX_CONTENT_CHARS = 60_000;
+
+function clip(text: string): string {
+  return text.length > MAX_CONTENT_CHARS
+    ? `${text.slice(0, MAX_CONTENT_CHARS)}\n… (${text.length - MAX_CONTENT_CHARS} more characters)`
+    : text;
+}
+
+/** ACP `content: ToolCallContent[]`, keeping only the shapes the sheet draws. */
+export function readToolContent(value: unknown): ToolContent[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: ToolContent[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const entry = item as Record<string, unknown>;
+    if (entry.type === "diff" && typeof entry.path === "string" && typeof entry.newText === "string") {
+      out.push({
+        type: "diff",
+        path: entry.path,
+        oldText: clip(typeof entry.oldText === "string" ? entry.oldText : ""),
+        newText: clip(entry.newText),
+      });
+    } else if (entry.type === "content") {
+      const block = entry.content as Record<string, unknown> | undefined;
+      if (block?.type === "text" && typeof block.text === "string" && block.text.trim()) {
+        out.push({ type: "content", text: clip(block.text) });
+      }
+    } else if (entry.type === "terminal") {
+      out.push({ type: "terminal" });
+    }
+  }
+  return out;
+}
+
+function readLocations(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const paths = value
+    .map((entry) => (entry && typeof entry === "object" ? (entry as { path?: unknown }).path : undefined))
+    .filter((path): path is string => typeof path === "string");
+  return paths.length > 0 ? paths : undefined;
 }
 
 export interface Activity {
@@ -154,6 +216,8 @@ export function foldActivity(state: Activity, payload: any, now: number): Activi
       title: typeof update.title === "string" ? update.title.trim() : "",
       kind: readKind(update.kind),
       status: readStatus(update.status) ?? "pending",
+      locations: readLocations(update.locations),
+      content: readToolContent(update.content),
     };
     // A new tool is new work, so the agent is no longer merely talking: the
     // line comes back, naming this one.
@@ -171,11 +235,18 @@ export function foldActivity(state: Activity, payload: any, now: number): Activi
         : previous.title,
     kind: update.kind === undefined ? previous.kind : readKind(update.kind),
     status: readStatus(update.status) ?? previous.status,
+    locations: readLocations(update.locations) ?? previous.locations,
+    // Present means "this is the output now", replacing rather than appending:
+    // the spec's updates restate the field, and agents that stream a command's
+    // output send the whole of it each time.
+    content: readToolContent(update.content) ?? previous.content,
   };
   if (
     next.title === previous.title &&
     next.kind === previous.kind &&
-    next.status === previous.status
+    next.status === previous.status &&
+    next.locations === previous.locations &&
+    next.content === previous.content
   ) {
     return state;
   }
@@ -250,6 +321,8 @@ export interface TurnReceipt {
   failed: number;
   /** Only when the agent reported usage. */
   tokens?: string;
+  /** The tools themselves, for the sheet a tap on the receipt opens. */
+  runs: ToolRun[];
 }
 
 /**
@@ -295,6 +368,7 @@ export function summariseActivity(state: Activity, endedAt: number): TurnReceipt
     tools: state.tools.length,
     failed: state.tools.filter((tool) => tool.status === "failed").length,
     tokens: state.tokens !== undefined ? formatTokens(state.tokens) : undefined,
+    runs: state.tools,
   };
 }
 

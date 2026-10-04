@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { isEmptyTurn, readChunk } from "./chunks";
+import { isEmptyTurn, readChunk, readPlan } from "./chunks";
 import { applyChunk } from "./replayFold";
 import type { Turn } from "./useDaemon";
 
@@ -188,4 +188,29 @@ test("a user message with no attachments has no images key", () => {
     role: "user",
     text: "plain",
   });
+});
+
+test("readPlan keeps the entries in order with a known status each", () => {
+  expect(
+    readPlan({
+      update: {
+        sessionUpdate: "plan",
+        entries: [
+          { content: "Read the schema", priority: "high", status: "completed" },
+          { content: "Write the migration", priority: "medium", status: "in_progress" },
+          { content: "  ", status: "pending" },
+          { content: "Run tests", status: "someday" },
+        ],
+      },
+    }),
+  ).toEqual([
+    { content: "Read the schema", status: "completed" },
+    { content: "Write the migration", status: "in_progress" },
+    { content: "Run tests", status: "pending" },
+  ]);
+});
+
+test("readPlan is undefined for anything else, and empty for a cleared plan", () => {
+  expect(readPlan({ update: { sessionUpdate: "agent_message_chunk" } })).toBeUndefined();
+  expect(readPlan({ update: { sessionUpdate: "plan", entries: [] } })).toEqual([]);
 });

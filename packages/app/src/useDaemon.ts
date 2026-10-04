@@ -47,9 +47,10 @@ import { advance, alreadySeen, type Cursors } from "./cursors";
 import { SPOKEN_INPUT_LIMIT, type SpokenCompletion } from "./spokenReply";
 import { promptDelivery, type PromptDeliveryPolicy } from "./promptDelivery";
 import { findDuplicateError } from "./errorDedup";
-import { isEmptyChunk, readChunk } from "./chunks";
+import { isEmptyChunk, readChunk, readPlan, type PlanEntry } from "./chunks";
 import type { ChatImage } from "./images";
 import { emptyImageCache, putImage, type ImageCache } from "./imageCache";
+import { previewImageKey, type PreviewServer } from "./preview";
 import {
   attachmentImages,
   toWireAttachments,
@@ -234,6 +235,18 @@ export interface Workspace {
   uncommitted?: number;
 }
 
+/**
+ * Dev servers listening on the desktop, and how the phone can reach them.
+ *
+ * About the machine, not the conversation, so unlike `workspace` it survives
+ * switching sessions; it is simply re-asked whenever a turn ends, since that
+ * is when an agent starts or stops something.
+ */
+export interface PreviewState {
+  lanHosts: string[];
+  servers: PreviewServer[];
+}
+
 /** A directory offered by the picker: a suggested repo, or a browsed folder. */
 export interface WorkspaceEntry {
   path: string;
@@ -380,6 +393,8 @@ interface State {
   completedTurns?: readonly TurnFinished[];
   /** Project and git state for the session on screen. Absent until asked. */
   workspace?: Workspace;
+  /** What is listening on the desktop. Absent until a daemon that knows answers. */
+  preview?: PreviewState;
   /**
    * Browsing the desktop for a project to start in.
    *
@@ -396,6 +411,12 @@ interface State {
    * reading entirely rather than showing a confident 0%.
    */
   usage?: ContextUsage;
+  /**
+   * The agent's plan for the task on screen, latest statement in full. Held
+   * like `usage`: about the conversation, not a turn, and cleared with it.
+   * Absent for agents that never send one; `[]` when one was cleared.
+   */
+  plan?: PlanEntry[];
   /**
    * Bumped whenever the answer is stale for a reason the request itself cannot
    * see.
@@ -1522,6 +1543,16 @@ export function useDaemon(
                 ),
               ),
             );
+            // Same moment, same reason: a turn is when a dev server gets
+            // started or stopped.
+            ws.send(
+              JSON.stringify(
+                secure.seal(
+                  { t: "preview.list", sessionId: sessionRef.current },
+                  { sid: sessionRef.current },
+                ),
+              ),
+            );
           }
         }
 
@@ -1724,6 +1755,17 @@ export function useDaemon(
             uncommitted: typeof message.uncommitted === "number" && Number.isFinite(message.uncommitted) && message.uncommitted >= 0 ? message.uncommitted : undefined,
           };
           setState((s) => ({ ...s, workspace }));
+          return;
+        }
+
+        // Machine-wide, so no per-session filter: a server started from
+        // another conversation is just as reachable from this one.
+        if (message.t === "preview.servers" && Array.isArray(message.servers)) {
+          const preview: PreviewState = {
+            lanHosts: Array.isArray(message.lanHosts) ? message.lanHosts : [],
+            servers: message.servers,
+          };
+          setState((s) => ({ ...s, preview }));
           return;
         }
 
@@ -2013,6 +2055,12 @@ export function useDaemon(
               if (usage) {
                 if (message.sessionId !== sessionRef.current) return base;
                 return { ...base, usage };
+              }
+
+              const plan = readPlan(payload);
+              if (plan) {
+                if (message.sessionId !== sessionRef.current) return base;
+                return { ...base, plan };
               }
 
               const permission = readPermissionRequest(payload);
@@ -2677,6 +2725,7 @@ export function useDaemon(
             // agent's window, and carrying it across would put the previous chat's
             // percentage beside this one's project.
             usage: undefined,
+            plan: undefined,
             turns: [],
             configOptions: [],
             // Cleared so the previous conversation's menu is not offered for
@@ -2742,6 +2791,7 @@ export function useDaemon(
           // agent's window, and carrying it across would put the previous chat's
           // percentage beside this one's project.
           usage: undefined,
+          plan: undefined,
           workspaceNonce: s.workspaceNonce + 1,
           turns: s.sessions.find((row) => row.id === sessionId)?.turns ?? session.turns,
           restoreTarget: undefined,
@@ -2858,6 +2908,7 @@ export function useDaemon(
           // agent's window, and carrying it across would put the previous chat's
           // percentage beside this one's project.
           usage: undefined,
+          plan: undefined,
           turns: [],
           // Selectors belong to the old agent's session; keeping them would
           // show another agent's model name in the top bar. Its slash commands
@@ -2892,6 +2943,26 @@ export function useDaemon(
         sendImageRequest(uri);
       },
 
+      /**
+       * Ask the daemon to render a local dev server as a picture.
+       *
+       * Lands in `images` under `previewImageKey(port)`, the same store and
+       * reply shape as a desktop file, so the sheet reads it like any other
+       * picture. One in flight per port: a refresh tapped while the last is
+       * still rendering would only queue a second Chrome behind the first.
+       */
+      snapshotPreview: (port: number, width: number) => {
+        const imageId = previewImageKey(port);
+        if (imagesCache.current.images[imageId]?.status === "loading") return;
+        const sent = post({ t: "preview.snapshot", requestId: imageId, port, width });
+        storeImage(
+          imageId,
+          sent
+            ? { status: "loading" }
+            : { status: "error", message: "Not connected to your computer" },
+        );
+      },
+
       leave: () => {
         streamBoundary.current?.();
         restoring.current = undefined;
@@ -2916,6 +2987,7 @@ export function useDaemon(
           // agent's window, and carrying it across would put the previous chat's
           // percentage beside this one's project.
           usage: undefined,
+          plan: undefined,
           workspaceNonce: s.workspaceNonce + 1,
           turns: [],
           configOptions: [],
@@ -2990,6 +3062,7 @@ export function useDaemon(
       providerId: workspaceProviderId,
       cwd: workspaceCwd,
     });
+    post({ t: "preview.list", sessionId: state.sessionId });
   }, [
     post,
     state.status,

@@ -191,7 +191,7 @@ test("a resumed conversation keeps what the phone knew about it", () => {
     agentSessionId: "s1",
     cwd: "/repo",
     messageCount: 12,
-    receipt: { verb: "Answered", duration: "5s", tools: 0, failed: 0 },
+    receipt: { verb: "Answered", duration: "5s", tools: 0, failed: 0, runs: [] },
   };
   const live: Session = {
     id: "claude-code-live",
@@ -210,5 +210,5 @@ test("a resumed conversation keeps what the phone knew about it", () => {
   expect(resumed!.messageCount).toBe(12);
   // The turn this device timed before the daemon forgot the session. Losing it
   // here is why "Answered in 5s" vanished on every reopen that resumes.
-  expect(resumed!.receipt).toEqual({ verb: "Answered", duration: "5s", tools: 0, failed: 0 });
+  expect(resumed!.receipt).toEqual({ verb: "Answered", duration: "5s", tools: 0, failed: 0, runs: [] });
 });

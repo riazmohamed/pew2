@@ -14,7 +14,7 @@ import type { StoredAttachment } from "../attachments.js";
 import { promptBlocks, type PromptCapabilities } from "./promptBlocks.js";
 import { SESSION_HISTORY_LIMIT } from "../session-history.js";
 import { hydrateMessageCounts } from "./messageCounts.js";
-import { foldProjects, type AgentProject } from "../projects.js";
+import { foldProjects, stratifiedSessions, type AgentProject } from "../projects.js";
 import { withStdoutPipe } from "./stdout-pipe.js";
 import { DETACH_CHILDREN, registerChild, terminateChild, unregisterChild } from "../children.js";
 
@@ -969,10 +969,11 @@ export async function connectProvider(options: ConnectOptions): Promise<AcpSessi
       // recent-work window, and grouping *that* would offer only the projects
       // the user has touched this week as if they were all that existed.
       const projects = foldProjects(all);
-      // Capped before counts are hydrated. This turns a provider with 600
-      // archived chats into 30 small local reads instead of 600. The rows are
-      // shared with `all`, so the newest ones carry their counts either way.
-      const sessions = all.slice(0, SESSION_HISTORY_LIMIT);
+      // Stratified rather than a flat slice: with dozens of projects sharing
+      // one thirty-row window, a flat cap leaves a repo nobody opened this
+      // week with no row at all, which reads on the phone as the conversation
+      // having been lost. One row per project first, then the newest overall.
+      const sessions = stratifiedSessions(all, SESSION_HISTORY_LIMIT);
 
       // Both agents have local indexes that are dramatically faster than
       // loading 30 transcripts one-by-one over ACP just to count visible rows.

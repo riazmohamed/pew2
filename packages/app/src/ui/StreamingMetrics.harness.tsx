@@ -85,7 +85,7 @@ function Run({ mode, cycle, onDone }: { mode: "raw" | "batched"; cycle: number; 
     m.actualDurationMs += duration;
     if (state.turns.length && m.firstCommitMs < 0) m.firstCommitMs = performance.now() - m.started;
   }}>
-    <ChatThread turns={state.turns} activeStream={state.activeStream} threadTop={120} threadBottom={80} indicatorTop={120} indicatorBottom={80} working={false} activity={state.activity} onOpenThought={noop} onAtBottomChange={noop} onRetry={noop} />
+    <ChatThread turns={state.turns} activeStream={state.activeStream} threadTop={120} threadBottom={80} indicatorTop={120} indicatorBottom={80} working={false} activity={state.activity} onOpenThought={noop} onAtBottomChange={noop} onRetry={noop} onOpenTools={noop} />
   </Profiler>;
 }
 export default function StreamingMetricsHarness() {

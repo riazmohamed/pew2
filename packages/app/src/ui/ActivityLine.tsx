@@ -13,7 +13,7 @@
  * `ui/TurnReceipt.tsx` takes its place with what actually happened.
  */
 import { memo, useEffect, useRef } from "react";
-import { Animated, StyleSheet, Text, View } from "react-native";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { theme } from "../theme";
 import { currentTool, queuedTools, type Activity } from "../activity";
 import { ShimmerText } from "./ShimmerText";
@@ -32,7 +32,14 @@ const SWAP_DURATION = 160;
 /** Where a swap fades from. Never to zero: the row must not appear to blink out. */
 const SWAP_FROM = 0.35;
 
-function ActivityLineView({ activity }: { activity: Activity }) {
+function ActivityLineView({
+  activity,
+  onPress,
+}: {
+  activity: Activity;
+  /** Opens the tools so far: what each one is doing, and its output. */
+  onPress: () => void;
+}) {
   const tool = currentTool(activity);
   const queued = queuedTools(activity);
   const reduceMotion = useReducedMotion();
@@ -65,10 +72,15 @@ function ActivityLineView({ activity }: { activity: Activity }) {
   const orbState = activityOrbState(activity);
 
   return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityHint="Shows what each tool is doing"
+    >
     <Animated.View
       style={[styles.row, { height, opacity: fade }]}
       // Grouped into one node, and announced when it changes rather than
-      // stealing focus: this is progress, not something to act on.
+      // stealing focus: the progress is what is read out, the tap is extra.
       accessible
       accessibilityLiveRegion="polite"
       accessibilityLabel={queued > 0 ? `${title}, and ${queued} more` : title}
@@ -96,6 +108,7 @@ function ActivityLineView({ activity }: { activity: Activity }) {
         </Text>
       )}
     </Animated.View>
+    </Pressable>
   );
 }
 

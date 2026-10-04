@@ -21,6 +21,7 @@
  */
 import { Platform } from "react-native";
 import { requireOptionalNativeModule, type EventSubscription } from "expo-modules-core";
+import { ensureMicPermission } from "../micPermission";
 
 type SpeechModule = typeof import("expo-speech-recognition");
 
@@ -106,7 +107,13 @@ export async function startDictation(
   }
   const { ExpoSpeechRecognitionModule } = module;
 
-  const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+  // Looked up before it is asked for: asking again on Android flashes the
+  // system permission screen, which pauses the app and stopped hands-free on
+  // every listen. See `micPermission.ts`.
+  const permission = await ensureMicPermission({
+    get: () => ExpoSpeechRecognitionModule.getPermissionsAsync(),
+    request: () => ExpoSpeechRecognitionModule.requestPermissionsAsync(),
+  });
   if (handlers.canStart && !handlers.canStart()) return undefined;
   if (!permission.granted) {
     handlers.onError("not-allowed");

@@ -58,3 +58,7 @@ REMOTE_QA_CHECKLIST.md
 *.ipa
 *.apk
 *.aab
+
+# Local Expo modules build in place (unlike packages/app/android, which is
+# prebuild-generated); their Gradle output is regenerated on every build.
+packages/app/modules/*/android/build/

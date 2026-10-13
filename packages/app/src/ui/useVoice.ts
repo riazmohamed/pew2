@@ -46,9 +46,10 @@ const CONNECT_TIMEOUT_MS = 30_000;
 const CLOSE_TIMEOUT_MS = 5_000;
 const KEEP_AWAKE_TAG = "pew2-voice";
 /**
- * A UK ringing tone, played while the call connects, so "Connecting" sounds
- * like a call being placed rather than an app thinking. Looped until the
- * assistant picks up; stopped on every exit path.
+ * A UK double ring: the incoming ring when an agent finishes, and on iOS
+ * also the connecting tone. Android connects to InCallManager's ringback
+ * instead (the "waiting on the line" tone), so the two sounds differ there
+ * and the connecting one is audible over an open microphone.
  */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const RINGTONE = require("../../assets/ringtone.wav") as number;
@@ -216,7 +217,13 @@ export function useVoice(options: UseVoiceOptions): Voice {
     return () => clearInterval(timer);
   }, [live]);
 
-  const start = useCallback((targetSessionId?: string) => {
+  // Internal: `start` below is the public, argument-free form. The composer
+  // wires `onPress={onVoice}`, and a Pressable passes its press event as the
+  // first argument; when this took an optional id directly, that event was
+  // sent to the daemon as the session id, failed its schema, and the call
+  // hung on "Connecting" until the timeout. Zero arguments makes that
+  // impossible rather than something to remember.
+  const startCall = useCallback((targetSessionId: string | undefined) => {
     const o = opts.current;
     if (call.current) return;
     if (o.voice && !o.voice.available) {
@@ -235,13 +242,29 @@ export function useVoice(options: UseVoiceOptions): Voice {
     call.current = current;
     dispatch({ type: "start", requestId });
     haptics.sent();
-    try {
-      const ringer = createAudioPlayer(RINGTONE);
-      ringer.loop = true;
-      ringer.play();
-      current.ringer = ringer;
-    } catch {
-      // A build without the audio module still makes the call, silently.
+    if (Platform.OS === "android") {
+      // The "waiting on the line" ringback, played by InCallManager on the
+      // call's own audio stream with the loudspeaker (or headset) already
+      // routed. A media-stream player was inaudible here: the moment WebRTC
+      // opens the microphone for voice communication, Android moves playback
+      // to the earpiece. Starting the routing now is safe on Android, where
+      // WebRTC does not reset the audio mode as it starts (iOS does, hence
+      // the branch below).
+      try {
+        InCallManager.start({ media: "video", auto: true, ringback: "_DTMF_" });
+        current.audioStarted = true;
+      } catch {
+        // No ring, but the call itself still goes ahead.
+      }
+    } else {
+      try {
+        const ringer = createAudioPlayer(RINGTONE);
+        ringer.loop = true;
+        ringer.play();
+        current.ringer = ringer;
+      } catch {
+        // A build without the audio module still makes the call, silently.
+      }
     }
     current.timers.push(setTimeout(() => {
       fail(current, "The voice conversation took too long to start.");
@@ -289,10 +312,14 @@ export function useVoice(options: UseVoiceOptions): Voice {
           for (const timer of current.timers) clearTimeout(timer);
           current.timers = [];
           stopRinger(current);
-          // Routed only once audio is flowing: WebRTC sets its own voice-chat
-          // mode as the audio unit starts, which would put the reply in the
-          // earpiece. Video-chat mode defaults to the loudspeaker and still
-          // yields to AirPods or a wired headset when one is connected.
+          if (Platform.OS === "android") {
+            try { InCallManager.stopRingback(); } catch { /* not ringing */ }
+          }
+          // On iOS, routed only once audio is flowing: WebRTC sets its own
+          // voice-chat mode as the audio unit starts, which would put the
+          // reply in the earpiece. Video-chat mode defaults to the loudspeaker
+          // and still yields to AirPods or a wired headset when connected.
+          // Android started it at the tap, for the ringback.
           if (!current.audioStarted) {
             InCallManager.start({ media: "video", auto: true });
             current.audioStarted = true;
@@ -330,13 +357,16 @@ export function useVoice(options: UseVoiceOptions): Voice {
         t: "voice.start",
         requestId,
         sdp,
-        sessionId: targetSessionId ?? latest.sessionId,
+        sessionId: typeof targetSessionId === "string" ? targetSessionId : latest.sessionId,
         providerId: latest.providerId,
         cwd: latest.cwd,
       });
       if (!sent) fail(current, UNREACHABLE);
     })();
   }, [fail]);
+
+  /** Start a call about whatever is on screen. Takes nothing, on purpose. */
+  const start = useCallback(() => startCall(undefined), [startCall]);
 
   const end = useCallback(() => {
     const current = call.current;
@@ -433,8 +463,8 @@ export function useVoice(options: UseVoiceOptions): Voice {
   const acceptIncoming = useCallback(() => {
     const turn = incoming;
     declineIncoming();
-    if (turn) start(turn.sessionId);
-  }, [incoming, declineIncoming, start]);
+    if (turn) startCall(turn.sessionId);
+  }, [incoming, declineIncoming, startCall]);
 
   const providerName = options.providerName;
   return useMemo(() => ({

@@ -87,6 +87,8 @@ interface Props {
   onAttach: () => void;
   onRemoveAttachment: (id: string) => void;
   dictation: Dictation;
+  /** Start a live voice conversation; absent hides the button. */
+  onVoice?: () => void;
   style?: StyleProp<ViewStyle>;
   /**
    * This dock's height, reported once it has stopped changing.
@@ -120,6 +122,7 @@ function ComposerDockView(
     onAttach,
     onRemoveAttachment,
     dictation,
+    onVoice,
     style,
     onHeightSettled,
   }: Props,
@@ -215,6 +218,7 @@ function ComposerDockView(
         onAttach={onAttach}
         onRemoveAttachment={onRemoveAttachment}
         dictation={dictation}
+        onVoice={onVoice}
       />
     </View>
   );

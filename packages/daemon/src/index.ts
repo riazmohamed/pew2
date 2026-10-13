@@ -8,6 +8,8 @@
  * so the daemon — not the agent — is what lets a phone and a desktop observe the
  * same session at the same time.
  */
+import { VoiceManager } from "./voice/manager.js";
+import { daemonHost, type SessionView, type VoiceObservation } from "./voice/host.js";
 import { loadProviders, isAvailable, unavailableReason, type LoadedProvider } from "./providers/registry.js";
 import {
   connectProvider,
@@ -224,6 +226,13 @@ function rememberTurnText(session: ActiveSession, payload: unknown): void {
 }
 
 export class Daemon {
+  /**
+   * Live voice conversations (GPT-Live). Created with the daemon so `closeAll`
+   * and the announcement can reach it; it does nothing until `voice.start`.
+   */
+  readonly voice: VoiceManager;
+  /** Who hears about session activity besides clients: the voice assistant. */
+  private readonly observers = new Set<(observation: VoiceObservation) => void>();
   private providers: LoadedProvider[] = [];
   private readonly sessions = new Map<string, ActiveSession>();
   private send: (message: unknown) => void = () => {};
@@ -931,6 +940,91 @@ export class Daemon {
     // Copied, not referenced: the point is a value that cannot change under a
     // write that lands later.
     this.env = { ...env };
+    this.voice = new VoiceManager(daemonHost(this, this.env));
+    this.observe((observation) => this.voice.observe(observation));
+  }
+
+  /**
+   * Watch every session's events, turn starts and turn ends.
+   *
+   * A listener must never be able to break the session it watches, so each
+   * call is isolated.
+   */
+  observe(listener: (observation: VoiceObservation) => void): () => void {
+    this.observers.add(listener);
+    return () => this.observers.delete(listener);
+  }
+
+  private notify(observation: VoiceObservation) {
+    for (const listener of this.observers) {
+      try {
+        listener(observation);
+      } catch (error) {
+        console.error("[observe] listener failed:", error);
+      }
+    }
+  }
+
+  /** Send to every client on every transport, as the handler's `broadcast` does. */
+  broadcast(message: unknown) {
+    this.send(message);
+  }
+
+  /** Agents a voice request may address: the same list clients are shown. */
+  voiceAgents(): { id: string; name: string; available: boolean }[] {
+    return this.providers
+      .filter((p) => !p.manifest.pew.experimental || this.includeExperimental)
+      .filter((p) => this.isEnabled(p.manifest.id) && !p.commandMissing)
+      .map((p) => ({ id: p.manifest.id, name: p.manifest.name, available: isAvailable(p) }));
+  }
+
+  /** A live session's state, read-only. Undefined once it is gone. */
+  sessionView(sessionId: string): SessionView | undefined {
+    const session = this.sessions.get(sessionId);
+    if (!session) return undefined;
+    return {
+      sessionId,
+      providerId: session.providerId,
+      cwd: session.cwd,
+      agentSessionId: session.agentSessionId,
+      working: session.working === true,
+      permissions: [...(session.permissions ?? [])].map(([requestId, params]) => ({ requestId, params })),
+    };
+  }
+
+  /**
+   * The last user request and everything the agent said after it, from the log.
+   *
+   * Read without touching `lastUsedAt`: the voice assistant glancing at a
+   * conversation is not someone using it.
+   */
+  lastExchange(sessionId: string): { request?: string; reply: string } | undefined {
+    const session = this.sessions.get(sessionId);
+    if (!session) return undefined;
+    const events = session.log.since(-1);
+    let request: string | undefined;
+    let reply = "";
+    for (const event of events) {
+      const payload = event.payload as {
+        kind?: unknown;
+        text?: unknown;
+        update?: { sessionUpdate?: unknown; content?: unknown };
+      } | null;
+      if (payload?.kind === "user_message" && typeof payload.text === "string") {
+        request = payload.text;
+        reply = "";
+        continue;
+      }
+      if (payload?.update?.sessionUpdate === "agent_message_chunk") {
+        const content = payload.update.content as { type?: unknown; text?: unknown } | unknown[];
+        const parts = Array.isArray(content) ? content : [content];
+        for (const part of parts) {
+          const block = part as { text?: unknown } | null;
+          if (typeof block?.text === "string") reply = `${reply}${block.text}`.slice(-20_000);
+        }
+      }
+    }
+    return { request, reply };
   }
 
   /** Point the daemon at a transport. Called with the relay socket's `send`. */
@@ -1097,6 +1191,7 @@ export class Daemon {
     // restarting the daemon.
     this.disabled = await readDisabled();
     this.closeDisabled();
+    await this.voice.refresh();
     this.announceProviders();
     return { errors };
   }
@@ -1173,6 +1268,9 @@ export class Daemon {
           available: isAvailable(p),
           unavailableReason: unavailableReason(p),
         })),
+      // Re-read on every `refreshProviders`, which every `hello` triggers, so
+      // a key added with `pew2 voice key` shows up on the next connect.
+      voice: this.voice.status,
       // Which sessions this process actually holds. A client's list outlives
       // the daemon, so this is how it learns that an id it still shows died
       // with the previous process and must be resumed, not prompted.
@@ -1193,6 +1291,7 @@ export class Daemon {
   private record(session: ActiveSession, payload: unknown) {
     rememberTurnText(session, payload);
     const event = session.log.append(payload);
+    this.notify({ sessionId: session.log.sessionId, kind: "update", payload });
     if (!session.live) return;
     if (!session.streamingReplay) {
       this.send(event);
@@ -1837,6 +1936,7 @@ export class Daemon {
     // A new turn, so the previous turn's closing words must not be what the
     // push notification for this one quotes.
     session.turnText = undefined;
+    this.notify({ sessionId, kind: "turn_start" });
     try {
       // Written before the echo: an attachment that cannot be stored (over the
       // limits, disk full) must fail the whole prompt rather than leave a turn on
@@ -1876,6 +1976,7 @@ export class Daemon {
       // agent stopped rather than from when the user typed. A turn that ran for
       // twenty minutes would otherwise be reapable the moment it finished.
       session.lastUsedAt = Date.now();
+      this.notify({ sessionId, kind: "turn_end" });
     }
   }
 
@@ -2051,6 +2152,7 @@ export class Daemon {
   }
 
   closeAll() {
+    this.voice.closeAll();
     if (this.reaper) {
       clearInterval(this.reaper);
       this.reaper = undefined;

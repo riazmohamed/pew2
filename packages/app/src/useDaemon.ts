@@ -83,6 +83,9 @@ import { readPermissionRequest } from "./permissions";
 
 export type Status = "connecting" | "online" | "offline";
 
+/** Voice frames from the daemon, handed to `useVoice` untouched. */
+export type VoiceFrame = wire.VoiceAnswer | wire.VoiceStatus;
+
 export interface Provider {
   id: string;
   name: string;
@@ -348,6 +351,11 @@ interface State {
    * desk, which has no screen to tell anyone with.
    */
   update?: { latest: string; automatic: boolean };
+  /**
+   * Whether the computer can host a live voice conversation. Absent means a
+   * daemon older than voice, and the app then shows no voice button at all.
+   */
+  voice?: { available: boolean; reason?: string };
   sessionId?: string;
   /** The agent the composer will talk to. Chosen before a session exists. */
   activeProviderId?: string;
@@ -768,6 +776,8 @@ export function useDaemon(
   // request may write to state: tapping down two levels quickly produces two
   // listings in flight, and the slower one must not land last and rewind the
   // view the user is already looking at.
+  const voiceListener = useRef<((message: VoiceFrame) => void) | undefined>(undefined);
+
   const browseRequest = useRef<string | undefined>(undefined);
   const browseCounter = useRef(0);
   // Highest `seq` seen per session.
@@ -1792,6 +1802,13 @@ export function useDaemon(
           return;
         }
 
+        // A live voice call is owned by `useVoice`, which matches the answer by
+        // `requestId` and statuses by `liveSessionId`. Nothing here is state.
+        if (message.t === "voice.answer" || message.t === "voice.status") {
+          voiceListener.current?.(message as VoiceFrame);
+          return;
+        }
+
         // Answered per request rather than as a session event, so it is handled
         // here and kept out of the transcript state entirely.
         if (message.t === "image" && typeof message.uri === "string") {
@@ -1829,6 +1846,7 @@ export function useDaemon(
                 // banner the daemon can no longer take back would outlive the
                 // update it describes.
                 update: message.update,
+                voice: message.voice,
                 loadingSessions: pendingCapabilities.current.size > 0,
               };
 
@@ -2910,6 +2928,12 @@ export function useDaemon(
        * not re-fetch megabytes each time. A failure is remembered too — only an
        * explicit retry asks again.
        */
+      /** Send `voice.start` / `voice.stop`. False when the computer is not reachable. */
+      sendVoice: (message: wire.VoiceStart | wire.VoiceStop): boolean => post(message),
+      /** One listener at a time: there is one voice screen. */
+      setVoiceListener: (listener: ((message: VoiceFrame) => void) | undefined) => {
+        voiceListener.current = listener;
+      },
       fetchImage: (uri: string) => {
         if (requestedImages.current.has(uri)) return;
         requestedImages.current.add(uri);

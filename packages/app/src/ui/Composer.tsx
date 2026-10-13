@@ -35,6 +35,8 @@ interface ComposerProps {
   onAttach?: () => void;
   onRemoveAttachment?: (id: string) => void;
   dictation?: Dictation;
+  /** Start a live voice conversation. Absent hides the button (a daemon older than voice). */
+  onVoice?: () => void;
   selectors?: readonly ComposerSelector[];
 }
 
@@ -61,7 +63,7 @@ function ComposerView({
   value, onChangeText, onSend, busy = false, onStop,
   placeholder = "Build anything...", editable = true,
   attachments = EMPTY_ATTACHMENTS, onAttach, onRemoveAttachment,
-  dictation, selectors = EMPTY_SELECTORS,
+  dictation, onVoice, selectors = EMPTY_SELECTORS,
 }: ComposerProps, ref: React.Ref<ComposerHandle>) {
   const input = useRef<TextInput>(null);
   useImperativeHandle(ref, () => ({ focus: () => input.current?.focus() }), []);
@@ -123,6 +125,15 @@ function ComposerView({
           <View style={styles.selectors} pointerEvents="box-none">
             {selectors.map((selector) => <Selector key={selector.id} {...selector} />)}
           </View>
+          {onVoice && !busy && !dictation?.listening && (
+            <Pressable
+              style={({ pressed }) => [styles.iconTarget, pressed && styles.pressed]}
+              accessibilityRole="button" accessibilityLabel="Start a voice conversation"
+              onPress={onVoice}
+            >
+              <Ionicons name="headset-outline" size={20} color={theme.composer.ink} />
+            </Pressable>
+          )}
           <Pressable
             style={({ pressed }) => [styles.iconTarget, pressed && styles.pressed]}
             accessibilityRole="button" accessibilityLabel={actionLabel}

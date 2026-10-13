@@ -1,0 +1,15 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'io.github.kenkaiii.pew2'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.voicecallservice"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}

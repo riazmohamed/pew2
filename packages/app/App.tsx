@@ -60,6 +60,8 @@ import { AttachmentSheet, type AttachmentSource } from "./src/ui/AttachmentSheet
 import { addAttachments, MAX_ATTACHMENTS, type PendingAttachment } from "./src/attachments";
 import { pickFiles, pickPhotos, takePhoto } from "./src/ui/attachmentPicker";
 import { useDictation } from "./src/ui/useDictation";
+import { useVoice } from "./src/ui/useVoice";
+import { VoiceScreen } from "./src/ui/VoiceScreen";
 import { ApprovalSheet } from "./src/ui/ApprovalSheet";
 import { ThoughtSheet } from "./src/ui/ThoughtSheet";
 import { PreviewSheet } from "./src/ui/PreviewSheet";
@@ -1072,6 +1074,38 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   // render, the function on it is not.
   const cancelDictation = dictation.cancel;
 
+  /**
+   * A live voice conversation. Starting one stops dictation, since only one
+   * thing may hold the mic. When the assistant's work lands in a conversation
+   * that is not on screen, the app moves there through the same path as a
+   * drawer tap, so hanging up leaves the user looking at the work.
+   */
+  const providerList = daemon.providers;
+  const voiceProviderName = useCallback(
+    (id: string | undefined) => providerList.find((p) => p.id === id)?.name ?? "Your agent",
+    [providerList],
+  );
+  const knownSessions = useRef(daemonSessions);
+  knownSessions.current = daemonSessions;
+  const voice = useVoice({
+    status: daemon.status,
+    voice: daemon.voice,
+    sendVoice: daemon.sendVoice,
+    setVoiceListener: daemon.setVoiceListener,
+    sessionId: daemon.sessionId,
+    providerId: active?.id,
+    cwd: daemon.workspace?.cwd,
+    providerName: voiceProviderName,
+    onBeforeStart: cancelDictation,
+    onSessionShown: daemon.sessionId,
+    onOpenSession: useCallback((id: string) => {
+      if (knownSessions.current.some((session) => session.id === id)) openSession(id);
+    }, [openSession]),
+    onMessage: useCallback((message: string) => {
+      Alert.alert("Voice", message);
+    }, []),
+  });
+
   // Handed the text by the dock, which owns it.
   //
   // Answers whether the message went. The dock clears the draft on true and
@@ -1566,9 +1600,11 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
             onAttach={openAttach}
             onRemoveAttachment={removeAttachment}
             dictation={dictation}
+            onVoice={voice.offered ? voice.start : undefined}
           />
         </View>
       </Reanimated.View>
+      <VoiceScreen voice={voice} color={active?.color} />
 
       {/* Outside the lifted pane: a sheet belongs to the screen's bottom edge,
           not to the composer, so it must not ride up with the keyboard. */}

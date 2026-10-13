@@ -10,6 +10,7 @@
  *   pew2 service install|restart|uninstall
  *                                    keep the daemon running across reboots
  *   pew2 doctor [--json]             what is wrong, and the command that fixes it
+ *   pew2 voice key|status|off        the OpenAI key for the phone's voice assistant
  *   pew2 detect [--json]             find installed agents and configure them
  *   pew2 providers list              what is installed, and is it usable
  *   pew2 providers validate          static check of every manifest
@@ -46,6 +47,7 @@ import {
 } from "./service.js";
 import { loadPairing, setRelay } from "../pairing.js";
 import { cmdPair } from "./pair.js";
+import { cmdVoice } from "./voice.js";
 import {
   agentSections,
   bucketFor,
@@ -747,6 +749,7 @@ async function main() {
   if (group === "doctor") return cmdDoctor(flags);
   if (group === "detect") return cmdDetect(flags);
   if (group === "registry") return cmdRegistry(command, flags);
+  if (group === "voice") return cmdVoice(command, flags);
 
   if (group !== "providers") {
     console.log(`${BOLD}pew2${RESET}\n`);
@@ -757,6 +760,7 @@ async function main() {
     console.log("  pew2 service install|restart     Keep the daemon running across reboots");
     console.log("  pew2 serve                       Run the daemon in this terminal");
     console.log("  pew2 doctor [--json]             What is wrong, and the command that fixes it");
+    console.log("  pew2 voice key|status|off        OpenAI key for the voice assistant");
     console.log("  pew2 detect [--json]             Find installed agents and configure them");
     console.log("  pew2 registry sync               Add every agent in the public ACP registry");
     console.log("    --dry-run --force --json       Preview / overwrite edited files / machine output");

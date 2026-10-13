@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="expo.modules.voicecallservice" >
+
+    <uses-sdk android:minSdkVersion="24" />
+    <!--
+    A live voice conversation has to keep the microphone while the screen is
+    locked or another app is in front: that is the whole "out and about" case.
+    Since Android 11 the microphone is a while-in-use permission, and since
+    Android 14 holding it in the background needs a foreground service of type
+    `microphone`, started while the app is still on screen. Merged into the
+    app's manifest, so app.json needs nothing for it.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <service
+            android:name="expo.modules.voicecallservice.VoiceCallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+    </application>
+
+</manifest>

@@ -16,6 +16,8 @@ import { writeFileAtomic } from "../atomic-file.js";
 export const DEFAULT_VOICE = "vesper";
 export const DEFAULT_BACKEND_MODEL = "gpt-6-luna";
 export const DEFAULT_MAX_MINUTES = 30;
+/** GPT-Live's published voice rate; `voiceRatePerMinuteUsd` overrides it. */
+export const DEFAULT_VOICE_RATE_PER_MINUTE_USD = 0.05;
 
 /** What `pew2 voice key` tells someone to run, in one place. */
 export const NO_KEY_REASON = "Add an OpenAI API key on your computer: run pew2 voice key";
@@ -27,6 +29,7 @@ export interface VoiceConfig {
   voice: string;
   backendModel: string;
   maxMinutes: number;
+  voiceRatePerMinuteUsd: number;
 }
 
 interface StoredVoice {
@@ -34,6 +37,7 @@ interface StoredVoice {
   voice?: string;
   backendModel?: string;
   maxMinutes?: number;
+  voiceRatePerMinuteUsd?: number;
 }
 
 export function voiceConfigPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -74,6 +78,10 @@ export async function readVoiceConfig(
     voice: text(stored.voice) ?? DEFAULT_VOICE,
     backendModel: text(stored.backendModel) ?? DEFAULT_BACKEND_MODEL,
     maxMinutes: minutes,
+    voiceRatePerMinuteUsd:
+      typeof stored.voiceRatePerMinuteUsd === "number" && stored.voiceRatePerMinuteUsd > 0
+        ? stored.voiceRatePerMinuteUsd
+        : DEFAULT_VOICE_RATE_PER_MINUTE_USD,
   };
 }
 

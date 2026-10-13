@@ -16,16 +16,19 @@ import { mediaDevices, RTCPeerConnection, type MediaStream } from "react-native-
 
 type RTCDataChannel = ReturnType<RTCPeerConnection["createDataChannel"]>;
 import InCallManager from "react-native-incall-manager";
+import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { startVoiceCallService, stopVoiceCallService } from "../../modules/voice-call-service";
 import { PermissionsAndroid, Platform } from "react-native";
 import {
   initialVoiceState,
   readDataChannelEvent,
+  shouldRingForTurn,
   voiceOrb,
   voiceReducer,
   voiceSessionToOpen,
   voiceStatusLine,
+  voiceUsageLine,
   type VoiceOrb,
   type VoiceState,
 } from "../voiceSession";
@@ -34,10 +37,21 @@ import type { wire } from "@pew2/protocol";
 import { haptics } from "./haptics";
 
 const ICE_TIMEOUT_MS = 10_000;
+/** Ring this long before going quiet; the offer itself stays until acted on. */
+const RING_MS = 30_000;
+/** An unanswered incoming offer gives up after this. */
+const INCOMING_EXPIRE_MS = 120_000;
 /** From tapping to `session.started`; past this the call is abandoned. */
 const CONNECT_TIMEOUT_MS = 30_000;
 const CLOSE_TIMEOUT_MS = 5_000;
 const KEEP_AWAKE_TAG = "pew2-voice";
+/**
+ * A UK ringing tone, played while the call connects, so "Connecting" sounds
+ * like a call being placed rather than an app thinking. Looped until the
+ * assistant picks up; stopped on every exit path.
+ */
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const RINGTONE = require("../../assets/ringtone.wav") as number;
 const UNREACHABLE = "Your computer isn't reachable right now, so a voice conversation can't start.";
 
 export interface UseVoiceOptions {
@@ -64,13 +78,38 @@ export interface Voice {
   state: VoiceState;
   /** Whether the voice screen should be up. */
   open: boolean;
+  /**
+   * A finished agent turn offering itself as a call, while the ring sounds.
+   * Accepting starts a voice call briefed on that conversation.
+   */
+  incoming?: IncomingCall;
+  /** The quiet "4:12 · about 21p" line for the call screen. */
+  usageLine: string;
+  /** Offer a finished turn as an incoming call. Ignored while a call is live. */
+  offerIncoming: (turn: IncomingCall) => void;
+  acceptIncoming: () => void;
+  declineIncoming: () => void;
+  /** A call is running, even minimized: the banner shows on this. */
+  active: boolean;
+  minimized: boolean;
   orb: VoiceOrb;
   statusLine: string;
   start: () => void;
   end: () => void;
   toggleMute: () => void;
+  /** Shrink the call to the banner so the chat underneath can be watched. */
+  minimize: () => void;
+  /** Bring the full voice screen back up. */
+  expand: () => void;
   /** Close the screen after an error. */
   dismiss: () => void;
+}
+
+/** A finished turn ringing the phone, before it becomes a call. */
+export interface IncomingCall {
+  sessionId: string;
+  agentName?: string;
+  folder?: string;
 }
 
 interface Call {
@@ -81,6 +120,7 @@ interface Call {
   liveSessionId?: string;
   timers: ReturnType<typeof setTimeout>[];
   audioStarted: boolean;
+  ringer?: AudioPlayer;
   /** Resolves the wait for `session.closed` when hanging up. */
   onClosed?: () => void;
   done: boolean;
@@ -91,6 +131,9 @@ interface Call {
 export function useVoice(options: UseVoiceOptions): Voice {
   const [state, dispatch] = useReducer(voiceReducer, initialVoiceState);
   const [now, setNow] = useState(() => Date.now());
+  const [incoming, setIncoming] = useState<IncomingCall | undefined>(undefined);
+  const incomingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const incomingRinger = useRef<AudioPlayer | undefined>(undefined);
   const call = useRef<Call | undefined>(undefined);
   const counter = useRef(0);
   const opts = useRef(options);
@@ -105,6 +148,7 @@ export function useVoice(options: UseVoiceOptions): Voice {
     target.stream?.getTracks().forEach((track) => track.stop());
     try { target.channel?.close(); } catch { /* already closed */ }
     try { target.pc?.close(); } catch { /* already closed */ }
+    stopRinger(target);
     if (target.audioStarted) InCallManager.stop();
     stopVoiceCallService();
     void deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => undefined);
@@ -127,7 +171,7 @@ export function useVoice(options: UseVoiceOptions): Voice {
       if (!current) return;
       if (message.t === "voice.answer") {
         if (message.requestId !== current.requestId) return;
-        dispatch({ type: "answer", requestId: message.requestId, liveSessionId: message.liveSessionId, error: message.error });
+        dispatch({ type: "answer", requestId: message.requestId, liveSessionId: message.liveSessionId, voiceRatePerMinuteUsd: message.voiceRatePerMinuteUsd, error: message.error });
         if (message.error || !message.liveSessionId || !message.sdp) {
           teardown(current);
           haptics.failed();
@@ -155,6 +199,12 @@ export function useVoice(options: UseVoiceOptions): Voice {
     return () => {
       setVoiceListener(undefined);
       teardown(call.current);
+      for (const timer of incomingTimers.current) clearTimeout(timer);
+      const ringer = incomingRinger.current;
+      if (ringer) {
+        try { ringer.pause(); } catch { /* gone */ }
+        try { ringer.remove(); } catch { /* gone */ }
+      }
     };
   }, [teardown, fail]);
 
@@ -166,7 +216,7 @@ export function useVoice(options: UseVoiceOptions): Voice {
     return () => clearInterval(timer);
   }, [live]);
 
-  const start = useCallback(() => {
+  const start = useCallback((targetSessionId?: string) => {
     const o = opts.current;
     if (call.current) return;
     if (o.voice && !o.voice.available) {
@@ -185,6 +235,14 @@ export function useVoice(options: UseVoiceOptions): Voice {
     call.current = current;
     dispatch({ type: "start", requestId });
     haptics.sent();
+    try {
+      const ringer = createAudioPlayer(RINGTONE);
+      ringer.loop = true;
+      ringer.play();
+      current.ringer = ringer;
+    } catch {
+      // A build without the audio module still makes the call, silently.
+    }
     current.timers.push(setTimeout(() => {
       fail(current, "The voice conversation took too long to start.");
     }, CONNECT_TIMEOUT_MS));
@@ -230,6 +288,7 @@ export function useVoice(options: UseVoiceOptions): Voice {
         if (parsed.kind === "started") {
           for (const timer of current.timers) clearTimeout(timer);
           current.timers = [];
+          stopRinger(current);
           // Routed only once audio is flowing: WebRTC sets its own voice-chat
           // mode as the audio unit starts, which would put the reply in the
           // earpiece. Video-chat mode defaults to the loudspeaker and still
@@ -238,7 +297,7 @@ export function useVoice(options: UseVoiceOptions): Voice {
             InCallManager.start({ media: "video", auto: true });
             current.audioStarted = true;
           }
-          dispatch({ type: "started" });
+          dispatch({ type: "started", now: Date.now() });
           haptics.finished();
         } else if (parsed.kind === "transcript") {
           dispatch({ type: "transcript", speaker: parsed.speaker, delta: parsed.delta, now: Date.now() });
@@ -271,7 +330,7 @@ export function useVoice(options: UseVoiceOptions): Voice {
         t: "voice.start",
         requestId,
         sdp,
-        sessionId: latest.sessionId,
+        sessionId: targetSessionId ?? latest.sessionId,
         providerId: latest.providerId,
         cwd: latest.cwd,
       });
@@ -323,18 +382,90 @@ export function useVoice(options: UseVoiceOptions): Voice {
     dispatch({ type: "reset" });
   }, [teardown]);
 
+  const minimize = useCallback(() => {
+    dispatch({ type: "minimize" });
+    haptics.tap();
+  }, []);
+
+  const expand = useCallback(() => {
+    dispatch({ type: "expand" });
+    haptics.tap();
+  }, []);
+
+  const declineIncoming = useCallback(() => {
+    for (const timer of incomingTimers.current) clearTimeout(timer);
+    incomingTimers.current = [];
+    const ringer = incomingRinger.current;
+    incomingRinger.current = undefined;
+    if (ringer) {
+      try { ringer.pause(); } catch { /* gone */ }
+      try { ringer.remove(); } catch { /* gone */ }
+    }
+    setIncoming(undefined);
+  }, []);
+
+  const offerIncoming = useCallback((turn: IncomingCall) => {
+    // A call already running wins: the assistant says what finished instead.
+    if (call.current) return;
+    if (!shouldRingForTurn(turn, { onScreen: opts.current.onSessionShown, callActive: false })) return;
+    declineIncoming();
+    haptics.attention();
+    try {
+      const ringer = createAudioPlayer(RINGTONE);
+      ringer.loop = true;
+      ringer.play();
+      incomingRinger.current = ringer;
+    } catch {
+      // No sound module in this build: the banner alone carries the offer.
+    }
+    incomingTimers.current.push(setTimeout(() => {
+      const ringer = incomingRinger.current;
+      incomingRinger.current = undefined;
+      if (ringer) {
+        try { ringer.pause(); } catch { /* gone */ }
+        try { ringer.remove(); } catch { /* gone */ }
+      }
+    }, RING_MS));
+    incomingTimers.current.push(setTimeout(() => setIncoming(undefined), INCOMING_EXPIRE_MS));
+    setIncoming(turn);
+  }, [declineIncoming]);
+
+  const acceptIncoming = useCallback(() => {
+    const turn = incoming;
+    declineIncoming();
+    if (turn) start(turn.sessionId);
+  }, [incoming, declineIncoming, start]);
+
   const providerName = options.providerName;
   return useMemo(() => ({
     offered: options.voice !== undefined,
     state,
-    open: state.phase !== "idle",
+    open: state.phase !== "idle" && !state.minimized,
+    active: state.phase !== "idle",
+    minimized: state.minimized,
+    incoming,
+    usageLine: voiceUsageLine(state, now),
     orb: voiceOrb(state, now),
     statusLine: voiceStatusLine(state, providerName),
     start,
     end,
     toggleMute,
+    minimize,
+    expand,
+    offerIncoming,
+    acceptIncoming,
+    declineIncoming,
     dismiss,
-  }), [options.voice, state, now, providerName, start, end, toggleMute, dismiss]);
+  }), [options.voice, state, now, incoming, providerName, start, end, toggleMute, minimize, expand, offerIncoming, acceptIncoming, declineIncoming, dismiss]);
+}
+
+/** Stop and release a call's ringtone. Safe to call twice. */
+function stopRinger(target: Call) {
+  const ringer = target.ringer;
+  if (!ringer) return;
+  target.ringer = undefined;
+  try { ringer.pause(); } catch { /* already gone */ }
+  try { ringer.remove(); } catch { /* already gone */ }
 }
 
 /** Resolve once ICE gathering completes, or after `timeoutMs` with what was gathered. */

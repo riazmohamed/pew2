@@ -111,6 +111,13 @@ export class LiveVoiceSession {
    */
   private readonly pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
   static PENDING_FALLBACK_MS = 1500;
+  /**
+   * Delay between the hang_up tool and the actual close, so the goodbye the
+   * backend returns is spoken before the line goes dead. Without it the call
+   * ends mid-sentence, which reads as being cut off, not hung up.
+   */
+  static HANGUP_DELAY_MS = 4000;
+  private hangupTimer?: ReturnType<typeof setTimeout>;
   private timer?: ReturnType<typeof setTimeout>;
   private closing?: Promise<void>;
   private finished = false;
@@ -272,6 +279,10 @@ export class LiveVoiceSession {
         return this.toolRead();
       case "answer_approval":
         return this.toolAnswer(typeof args.option === "string" ? args.option : "");
+      case "hang_up":
+        this.hangupTimer ??= setTimeout(() => void this.close(), LiveVoiceSession.HANGUP_DELAY_MS);
+        this.hangupTimer.unref?.();
+        return { status: "closing", note: "The call will end in a few seconds. Say a short goodbye now." };
       case "stop_agent":
         return this.toolStop();
       default:
@@ -572,6 +583,7 @@ export class LiveVoiceSession {
     if (this.timer) clearTimeout(this.timer);
     for (const timer of this.pendingTimers.values()) clearTimeout(timer);
     this.pendingTimers.clear();
+    if (this.hangupTimer) clearTimeout(this.hangupTimer);
     this.outbox = [];
     const socket = this.socket;
     this.socket = undefined;

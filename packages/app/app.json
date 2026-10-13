@@ -76,6 +76,13 @@
         }
       ],
       "expo-font",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "//": "For the connecting ringtone only: it records nothing, so it must not touch NSMicrophoneUsageDescription (expo-speech-recognition owns that key) and must not ask for background recording."
+        }
+      ],
       "expo-notifications",
       [
         "expo-image-picker",

@@ -82,7 +82,11 @@ export class VoiceManager {
       attachUrl(created.liveSessionId),
       authHeaders(config.apiKey),
     );
-    return answer({ liveSessionId: created.liveSessionId, sdp: created.sdp });
+    return answer({
+      liveSessionId: created.liveSessionId,
+      sdp: created.sdp,
+      voiceRatePerMinuteUsd: config.voiceRatePerMinuteUsd,
+    });
   }
 
   async stop(liveSessionId: string): Promise<void> {

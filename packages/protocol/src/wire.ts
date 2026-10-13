@@ -821,6 +821,12 @@ export const VoiceAnswer = z.object({
   requestId: z.string(),
   /** OpenAI's live session id, used to stop it and to match `voice.status`. */
   liveSessionId: z.string().optional(),
+  /**
+   * What a minute of this call costs, so the phone can show a running "about"
+   * figure. Absent on older daemons: the phone shows only the elapsed time.
+   * An estimate either way, since delegation turns add a little on top.
+   */
+  voiceRatePerMinuteUsd: z.number().positive().optional(),
   /** Apply as the remote description. Absent when `error` explains why not. */
   sdp: z.string().optional(),
   error: z.string().optional(),

@@ -3,10 +3,12 @@ import {
   CAPTION_GAP_MS,
   initialVoiceState,
   readDataChannelEvent,
+  shouldRingForTurn,
   voiceOrb,
   voiceReducer,
   voiceSessionToOpen,
   voiceStatusLine,
+  voiceUsageLine,
   type VoiceEvent,
   type VoiceState,
 } from "./voiceSession";
@@ -15,7 +17,7 @@ const run = (events: VoiceEvent[], from: VoiceState = initialVoiceState) => even
 const live = run([
   { type: "start", requestId: "r1" },
   { type: "answer", requestId: "r1", liveSessionId: "L1" },
-  { type: "started" },
+  { type: "started", now: 0 },
 ]);
 const names = (id: string | undefined) => (id === "claude" ? "Claude Code" : "Your agent");
 
@@ -79,6 +81,62 @@ describe("captions", () => {
 });
 
 describe("status", () => {
+  test("minimise and expand only move the screen, never the call", () => {
+    expect(live.minimized).toBe(false);
+    const minimised = voiceReducer(live, { type: "minimize" });
+    expect(minimised.minimized).toBe(true);
+    expect(minimised.phase).toBe("live");
+    // A transcript still lands while minimised: the call is untouched.
+    const talked = voiceReducer(minimised, { type: "transcript", speaker: "assistant", delta: "Still here.", now: 1000 });
+    expect(talked.captions.at(-1)?.text).toBe("Still here.");
+    expect(talked.minimized).toBe(true);
+    expect(voiceReducer(talked, { type: "expand" }).minimized).toBe(false);
+    // Idle ignores both.
+    expect(voiceReducer(initialVoiceState, { type: "minimize" })).toBe(initialVoiceState);
+    expect(voiceReducer(initialVoiceState, { type: "expand" })).toBe(initialVoiceState);
+  });
+
+  test("a failure pulls the screen back up", () => {
+    const minimised = voiceReducer(live, { type: "minimize" });
+    const failed = voiceReducer(minimised, { type: "fail", message: "The voice connection dropped." });
+    expect(failed.phase).toBe("error");
+    expect(failed.minimized).toBe(false);
+    const statusFailed = voiceReducer(minimised, {
+      type: "status",
+      status: { liveSessionId: "L1", state: "error", detail: "boom" },
+    });
+    expect(statusFailed.minimized).toBe(false);
+  });
+
+  test("a new call always starts full screen", () => {
+    const minimised = voiceReducer(live, { type: "minimize" });
+    const ended = voiceReducer(voiceReducer(minimised, { type: "end" }), { type: "closed" });
+    const restarted = voiceReducer(ended, { type: "start", requestId: "r2" });
+    expect(restarted.minimized).toBe(false);
+  });
+
+  test("the usage line is a clock, plus an estimate when the rate is known", () => {
+    expect(voiceUsageLine(initialVoiceState, 10_000)).toBe("");
+    const connecting = run([{ type: "start", requestId: "r1" }]);
+    expect(voiceUsageLine(connecting, 10_000)).toBe("");
+    // No rate from the daemon: just the clock.
+    expect(voiceUsageLine(live, 0)).toBe("0:00");
+    expect(voiceUsageLine(live, 65_000)).toBe("1:05");
+    const rated = voiceReducer(run([{ type: "start", requestId: "r1" }]), {
+      type: "answer", requestId: "r1", liveSessionId: "L1", voiceRatePerMinuteUsd: 0.05,
+    });
+    const ratedLive = voiceReducer(rated, { type: "started", now: 0 });
+    expect(voiceUsageLine(ratedLive, 60_000)).toBe("1:00 · about 5p");
+    expect(voiceUsageLine(ratedLive, 30 * 60_000)).toBe("30:00 · about £1.50");
+  });
+
+  test("a turn rings only when nobody is watching it and no call is live", () => {
+    expect(shouldRingForTurn({ sessionId: "s1" }, { onScreen: "s2", callActive: false })).toBe(true);
+    expect(shouldRingForTurn({ sessionId: "s1" }, { onScreen: "s1", callActive: false })).toBe(false);
+    expect(shouldRingForTurn({ sessionId: "s1" }, { onScreen: undefined, callActive: false })).toBe(true);
+    expect(shouldRingForTurn({ sessionId: "s1" }, { onScreen: "s2", callActive: true })).toBe(false);
+  });
+
   test("statuses for another call are ignored", () => {
     const state = voiceReducer(live, { type: "status", status: { liveSessionId: "other", state: "agent_working" } });
     expect(state).toBe(live);

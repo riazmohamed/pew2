@@ -45,15 +45,27 @@ export interface VoiceState {
   error?: string;
   /** Last assistant transcript fragment, standing in for "is speaking". */
   assistantAt?: number;
+  /** When the assistant picked up, for the elapsed-time line. */
+  liveSince?: number;
+  /** Per-minute rate from `voice.answer`, for the running cost estimate. */
+  voiceRatePerMinuteUsd?: number;
+  /**
+   * Full screen or shrunk to the banner. The call keeps running either way;
+   * this only decides which UI is up, so the user can watch the agent's work
+   * in the chat underneath without hanging up.
+   */
+  minimized: boolean;
 }
 
 export type VoiceEvent =
   | { type: "start"; requestId: string }
-  | { type: "answer"; requestId: string; liveSessionId?: string; error?: string }
-  | { type: "started" }
+  | { type: "answer"; requestId: string; liveSessionId?: string; voiceRatePerMinuteUsd?: number; error?: string }
+  | { type: "started"; now: number }
   | { type: "transcript"; speaker: Speaker; delta: string; now: number }
   | { type: "status"; status: VoiceStatusFrame }
   | { type: "mute"; muted: boolean }
+  | { type: "minimize" }
+  | { type: "expand" }
   | { type: "end" }
   | { type: "closed" }
   | { type: "fail"; message: string }
@@ -71,6 +83,7 @@ export const initialVoiceState: VoiceState = {
   muted: false,
   captions: [],
   nextCaptionId: 1,
+  minimized: false,
 };
 
 export function voiceReducer(state: VoiceState, event: VoiceEvent): VoiceState {
@@ -84,10 +97,10 @@ export function voiceReducer(state: VoiceState, event: VoiceEvent): VoiceState {
       if (event.error || !event.liveSessionId) {
         return { ...state, phase: "error", error: event.error ?? "The computer did not start the conversation." };
       }
-      return { ...state, liveSessionId: event.liveSessionId };
+      return { ...state, liveSessionId: event.liveSessionId, voiceRatePerMinuteUsd: event.voiceRatePerMinuteUsd };
 
     case "started":
-      return state.phase === "connecting" ? { ...state, phase: "live" } : state;
+      return state.phase === "connecting" ? { ...state, phase: "live", liveSince: event.now } : state;
 
     case "transcript":
       if (state.phase !== "live" && state.phase !== "connecting") return state;
@@ -104,7 +117,8 @@ export function voiceReducer(state: VoiceState, event: VoiceEvent): VoiceState {
       if (!state.liveSessionId || status.liveSessionId !== state.liveSessionId) return state;
       if (status.state === "closed") return state.phase === "idle" ? state : { ...state, phase: "idle", agent: undefined };
       if (status.state === "error") {
-        return { ...state, phase: "error", error: status.detail ?? "The voice conversation stopped." };
+        // Errors force the screen back up: a buried error is never read.
+        return { ...state, phase: "error", error: status.detail ?? "The voice conversation stopped.", minimized: false };
       }
       if (status.state === "ready") return state;
       return { ...state, agent: status };
@@ -113,6 +127,12 @@ export function voiceReducer(state: VoiceState, event: VoiceEvent): VoiceState {
     case "mute":
       return { ...state, muted: event.muted };
 
+    case "minimize":
+      return state.phase === "connecting" || state.phase === "live" ? { ...state, minimized: true } : state;
+
+    case "expand":
+      return state.minimized ? { ...state, minimized: false } : state;
+
     case "end":
       return state.phase === "idle" || state.phase === "error" ? state : { ...state, phase: "ending" };
 
@@ -120,7 +140,7 @@ export function voiceReducer(state: VoiceState, event: VoiceEvent): VoiceState {
       return { ...state, phase: "idle" };
 
     case "fail":
-      return state.phase === "idle" ? state : { ...state, phase: "error", error: event.message };
+      return state.phase === "idle" ? state : { ...state, phase: "error", error: event.message, minimized: false };
 
     case "reset":
       return initialVoiceState;
@@ -179,6 +199,36 @@ export function voiceStatusLine(state: VoiceState, providerName: (id: string | u
     if (agent.state === "agent_done") return `${name} finished${where}`;
   }
   return state.muted ? "Muted" : "Listening";
+}
+
+/**
+ * The quiet line under the status while a call is live: elapsed time, and a
+ * running cost estimate when the daemon named the rate. "About", because the
+ * delegation turns add a little that this cannot see.
+ */
+export function voiceUsageLine(state: VoiceState, now: number): string {
+  if (state.phase !== "live" || state.liveSince === undefined) return "";
+  const seconds = Math.max(0, Math.floor((now - state.liveSince) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const clock = `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+  const rate = state.voiceRatePerMinuteUsd;
+  if (rate === undefined) return clock;
+  const costUsd = (seconds / 60) * rate;
+  const cost =
+    costUsd < 1 ? `${Math.round(costUsd * 100)}p` : `£${costUsd.toFixed(2)}`;
+  return `${clock} · about ${cost}`;
+}
+
+/**
+ * Whether a finished turn should ring the phone like an incoming call.
+ *
+ * The turn must be one nobody is watching: the conversation on screen
+ * finishing is visible already, and ringing over it is the intrusiveness this
+ * feature is meant to avoid being.
+ */
+export function shouldRingForTurn(turn: { sessionId: string }, opts: { onScreen?: string; callActive: boolean }): boolean {
+  if (opts.callActive) return false;
+  return turn.sessionId !== opts.onScreen;
 }
 
 /**

@@ -62,6 +62,7 @@ import { pickFiles, pickPhotos, takePhoto } from "./src/ui/attachmentPicker";
 import { useDictation } from "./src/ui/useDictation";
 import { useVoice } from "./src/ui/useVoice";
 import { VoiceScreen } from "./src/ui/VoiceScreen";
+import { VoiceBar, VoiceIncomingBar } from "./src/ui/VoiceBar";
 import { ApprovalSheet } from "./src/ui/ApprovalSheet";
 import { ThoughtSheet } from "./src/ui/ThoughtSheet";
 import { PreviewSheet } from "./src/ui/PreviewSheet";
@@ -469,6 +470,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
    * backgrounded or looking at another project, so without this a finished
    * five-minute turn is only discovered by going back to check.
    */
+  const offerIncomingRef = useRef<((turn: { sessionId: string; agentName?: string; folder?: string }) => void) | undefined>(undefined);
   const announceTurn = useCallback((turn: TurnFinished) => {
     const notice = finishedNotice({
       ...turn,
@@ -476,6 +478,10 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
       pushExpected: pushExpected.current,
     });
     if (notice) void notify(notice);
+    // And offer the same finished turn as an incoming call: the banner and
+    // the ring are how "tell me when it's done" reaches someone not reading
+    // the screen. The hook itself declines while a call is already live.
+    offerIncomingRef.current?.({ sessionId: turn.sessionId, agentName: turn.agentName, folder: turn.folder });
   }, []);
 
   // The relay identifies devices by this, and it must match the id baked into
@@ -1106,6 +1112,14 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
     }, []),
   });
 
+  // announceTurn runs before this hook exists; the ref is the bridge.
+  useEffect(() => {
+    offerIncomingRef.current = voice.offerIncoming;
+    return () => {
+      offerIncomingRef.current = undefined;
+    };
+  }, [voice.offerIncoming]);
+
   // Handed the text by the dock, which owns it.
   //
   // Answers whether the message went. The dock clears the draft on true and
@@ -1600,11 +1614,15 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
             onAttach={openAttach}
             onRemoveAttachment={removeAttachment}
             dictation={dictation}
-            onVoice={voice.offered ? voice.start : undefined}
+            onVoice={voice.offered ? (voice.active ? voice.expand : voice.start) : undefined}
           />
         </View>
       </Reanimated.View>
       <VoiceScreen voice={voice} color={active?.color} />
+      {/* The minimised call: the banner floats over the chat so the agent's
+          work can be watched without hanging up. */}
+      <VoiceBar voice={voice} color={active?.color} />
+      <VoiceIncomingBar voice={voice} />
 
       {/* Outside the lifted pane: a sheet belongs to the screen's bottom edge,
           not to the composer, so it must not ride up with the keyboard. */}

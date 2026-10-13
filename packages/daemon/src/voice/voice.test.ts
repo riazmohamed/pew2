@@ -145,7 +145,13 @@ test("the key file is written owner-only and a wrong shape is refused", async ()
 
 test("session create sends the offer, config and headers, and answers with the SDP", async () => {
   const { requests, answer, socket } = await started();
-  expect(answer).toEqual({ t: "voice.answer", requestId: "r1", liveSessionId: "live_1", sdp: "answer-sdp" });
+  expect(answer).toEqual({
+    t: "voice.answer",
+    requestId: "r1",
+    liveSessionId: "live_1",
+    sdp: "answer-sdp",
+    voiceRatePerMinuteUsd: 0.05,
+  });
   const request = requests[0]!;
   expect(request.url).toBe("https://api.openai.com/v1/live/sessions");
   const headers = request.init.headers as Record<string, string>;
@@ -281,6 +287,28 @@ test("a finished turn and an approval are spoken as commentary", async () => {
   expect(done).toContain("All 14 tests pass.");
   expect(done).not.toContain("```");
   expect(await session.runTool("read_agent_reply", {})).toMatchObject({ reply: expect.stringContaining("All **14**") });
+});
+
+test("hang_up schedules a close so the goodbye is heard first", async () => {
+  const { LiveVoiceSession } = await import("./session.js");
+  const saved = LiveVoiceSession.HANGUP_DELAY_MS;
+  LiveVoiceSession.HANGUP_DELAY_MS = 10;
+  try {
+    const { manager, socket } = await started();
+    socket!.open();
+    const session = manager.sessions()[0]!;
+    const result = (await session.runTool("hang_up", {})) as { status: string };
+    expect(result.status).toBe("closing");
+    expect(socket!.of("session.close")).toHaveLength(0);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(socket!.of("session.close")).toHaveLength(1);
+    // Confirming the close tears the session down.
+    socket!.emit({ type: "session.closed" });
+    await tick();
+    expect(session.done).toBe(true);
+  } finally {
+    LiveVoiceSession.HANGUP_DELAY_MS = saved;
+  }
 });
 
 test("voice.stop sends session.close and cleans up on session.closed", async () => {

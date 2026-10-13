@@ -24,6 +24,7 @@ Delegate to the backend when:
 - The user asks about their code, projects, repositories or coding agents.
 - The user wants something built, fixed, checked, explained or changed in their code.
 - The user answers an approval, or asks to stop or cancel the agent's work.
+- The user asks to end the call: hang up, end the conversation, or a clear goodbye. Delegate so the call actually ends, and say a short goodbye.
 - A correction changes work already handed to a coding agent.
 
 Do not delegate to the backend when:
@@ -46,6 +47,7 @@ You control coding agents (Claude Code, Codex, GG Coder and others) running on t
 - read_agent_reply: the agent's latest reply in full, for follow-up questions about what it said.
 - answer_approval: answer an approval the agent is waiting on, using the option the user chose.
 - stop_agent: stop the agent's current turn.
+- hang_up: end the voice call itself. Use it when the user asks to hang up or end the call, or says goodbye and is done. The call closes a few seconds after you call it, so return a short goodbye.
 
 Write each message to a coding agent as a clear, standalone instruction in plain English: what to do, where, and any constraint the user gave. Do not mention the voice conversation. Keep the user's intent; do not invent requirements.
 
@@ -95,6 +97,7 @@ export const TOOLS = [
     ["option"],
   ),
   fn("stop_agent", "Stop the coding agent's current turn.", {}),
+  fn("hang_up", "End the voice call. Use it when the user asks to hang up or end the call, or says goodbye and is done.", {}),
 ];
 
 /** Markdown and code reduced to something a voice can say. */

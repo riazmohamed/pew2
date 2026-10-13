@@ -21,10 +21,22 @@ import {
 import { loadClaudeDisplayHistory } from "./acp/claude-history.js";
 import { loadGgCoderDisplayHistory } from "./acp/ggcoder-history.js";
 import { SessionLog } from "./session/log.js";
+import { Desk, type DeskResult } from "./desk.js";
+import { GgCoderMirror } from "./acp/ggcoder-mirror.js";
+import {
+  NATIVE_ALIVE_POLL_MS,
+  NativeTyper,
+  defaultNativeDeps,
+  nativeAlive,
+  nativeProviders,
+  openNativeWindow,
+  typeable,
+  type NativeDeskDeps,
+} from "./native-desk.js";
 import { readDisabled } from "./providers/enabled.js";
 import { discardAttachments, storeAttachments } from "./attachments.js";
 import { folderName, resolveWorkspace } from "./workspace.js";
-import { PushRegistry } from "./push.js";
+import { PushRegistry, pushFinishedTurn } from "./push.js";
 import { readProbeCache, writeProbeCache } from "./probe-cache.js";
 import { readKnownProjects, rememberKnownProject } from "./known-projects.js";
 import { hydrateMessageCounts } from "./acp/messageCounts.js";
@@ -34,6 +46,13 @@ import { readConfigPrefs, writeConfigPref, type ConfigPrefs } from "./config-pre
 import { readSessionPrefs, writeSessionPrefs } from "./session-prefs.js";
 import { readCommandDirs } from "./commands/from-disk.js";
 import { wire } from "@pew2/protocol";
+import {
+  KeepAwake,
+  awakePlatform,
+  readKeepAwakeEnabled,
+  writeKeepAwakeEnabled,
+  type KeepAwakeStatus,
+} from "./keep-awake.js";
 
 interface ActiveSession {
   handle?: AcpSessionHandle;
@@ -112,6 +131,35 @@ interface ActiveSession {
   streamingReplay?: boolean;
   pendingReplay?: wire.SessionEvent[];
   replayTimer?: NodeJS.Timeout;
+  /**
+   * Set when this conversation is open in the agent's own terminal app
+   * (`desk.open` with `target: "native"`) rather than held over ACP. There is
+   * no `handle` then: prompts and drafts are typed into the window, and the
+   * log is fed by tailing the agent's own transcript file.
+   */
+  native?: NativeSession;
+}
+
+interface NativeSession {
+  itermSessionId: string;
+  typer: NativeTyper;
+  mirror: GgCoderMirror;
+  /**
+   * The selectors the conversation had under ACP, kept so the phone's model
+   * and thinking pills stay. A change is typed into OG Coder as its own
+   * command; this is pew2's record of the result.
+   */
+  configOptions: ConfigOption[];
+  aliveTimer?: NodeJS.Timeout;
+}
+
+/** Test seams for the native window path. */
+export interface NativeOptions extends Partial<NativeDeskDeps> {
+  platform?: NodeJS.Platform;
+  sessionsRoot?: string;
+  pollMs?: number;
+  alivePollMs?: number;
+  throttleMs?: number;
 }
 
 /** Everything a provider can tell us before a conversation is under way. */
@@ -738,6 +786,7 @@ export class Daemon {
         // from before it was even asked.
         session.lastUsedAt = Date.now();
         this.record(session, { kind: "permission_request", requestId, params });
+        this.awake.evaluate();
       },
       onConfigOptions: (configOptions: ConfigOption[]) =>
         this.publishConfigOptions(session, configOptions),
@@ -931,17 +980,99 @@ export class Daemon {
    * which is every test that works in a temporary directory.
    */
   private readonly env: NodeJS.ProcessEnv;
+  private readonly nativeOptions: NativeOptions;
+  private readonly nativeDeps: NativeDeskDeps;
 
   constructor(
     private readonly machine: { id: string; name: string },
     private readonly includeExperimental = false,
     env: NodeJS.ProcessEnv = process.env,
+    native: NativeOptions = {},
   ) {
+    this.nativeOptions = native;
+    this.nativeDeps = { ...defaultNativeDeps(), ...native };
     // Copied, not referenced: the point is a value that cannot change under a
     // write that lands later.
     this.env = { ...env };
     this.voice = new VoiceManager(daemonHost(this, this.env));
     this.observe((observation) => this.voice.observe(observation));
+    this.awake = this.createKeepAwake();
+  }
+
+  /**
+   * Latest half-typed draft per conversation ("" = not started yet).
+   *
+   * Memory only, and never a session event: logged with a `seq`, a draft would
+   * replay keystroke by keystroke on every reconnect.
+   */
+  private readonly drafts = new Map<string, { text: string; from?: string; at: number }>();
+
+  /** Record (or, with empty text, clear) a draft. Returns the frame to broadcast. */
+  setDraft(sessionId: string | undefined, text: string, from?: string): wire.DraftUpdate {
+    const key = sessionId ?? "";
+    const at = Date.now();
+    if (text === "") this.drafts.delete(key);
+    else this.drafts.set(key, { text, from, at });
+    return { t: "session.draft", ...(sessionId !== undefined && { sessionId }), text, from, at };
+  }
+
+  /** Every held draft, as frames for a client that just joined. */
+  draftFrames(): wire.DraftUpdate[] {
+    return [...this.drafts].map(([key, draft]) => ({
+      t: "session.draft",
+      ...(key !== "" && { sessionId: key }),
+      text: draft.text,
+      from: draft.from,
+      at: draft.at,
+    }));
+  }
+
+  /** Keeps the machine from idle-sleeping while in use. Inert until `startKeepAwake`. */
+  private readonly awake: KeepAwake;
+  /** Opens `pew2 chat` windows on this screen when the phone asks. */
+  readonly desk = new Desk();
+  private lastClientAt?: number;
+
+  private createKeepAwake(): KeepAwake {
+    return new KeepAwake({
+      platform: awakePlatform(process.platform, process.pid),
+      state: () => {
+        let working = false;
+        let permissionPending = false;
+        for (const session of this.sessions.values()) {
+          if (session.working) working = true;
+          if ((session.permissions?.size ?? 0) > 0) permissionPending = true;
+        }
+        return { working, permissionPending, lastClientAt: this.lastClientAt };
+      },
+      readEnabled: () => readKeepAwakeEnabled(this.env),
+      writeEnabled: (enabled) => writeKeepAwakeEnabled(enabled, this.env),
+      onChange: () => this.announceProviders(),
+    });
+  }
+
+  /**
+   * Begin holding sleep assertions per the policy. Only the server calls this,
+   * so a Daemon built in a test never spawns `caffeinate`.
+   */
+  startKeepAwake(): Promise<void> {
+    return this.awake.start();
+  }
+
+  get keepAwakeStatus(): KeepAwakeStatus {
+    return this.awake.status;
+  }
+
+  /** The user's switch, from any client. Persisted, then always re-announced. */
+  async setKeepAwake(enabled: boolean): Promise<void> {
+    await this.awake.setEnabled(enabled);
+    this.announceProviders();
+  }
+
+  /** A client said something: someone is using this machine. */
+  noteClientActivity(now: number = Date.now()) {
+    this.lastClientAt = now;
+    this.awake.evaluate();
   }
 
   /**
@@ -1098,11 +1229,14 @@ export class Daemon {
   private closeSession(sessionId: string, session: ActiveSession) {
     if (session.replayTimer) clearTimeout(session.replayTimer);
     session.replayTimer = undefined;
+    // A native window is the user's own: closing only stops mirroring it.
+    if (session.native) stopNative(session.native);
     session.handle?.close();
     // The files were only ever a delivery mechanism for the agent that is now
     // gone. Best effort, and in the tempdir either way.
     void discardAttachments(session.log.sessionId);
     this.sessions.delete(sessionId);
+    this.drafts.delete(sessionId);
   }
 
   /**
@@ -1133,6 +1267,8 @@ export class Daemon {
       // is the one kind of stopped that lasts for ever.
       const blocked = (session.permissions?.size ?? 0) > 0;
       if (session.working && !blocked) continue;
+      // Holds no agent, and ends with its window (see `watchNativeWindow`).
+      if (session.native) continue;
       const ttl = blocked ? Daemon.BLOCKED_TTL_MS : Daemon.SESSION_TTL_MS;
       if (now - session.lastUsedAt < ttl) continue;
       // Nothing to resume from means nothing to come back to. A conversation
@@ -1165,10 +1301,12 @@ export class Daemon {
       // Same three exclusions the reaper uses, for the same reasons: a turn in
       // flight would lose work, and a conversation the agent never named has
       // nothing to resume from, so closing it loses it rather than parks it.
-      .filter(([id, s]) => id !== exempt && !s.working && s.agentSessionId !== undefined)
+      .filter(([id, s]) => id !== exempt && !s.working && s.agentSessionId !== undefined && !s.native)
       .sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt);
 
-    const excess = this.sessions.size - Daemon.MAX_LIVE_SESSIONS;
+    // A native mirror holds no agent process, so it does not count.
+    const held = [...this.sessions.values()].filter((s) => !s.native).length;
+    const excess = held - Daemon.MAX_LIVE_SESSIONS;
     const closed: string[] = [];
     for (const [sessionId, session] of closable.slice(0, Math.max(0, excess))) {
       this.closeSession(sessionId, session);
@@ -1271,6 +1409,11 @@ export class Daemon {
       // Re-read on every `refreshProviders`, which every `hello` triggers, so
       // a key added with `pew2 voice key` shows up on the next connect.
       voice: this.voice.status,
+      // This daemon relays `session.draft`; clients send none without it.
+      drafts: true,
+      keepAwake: this.awake.status,
+      // Whether the phone may ask for a `pew2 chat` window on this screen.
+      desk: this.deskAnnouncement(),
       // Which sessions this process actually holds. A client's list outlives
       // the daemon, so this is how it learns that an id it still shows died
       // with the previous process and must be resumed, not prompted.
@@ -1426,7 +1569,8 @@ export class Daemon {
 
   /** Selectors (model, thinking level, mode) advertised by a session's agent. */
   configOptions(sessionId: string) {
-    return this.sessions.get(sessionId)?.handle?.configOptions ?? [];
+    const session = this.sessions.get(sessionId);
+    return session?.native?.configOptions ?? session?.handle?.configOptions ?? [];
   }
 
   /**
@@ -1896,6 +2040,7 @@ export class Daemon {
 
   async setConfigOption(sessionId: string, configId: string, value: string | boolean) {
     const session = this.require(sessionId);
+    if (session.native) return this.setNativeConfigOption(session.native, configId, value);
     await session.ready;
     const updated = await session.handle!.setConfigOption(configId, value);
     // Only after the agent accepted it: remembering a rejected choice would
@@ -1920,8 +2065,256 @@ export class Daemon {
     return updated;
   }
 
+  /** The `desk` field of the announcement, with `native` only when non-empty. */
+  private deskAnnouncement(): wire.ProviderAnnounce["desk"] {
+    const status = this.desk.status();
+    const native = nativeProviders(
+      this.providers
+        .filter((p) => this.isEnabled(p.manifest.id))
+        .map((p) => ({ id: p.manifest.id, commandMissing: p.commandMissing })),
+      { platform: this.nativeOptions.platform ?? process.platform, hasITerm: this.nativeDeps.hasITerm() },
+    );
+    return native.length > 0 ? { ...status, native } : status;
+  }
+
+  /** Whether this session is a native window being mirrored. */
+  isNative(sessionId: string): boolean {
+    return this.sessions.get(sessionId)?.native !== undefined;
+  }
+
+  /** The mirror already showing this conversation, if any. */
+  nativeSessionFor(providerId: string, agentSessionId: string): string | undefined {
+    for (const [id, session] of this.sessions) {
+      if (session.native && session.providerId === providerId && session.agentSessionId === agentSessionId) return id;
+    }
+    return undefined;
+  }
+
+  /** A phone draft, typed into the native window's input (no Enter). */
+  nativeDraft(sessionId: string | undefined, text: string): void {
+    if (!sessionId) return;
+    this.sessions.get(sessionId)?.native?.typer.draft(text);
+  }
+
+  /** Re-introduce a mirror to a client that asked to resume it. */
+  replayNative(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session?.native) return;
+    this.send({ t: "session.replay", sessionId, events: session.log.since(-1), complete: true });
+  }
+
+  /**
+   * Hand a conversation over to the agent's own terminal app.
+   *
+   * Only one process may write a conversation, so pew2's ACP session for it is
+   * closed and the window resumes it by id. The window is then presented as a
+   * session of its own (a fresh id, the same `agentSessionId`), so the phone
+   * replaces the row and keeps sending exactly as before.
+   */
+  async openNative(sessionId: string): Promise<DeskResult> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return { ok: false, message: "That conversation isn't open on the computer. Send it a message first." };
+    }
+    if (session.native) return { ok: true, app: "iTerm", message: "It's already open in OG Coder on the computer." };
+    const provider = this.providers.find((p) => p.manifest.id === session.providerId);
+    const allowed = this.deskAnnouncement()?.native ?? [];
+    if (!provider || !allowed.includes(session.providerId)) {
+      return { ok: false, message: "This agent can't be opened in its own app on this computer." };
+    }
+    if ((session.permissions?.size ?? 0) > 0) {
+      return { ok: false, message: "It's waiting for your approval. Answer that first, then open it on the computer." };
+    }
+    if (session.working) {
+      return { ok: false, message: "It's in the middle of a reply. Open it on the computer once it finishes." };
+    }
+    const agentSessionId = session.agentSessionId;
+    if (!agentSessionId) {
+      return { ok: false, message: "That conversation hasn't finished opening yet. Try again in a moment." };
+    }
+    const cwd = session.cwd;
+    const providerId = session.providerId;
+    // Taken before the ACP session closes, so the phone keeps its pills.
+    const configOptions = this.configOptions(sessionId);
+
+    // Baseline before the window exists, so everything OG Coder writes from
+    // its resume onwards is new and nothing already on the phone repeats.
+    const log = new SessionLog(`${providerId}-${Date.now().toString(36)}`);
+    const handles: { native?: NativeSession; mirrorSession?: ActiveSession } = {};
+    const mirror = new GgCoderMirror({
+      agentSessionId,
+      cwd,
+      sessionsRoot: this.nativeOptions.sessionsRoot,
+      pollMs: this.nativeOptions.pollMs,
+      callbacks: {
+        onUpdate: (update) => handles.mirrorSession && this.record(handles.mirrorSession, { sessionId: agentSessionId, update }),
+        onUserMessage: (text) => handles.mirrorSession && this.record(handles.mirrorSession, { kind: "user_message", text }),
+        onTurnStart: () => handles.mirrorSession && this.nativeTurnStart(handles.mirrorSession),
+        onTurnEnd: () => handles.mirrorSession && this.nativeTurnEnd(handles.mirrorSession),
+      },
+    });
+    await mirror.baseline();
+    const history = await loadGgCoderDisplayHistory(agentSessionId, cwd, this.nativeOptions.sessionsRoot).catch(() => undefined);
+
+    const opened = await openNativeWindow(this.nativeDeps, {
+      command: provider.command,
+      providerId,
+      agentSessionId,
+      cwd,
+    });
+    if (!opened.ok) return { ok: false, message: opened.message };
+
+    // The window has the conversation now; pew2's own agent lets go of it.
+    // Re-read: the session may have been closed while the window opened.
+    const current = this.sessions.get(sessionId);
+    if (current) this.closeSession(sessionId, current);
+
+    const native: NativeSession = {
+      itermSessionId: opened.itermSessionId,
+      typer: new NativeTyper(opened.itermSessionId, this.nativeDeps.osa, this.nativeOptions.throttleMs),
+      mirror,
+      configOptions,
+    };
+    const mirrorSession: ActiveSession = {
+      log,
+      providerId,
+      agentSessionId,
+      cwd,
+      live: false,
+      lastUsedAt: Date.now(),
+      ready: Promise.resolve(),
+      native,
+    };
+    handles.native = native;
+    handles.mirrorSession = mirrorSession;
+    for (const update of history ?? []) log.append({ sessionId: agentSessionId, update });
+    this.sessions.set(log.sessionId, mirrorSession);
+
+    // The same frames a resume sends, so the phone swaps the row over and
+    // paints the transcript from this log.
+    this.send({
+      t: "session.started",
+      sessionId: log.sessionId,
+      providerId,
+      configOptions,
+      resumed: true,
+      cwd,
+      agentSessionId,
+    });
+    this.markStreaming(log.sessionId);
+    this.finishStreaming(log.sessionId);
+    this.send({ t: "session.config", sessionId: log.sessionId, providerId, configOptions });
+    this.announceProviders();
+
+    mirror.start();
+    this.watchNativeWindow(log.sessionId, native);
+    return { ok: true, app: "iTerm" };
+  }
+
+  /**
+   * A phone pill changed on a conversation open in OG Coder: drive OG Coder to
+   * it with its own controls. Model is its `/model <id>` command; thinking is
+   * Shift+Tab, pressed until the level comes round (OG Coder cycles the same
+   * list it advertised). Plan mode has no key from outside, so it is refused.
+   */
+  private async setNativeConfigOption(native: NativeSession, configId: string, value: string | boolean) {
+    const option = native.configOptions.find((o) => o.id === configId);
+    if (!option) throw new Error(`Unknown option '${configId}'`);
+    if (option.currentValue === value) return native.configOptions;
+    const typed =
+      option.category === "model"
+        ? await native.typer.command(`/model ${String(value)}`)
+        : option.category === "thought_level"
+          ? await native.typer.shiftTab(cycleDistance(option, value))
+          : undefined;
+    if (typed === undefined) throw new Error(NATIVE_CONFIG_REFUSAL);
+    if (!typed) throw new Error("The OG Coder window didn't take it. Is it still open?");
+    native.configOptions = native.configOptions.map((o) => (o.id === configId ? { ...o, currentValue: value } : o));
+    return native.configOptions;
+  }
+
+  /** End the mirror when its window closes or the agent in it exits. */
+  private watchNativeWindow(sessionId: string, native: NativeSession) {
+    let checking = false;
+    native.aliveTimer = setInterval(() => {
+      if (checking) return;
+      checking = true;
+      void nativeAlive(this.nativeDeps, native.itermSessionId)
+        .then((alive) => {
+          const session = this.sessions.get(sessionId);
+          if (alive || session?.native !== native) return;
+          // Whatever the agent wrote last is on the phone before it lets go.
+          return native.mirror.kick().then(() => {
+            if (this.sessions.get(sessionId)?.native !== native) return;
+            if (session.working) this.nativeTurnEnd(session);
+            this.closeSession(sessionId, session);
+            this.announceProviders();
+          });
+        })
+        .finally(() => {
+          checking = false;
+        });
+    }, this.nativeOptions.alivePollMs ?? NATIVE_ALIVE_POLL_MS);
+    native.aliveTimer.unref?.();
+  }
+
+  private nativeTurnStart(session: ActiveSession) {
+    session.lastUsedAt = Date.now();
+    if (session.working) return;
+    session.working = true;
+    session.turnText = undefined;
+    this.notify({ sessionId: session.log.sessionId, kind: "turn_start" });
+    this.awake.evaluate();
+  }
+
+  private nativeTurnEnd(session: ActiveSession) {
+    session.lastUsedAt = Date.now();
+    if (!session.working) return;
+    session.working = false;
+    const sessionId = session.log.sessionId;
+    this.notify({ sessionId, kind: "turn_end" });
+    this.awake.evaluate();
+    // The same pair `session.prompt` sends at a turn's end: the spinner, and
+    // the push for a phone that is asleep.
+    this.send({ t: "session.idle", sessionId, ...this.sessionOrigin(sessionId) });
+    void pushFinishedTurn(this.pushTargets, { sessionId, ...this.sessionNotice(sessionId) });
+  }
+
+  /** A phone prompt for a native window: typed in, then Enter. */
+  private async promptNative(session: ActiveSession, text: string, attachments: wire.PromptAttachment[]) {
+    const native = session.native;
+    if (!native) return;
+    const sessionId = session.log.sessionId;
+    session.lastUsedAt = Date.now();
+    const stored = await storeAttachments(sessionId, attachments);
+    // The window can only take text, so files are named by path (OG Coder
+    // reads a path it is given, and turns an image path into an attachment).
+    const typed = typeable(
+      [text, ...stored.map((file) => file.path)].filter((part) => part.length > 0).join(" "),
+    );
+    // Echoed now, as an ACP prompt is, so every client shows it at once; the
+    // copy OG Coder writes to its file is then recognised and not repeated.
+    this.send(
+      session.log.append({
+        kind: "user_message",
+        text,
+        ...(stored.length > 0 && {
+          attachments: stored.map((file) => ({ name: file.name, mimeType: file.mimeType, uri: file.path })),
+        }),
+      }),
+    );
+    native.mirror.expectEcho(typeable(text));
+    this.nativeTurnStart(session);
+    const ok = await native.typer.prompt(typed);
+    if (!ok) {
+      this.nativeTurnEnd(session);
+      throw new Error("The OG Coder window on the computer didn't take the message. Is it still open?");
+    }
+  }
+
   async prompt(sessionId: string, text: string, attachments: wire.PromptAttachment[] = []) {
     const session = this.require(sessionId);
+    if (session.native) return this.promptNative(session, text, attachments);
     // Use, and the start of a turn. `working` is cleared in the `finally` below
     // rather than on the agent's last word: an agent can go quiet for minutes
     // mid-tool, and a reaper that read silence as "done" would close the
@@ -1937,6 +2330,7 @@ export class Daemon {
     // push notification for this one quotes.
     session.turnText = undefined;
     this.notify({ sessionId, kind: "turn_start" });
+    this.awake.evaluate();
     try {
       // Written before the echo: an attachment that cannot be stored (over the
       // limits, disk full) must fail the whole prompt rather than leave a turn on
@@ -1977,11 +2371,16 @@ export class Daemon {
       // twenty minutes would otherwise be reapable the moment it finished.
       session.lastUsedAt = Date.now();
       this.notify({ sessionId, kind: "turn_end" });
+      this.awake.evaluate();
     }
   }
 
   async cancel(sessionId: string) {
     const session = this.require(sessionId);
+    if (session.native) {
+      await session.native.typer.cancel();
+      return;
+    }
     await session.ready;
     await session.handle!.cancel();
   }
@@ -2010,6 +2409,12 @@ export class Daemon {
   async close(sessionId: string): Promise<boolean> {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
+    if (session.native) {
+      // Never Esc into the user's window: stop mirroring and nothing else.
+      this.closeSession(sessionId, session);
+      this.announceProviders();
+      return true;
+    }
 
     if (session.working) {
       // Best effort: an agent that is already gone, or wedged, must not stop
@@ -2025,6 +2430,7 @@ export class Daemon {
     if (session.replayTimer) clearTimeout(session.replayTimer);
     session.handle?.close();
     this.sessions.delete(sessionId);
+    this.drafts.delete(sessionId);
     // The same announce the reaper and the session cap send, for the same
     // reason: `activeSessions` is how a client learns an id it still lists no
     // longer holds an agent, so the next prompt resumes instead of failing with
@@ -2041,6 +2447,7 @@ export class Daemon {
     // that was already resolved — and forgetting it here on that basis would
     // hide a *different*, still-open request from the next catch-up.
     if (answered) session.permissions?.delete(requestId);
+    this.awake.evaluate();
     return answered;
   }
 
@@ -2153,6 +2560,8 @@ export class Daemon {
 
   closeAll() {
     this.voice.closeAll();
+    // The assertion must never outlive the daemon's sessions.
+    this.awake.stop();
     if (this.reaper) {
       clearInterval(this.reaper);
       this.reaper = undefined;
@@ -2173,6 +2582,26 @@ export class Daemon {
     if (!session) throw new Error(`Unknown session '${sessionId}'`);
     return session;
   }
+}
+
+/** Said when the phone changes a selector OG Coder can't be driven to from outside. */
+export const NATIVE_CONFIG_REFUSAL =
+  "This conversation is open in OG Coder on the computer. Switch plan mode there.";
+
+/** How many steps forward through an option's values from current to `value`. */
+export function cycleDistance(option: ConfigOption, value: string | boolean): number {
+  const values = (option.options ?? []).map((o) => o.value);
+  const from = values.indexOf(String(option.currentValue));
+  const to = values.indexOf(String(value));
+  if (from < 0 || to < 0) throw new Error(`'${String(value)}' isn't one of the choices`);
+  return (to - from + values.length) % values.length;
+}
+
+function stopNative(native: NativeSession) {
+  if (native.aliveTimer) clearInterval(native.aliveTimer);
+  native.aliveTimer = undefined;
+  native.typer.stop();
+  native.mirror.stop();
 }
 
 if (import.meta.main) {

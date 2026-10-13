@@ -187,6 +187,9 @@ relay?.start();
 const { errors } = await daemon.refreshProviders();
 for (const error of errors) console.error(error.message);
 
+// Hold an idle-sleep assertion while someone is using this machine remotely.
+void daemon.startKeepAwake().catch((error: unknown) => console.error("[awake] failed to start:", error));
+
 /** Send one sealed message to one client. */
 function send(ws: ServerWebSocket<unknown>, message: unknown) {
   const client = clients.get(ws);
@@ -317,6 +320,10 @@ const server = Bun.serve({
         // provider scan: a turn running right now is the thing it is waiting to
         // see, and `refreshProviders` touches the disk.
         for (const catchUp of daemon.catchUp(wire.readCursors(hello.cursors))) send(ws, catchUp);
+        // Then whatever is half-typed anywhere, to this client only, so a window
+        // opened mid-sentence shows the sentence.
+        for (const draft of daemon.draftFrames()) send(ws, draft);
+        daemon.noteClientActivity();
 
         // Announced only now: the provider list names every agent installed on
         // this machine, which is not something to hand to an unproven socket.

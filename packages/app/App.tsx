@@ -35,6 +35,7 @@ import Reanimated, {
 import { StatusBar } from "expo-status-bar";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { theme } from "./src/theme";
+import { deskTargetLabel, deskTargets, type DeskTarget } from "./src/deskChoice";
 import { useDaemon, type Provider, type TurnFinished } from "./src/useDaemon";
 import { projectDrawerRows } from "./src/historyMetadata";
 import { restorePresentation } from "./src/restoreState";
@@ -60,6 +61,7 @@ import { AttachmentSheet, type AttachmentSource } from "./src/ui/AttachmentSheet
 import { addAttachments, MAX_ATTACHMENTS, type PendingAttachment } from "./src/attachments";
 import { pickFiles, pickPhotos, takePhoto } from "./src/ui/attachmentPicker";
 import { useDictation } from "./src/ui/useDictation";
+import { shouldReplaceDraft } from "./src/draftSync";
 import { useVoice } from "./src/ui/useVoice";
 import { VoiceScreen } from "./src/ui/VoiceScreen";
 import { VoiceBar, VoiceIncomingBar } from "./src/ui/VoiceBar";
@@ -1085,6 +1087,21 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   // render, the function on it is not.
   const cancelDictation = dictation.cancel;
 
+  // Live drafts from another client (`pew2 chat`). Applied straight to the
+  // dock — not through state — and never while dictating, when the recogniser
+  // owns the draft. `applyRemoteDraft` does not mirror back, so no echo.
+  const dictatingRef = useRef(dictation.listening);
+  dictatingRef.current = dictation.listening;
+  const setDraftListener = daemon.setDraftListener;
+  useEffect(() => {
+    setDraftListener((text) => {
+      const dock = composer.current;
+      if (!dock) return;
+      if (shouldReplaceDraft(text, dock.getDraft(), dictatingRef.current)) dock.applyRemoteDraft(text);
+    });
+    return () => setDraftListener(undefined);
+  }, [setDraftListener]);
+
   /**
    * A live voice conversation. Starting one stops dictation, since only one
    * thing may hold the mic. When the assistant's work lands in a conversation
@@ -1427,6 +1444,41 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
           {sessionTitle}
         </Text>
 
+        {/* Carry this conversation on at the desk: opens a `pew2 chat`
+            window on the computer, and typing mirrors both ways from then on.
+            Only for a daemon that says it can (absent on older ones). */}
+        {inThread && daemon.sessionId && daemon.desk?.available && (
+          // Deliberately quiet: a bare dim glyph, no glass, no confirmation.
+          // Only a failure (or a note, like iTerm needing permission) speaks.
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open this conversation on the computer"
+            hitSlop={12}
+            style={({ pressed }) => [styles.deskButton, pressed && { opacity: 0.4 }]}
+            onPress={() => {
+              const open = (target: DeskTarget) => {
+                void daemon.openOnComputer(target).then((result) => {
+                  if (result.ok && !result.message) return;
+                  Alert.alert(result.ok ? "Opened on the computer" : "Couldn't open it on the computer", result.message ?? "");
+                });
+              };
+              const targets = deskTargets(daemon.desk, daemon.effectiveProviderId);
+              // One place to open it: tap straight through, as always.
+              if (targets.length < 2) {
+                open("chat");
+                return;
+              }
+              // The agent's own app, or pew2 chat. A plain system alert:
+              // quiet, and gone the moment it is answered.
+              Alert.alert("Open on the computer", undefined, [
+                ...targets.map((target) => ({ text: deskTargetLabel(target, active?.name), onPress: () => open(target) })),
+                { text: "Cancel", style: "cancel" as const },
+              ]);
+            }}
+          >
+            <Ionicons name="desktop-outline" size={16} color={theme.color.textFaint} />
+          </Pressable>
+        )}
         <View style={styles.navAction}>
         {inThread && (
           // Asks where, rather than starting one immediately: the old behaviour
@@ -1619,6 +1671,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
             onAttach={openAttach}
             onRemoveAttachment={removeAttachment}
             dictation={dictation}
+            onDraftChange={daemon.sendDraft}
             onVoice={voice.offered ? (voice.active ? voice.expand : voice.start) : undefined}
           />
         </View>
@@ -1632,7 +1685,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
       {/* Outside the lifted pane: a sheet belongs to the screen's bottom edge,
           not to the composer, so it must not ride up with the keyboard. */}
       <ContextDetailsSheet visible={contextOpen} workspace={daemon.workspace} usage={daemon.usage} onClose={closeContext} />
-      <ConnectionSheet visible={connectionOpen} machineLabel={pairing.label} machineRemote={pairing.remote} status={daemon.status} update={daemon.update} onClose={closeConnection} onUnpair={onUnpair} />
+      <ConnectionSheet visible={connectionOpen} machineLabel={pairing.label} machineRemote={pairing.remote} status={daemon.status} update={daemon.update} keepAwake={daemon.keepAwake} onKeepAwake={daemon.setKeepAwake} onClose={closeConnection} onUnpair={onUnpair} />
       <CommandSheet
         visible={commandsOpen}
         commands={daemon.commands}
@@ -1769,6 +1822,7 @@ const styles = StyleSheet.create({
   },
   navFade: { zIndex: 2 },
   navAction: { width: theme.size.control, flexShrink: 0 },
+  deskButton: { flexShrink: 0, paddingHorizontal: theme.space(1), justifyContent: "center", alignItems: "center", height: theme.size.control },
   sessionTitle: {
     textAlign: "center",
     flex: 1,

@@ -11,6 +11,54 @@ installs them separately, and what an app and a daemon must agree on is
 
 Dates are the day the tag was cut.
 
+## Unreleased
+
+### Added
+
+- **Type on your phone, watch it appear on your computer — and the other way
+  round.** `pew2 chat` is a terminal window onto the same conversation the
+  phone is in (the same agent, not a second one). What you type in either place
+  shows up in the other letter by letter, sending from either clears both, and
+  the reply streams to both. Approvals can be answered from either side.
+- **Open it from the phone.** A small computer icon at the top of a
+  conversation opens that conversation in a terminal on your Mac (iTerm if you
+  have it, otherwise Terminal). The first time, macOS asks whether pew2 may
+  control iTerm; until you allow it, the window opens in Terminal instead.
+- **Or open it in the real OG Coder.** For an OG Coder conversation the icon
+  asks: *Open in OG Coder* hands the conversation to your own OG Coder app on
+  the Mac, resumed where it was. Everything OG Coder does works as usual there,
+  and the phone stays in the loop: what you type on the phone appears in OG
+  Coder's input as you type, Send presses Enter, and what happens in OG Coder
+  (your messages, its replies and tool steps) shows up on the phone. The
+  phone's model and thinking pills drive OG Coder too (switching the model
+  types its own `/model` command). Plan mode is switched in OG Coder itself.
+  Close the OG Coder window and the phone carries on with the conversation as
+  normal. Needs iTerm.
+- **`pew2 chat` looks and works like OG Coder.** Its banner, colours, message
+  style, input box and status line follow OG Coder's, replies render as
+  markdown, and it has `/model`, `/thinking`, `/mode` (synced with the phone),
+  the agent's own slash commands, Tab completion, pictures inline in iTerm,
+  `/shot` to send a screenshot of the Mac and `/attach` for an image file.
+- **One window per project.** Run `pew2 chat` inside a project and the window
+  belongs to it: titled with its name, following only that project's
+  conversations, starting new ones there. `--all` follows everything,
+  `--here` runs it in the current terminal instead of a new window. Esc,
+  Ctrl-C or `/quit` closes it.
+- **Keep the computer awake while you use it.** While an agent is working, an
+  approval is waiting, or you've used pew2 in the last ten minutes, the Mac
+  won't drift off to sleep; after that it sleeps as normal. Switch it off in
+  the app (Connection › Keep computer awake while in use), with
+  `pew2 awake off`, or `/awake off` in a chat window. A locked screen was never
+  a problem and still isn't; a sleeping Mac still pauses everything, and what
+  you type on the phone meanwhile is sent when it wakes.
+
+### Compatibility
+
+- Every new message is optional both ways. An older app on this pew2 works as
+  before; this app on an older pew2 shows no live typing, no switch and no
+  computer icon, and on a pew2 without *Open in OG Coder* the icon just opens
+  `pew2 chat`. The relay is unchanged.
+
 ## 0.9.14 — 2026-08-08
 
 ### Fixed

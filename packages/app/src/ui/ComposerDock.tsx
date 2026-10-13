@@ -51,6 +51,11 @@ export interface ComposerDockHandle {
   getDraft(): string;
   /** Replace the draft, as a slash command or dictation does. */
   setDraft(text: string): void;
+  /**
+   * Replace the draft with another device's, without mirroring it back. A
+   * remote draft re-sent would bounce between clients for ever.
+   */
+  applyRemoteDraft(text: string): void;
   focus(): void;
 }
 
@@ -99,6 +104,8 @@ interface Props {
    * exact frames the animation needs. See `settledHeight.ts`.
    */
   onHeightSettled?: (height: number) => void;
+  /** A local edit to the draft (typing, dictation, a slash command), for live mirroring. */
+  onDraftChange?: (text: string) => void;
 }
 
 function ComposerDockView(
@@ -125,6 +132,7 @@ function ComposerDockView(
     onVoice,
     style,
     onHeightSettled,
+    onDraftChange,
   }: Props,
   ref: React.Ref<ComposerDockHandle>,
 ) {
@@ -135,15 +143,26 @@ function ComposerDockView(
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const composer = useRef<ComposerHandle>(null);
+  // Latest mirror callback, read through a ref so the handle stays stable.
+  const onDraftChangeRef = useRef(onDraftChange);
+  onDraftChangeRef.current = onDraftChange;
+  const editDraft = useCallback((text: string) => {
+    setDraft(text);
+    onDraftChangeRef.current?.(text);
+  }, []);
 
   useImperativeHandle(
     ref,
     () => ({
       getDraft: () => draftRef.current,
-      setDraft,
+      setDraft: editDraft,
+      applyRemoteDraft: (text: string) => {
+        draftRef.current = text;
+        setDraft(text);
+      },
       focus: () => composer.current?.focus(),
     }),
-    [],
+    [editDraft],
   );
 
   const send = useCallback(() => {
@@ -207,7 +226,7 @@ function ComposerDockView(
       <Composer
         ref={composer}
         value={draft}
-        onChangeText={setDraft}
+        onChangeText={editDraft}
         onSend={send}
         busy={busy}
         onStop={onStop}

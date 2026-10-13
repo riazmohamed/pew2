@@ -18,7 +18,7 @@ interface StoredMessage {
 }
 
 /** GG Coder's stable cwd-to-directory encoding, shared by every persisted session. */
-function encodeCwd(cwd: string): string {
+export function encodeCwd(cwd: string): string {
   return cwd
     .replace(/^\\\\\?\\UNC\\/i, "\\\\")
     .replace(/^\\\\\?\\/i, "")
@@ -384,42 +384,96 @@ export async function loadGgCoderDisplayHistory(
 
   const updates: GgCoderDisplayUpdate[] = [];
   for (const message of reconstructCheckpoints(checkpoints)) {
-    if (message.provenance?.kind === "automation" || message.provenance?.kind === "notification") {
-      continue;
-    }
-    if (message.role === "tool") {
-      const images = [...historyImages(message.content), ...historyToolImages(message.content)];
-      if (images.length > 0) {
-        updates.push({ sessionUpdate: "agent_message_chunk", content: images });
+    updates.push(...messageDisplayUpdates(message));
+  }
+  return updates;
+}
+
+/**
+ * One stored message as the display updates history renders it.
+ *
+ * Shared by the history load above and the live mirror of a native OG Coder
+ * window (`ggcoder-mirror.ts`), so a message reads the same either way.
+ * `tools` adds ACP `tool_call` / `tool_call_update` frames for the live path,
+ * where they drive the phone's activity line; history never sent them.
+ */
+export function messageDisplayUpdates(
+  message: {
+    role?: string;
+    content: unknown;
+    provenance?: { kind?: string; visibility?: "transcript" | "hidden" | "summary" };
+  },
+  options: { tools?: boolean } = {},
+): GgCoderDisplayUpdate[] {
+  const updates: GgCoderDisplayUpdate[] = [];
+  if (message.provenance?.kind === "automation" || message.provenance?.kind === "notification") {
+    return updates;
+  }
+  if (message.role === "tool") {
+    if (options.tools && Array.isArray(message.content)) {
+      for (const block of message.content as { type?: string; toolCallId?: unknown; isError?: unknown }[]) {
+        if (block?.type === "tool_result" && typeof block.toolCallId === "string") {
+          updates.push({
+            sessionUpdate: "tool_call_update",
+            toolCallId: block.toolCallId,
+            status: block.isError === true ? "failed" : "completed",
+          });
+        }
       }
-      continue;
     }
-    if (message.role === "user") {
-      const text = messageText(message.content).trim();
-      const images = historyImages(message.content);
-      // A pasted screenshot may be the whole message, so both are checked.
-      if (text || images.length > 0) {
-        updates.push({
-          sessionUpdate: "user_message_chunk",
-          content: images.length > 0 ? [{ type: "text", text }, ...images] : { type: "text", text },
-        });
-      }
-      continue;
+    const images = [...historyImages(message.content), ...historyToolImages(message.content)];
+    if (images.length > 0) {
+      updates.push({ sessionUpdate: "agent_message_chunk", content: images });
     }
-    if (message.role === "assistant") {
-      const thought = historyThoughts(message.content);
-      if (thought) {
-        updates.push({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: thought } });
-      }
-      const text = messageText(message.content);
-      const images = historyImages(message.content);
-      if (text || images.length > 0) {
-        updates.push({
-          sessionUpdate: "agent_message_chunk",
-          content: images.length > 0 ? [{ type: "text", text }, ...images] : { type: "text", text },
-        });
+    return updates;
+  }
+  if (message.role === "user") {
+    const text = messageText(message.content).trim();
+    const images = historyImages(message.content);
+    // A pasted screenshot may be the whole message, so both are checked.
+    if (text || images.length > 0) {
+      updates.push({
+        sessionUpdate: "user_message_chunk",
+        content: images.length > 0 ? [{ type: "text", text }, ...images] : { type: "text", text },
+      });
+    }
+    return updates;
+  }
+  if (message.role === "assistant") {
+    const thought = historyThoughts(message.content);
+    if (thought) {
+      updates.push({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: thought } });
+    }
+    const text = messageText(message.content);
+    const images = historyImages(message.content);
+    if (text || images.length > 0) {
+      updates.push({
+        sessionUpdate: "agent_message_chunk",
+        content: images.length > 0 ? [{ type: "text", text }, ...images] : { type: "text", text },
+      });
+    }
+    if (options.tools && Array.isArray(message.content)) {
+      for (const block of message.content as { type?: string; id?: unknown; name?: unknown; args?: unknown }[]) {
+        if (block?.type === "tool_call" && typeof block.id === "string") {
+          updates.push({
+            sessionUpdate: "tool_call",
+            toolCallId: block.id,
+            title: typeof block.name === "string" ? block.name : "tool",
+            status: "in_progress",
+            rawInput: block.args,
+          });
+        }
       }
     }
   }
   return updates;
+}
+
+/** Whether a stored message is shown in a transcript at all. */
+export function isTranscriptMessage(message: {
+  role?: string;
+  content: unknown;
+  provenance?: { kind?: string; visibility?: "transcript" | "hidden" | "summary" };
+}): boolean {
+  return visibility(message as DisplayStoredMessage) === "transcript";
 }

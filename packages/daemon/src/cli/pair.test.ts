@@ -58,6 +58,15 @@ test("the CLI never counts its own id as the phone", async () => {
   expect(await pending).toBeNull();
 });
 
+test("a pew2 chat window joining is never mistaken for the phone", async () => {
+  const { socket, create } = harness();
+
+  const pending = waitForDevice({ url: "ws://127.0.0.1:8787/", createSocket: create, timeoutMs: 60 });
+  socket.deliver({ t: "device.joined", deviceId: `${cliDeviceId()}#chat-ab12`, at: Date.now() });
+
+  expect(await pending).toBeNull();
+});
+
 test("unrelated and malformed traffic is ignored", async () => {
   const { socket, create } = harness();
 

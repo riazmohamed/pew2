@@ -320,6 +320,9 @@ export class RelayClient {
         for (const catchUp of this.options.daemon.catchUp(wire.readCursors(hello.cursors))) {
           this.send(catchUp);
         }
+        // Drafts in progress, addressed to the joiner (not mirrored locally).
+        for (const draft of this.options.daemon.draftFrames()) this.send(draft);
+        this.options.daemon.noteClientActivity();
         return;
       }
 

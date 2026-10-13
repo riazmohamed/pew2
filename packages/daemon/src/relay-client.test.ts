@@ -50,6 +50,10 @@ function fakeDaemon({
         cursorsSeen.push(cursors);
         return catchUp(cursors);
       },
+      draftFrames: () => [{ t: "session.draft", sessionId: "s1", text: "half a sen", from: "desk", at: 1 }],
+      noteClientActivity: () => {
+        calls.push("noteClientActivity");
+      },
     } as unknown as Daemon,
   };
 }
@@ -598,6 +602,32 @@ test("a reconnecting phone is answered with everything it missed", async () => {
   expect(cursorsSeen).toEqual([{ s1: 41 }]);
   const frames = socket.sent.map((raw) => app.open(JSON.parse(raw)));
   expect(frames).toContainEqual(missed);
+  relay.stop();
+});
+
+test("a joining phone is sent the drafts in progress, after the catch-up", async () => {
+  const missed = { t: "session.replay", sessionId: "s1", events: [], catchUp: true, working: false };
+  const { relay, calls } = client({}, { catchUp: () => [missed] });
+
+  relay.start();
+  const socket = FakeSocket.instances[0]!;
+  socket.open();
+  socket.sent.length = 0;
+
+  const app = phone();
+  socket.receive({
+    t: "hello",
+    wire: WIRE_VERSION,
+    role: "app",
+    deviceId: "Kens-iPhone",
+    proof: app.proof("Kens-iPhone"),
+    cursors: { s1: 3 },
+  });
+  await new Promise((r) => setTimeout(r, 20));
+
+  const types = socket.sent.map((raw) => (app.open(JSON.parse(raw)) as { t?: string })?.t);
+  expect(types.indexOf("session.draft")).toBeGreaterThan(types.indexOf("session.replay"));
+  expect(calls).toContain("noteClientActivity");
   relay.stop();
 });
 

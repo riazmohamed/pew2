@@ -22,7 +22,7 @@ import { hostname } from "node:os";
 import { SecureChannel, e2e, wire } from "@pew2/protocol";
 import { daemonPort, daemonUrl } from "./doctor.js";
 import { lanAddresses, loadPairing, pairingUrl, qrCode, rotatePairing } from "../pairing.js";
-import { CLI_DEVICE_PREFIX, isRealClaim } from "../device-claim.js";
+import { CLI_DEVICE_PREFIX, isLocalWatcher, isRealClaim } from "../device-claim.js";
 import {
   PALETTE,
   colorLevel,
@@ -185,6 +185,9 @@ export function waitForDevice(options: {
         // command congratulates the user on pairing with the machine they are
         // already sitting at, then exits before their phone ever shows up.
         if (message.deviceId === cliDeviceId()) return;
+        // Nor any other local CLI socket — a `pew2 chat` window joining is
+        // this machine talking to itself, not a phone that paired.
+        if (message.deviceId && isLocalWatcher(message.deviceId)) return;
         finish({ deviceId: message.deviceId ?? "a device", elapsedMs: Date.now() - started });
       } catch {
         // Not our message.

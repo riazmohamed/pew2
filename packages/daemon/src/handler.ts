@@ -109,6 +109,8 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
     return;
   }
   const message = result.data;
+  // Any frame from a client is someone using this machine: keep-awake counts it.
+  daemon.noteClientActivity();
 
   try {
     switch (message.t) {
@@ -193,6 +195,23 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         // conversation comes first — it is the authority on where its own
         // session lives, it needs no client to be up to date, and it is right
         // even for an older app that sends no `cwd` at all.
+        // Open in the agent's own window: that window is the conversation's
+        // one writer, so the client is pointed at its mirror instead of a
+        // second agent being started on the same file.
+        const mirrorId = daemon.nativeSessionFor(message.providerId, message.agentSessionId);
+        if (mirrorId) {
+          broadcast({
+            t: "session.started",
+            sessionId: mirrorId,
+            providerId: message.providerId,
+            configOptions: [],
+            resumed: true,
+            cwd: daemon.sessionCwd(mirrorId),
+            agentSessionId: message.agentSessionId,
+          });
+          daemon.replayNative(mirrorId);
+          break;
+        }
         const recorded = await daemon.agentSessionCwd(
           message.providerId,
           message.agentSessionId,
@@ -255,6 +274,8 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         const workspace = message.cwd
           ? await namedProject(daemon, message.providerId, message.cwd)
           : ((await daemon.lastWorkspace(message.providerId)) ?? cwd);
+        // The not-yet-started conversation's draft has just been sent.
+        broadcast(daemon.setDraft(undefined, "", ctx.deviceId));
         const sessionId = await daemon.startSession(message.providerId, workspace);
         broadcast({
           t: "session.started",
@@ -292,6 +313,17 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         // Deliberately not awaited: a turn can run for minutes, and the client
         // is driven by streamed events rather than this reply.
         const sessionId = message.sessionId;
+        // What was typed has gone out, so every mirror of it clears — sent
+        // before the prompt's own echo can reach anyone.
+        broadcast(daemon.setDraft(sessionId, "", ctx.deviceId));
+        if (daemon.isNative(sessionId)) {
+          // Typed into the agent's own window. The turn's end (and its idle and
+          // push) comes from the transcript file, not from this call.
+          daemon
+            .prompt(sessionId, message.text, attachments)
+            .catch((error) => reply(errorMessage("prompt_failed", error)));
+          break;
+        }
         daemon
           .prompt(sessionId, message.text, attachments)
           .catch((error) => reply(errorMessage("prompt_failed", error)))
@@ -348,6 +380,48 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           // that never comes.
           reply(errorMessage("push_token_invalid", "That is not an Expo push token."));
         }
+        break;
+      }
+
+      case "session.draft": {
+        // Live typing, mirrored to every client. Never a session event: held
+        // in memory only, latest per conversation, so a joining client gets the
+        // sentence and not the keystrokes. `from` is the proved sender, never
+        // the frame's own claim, so a client can drop its own echo.
+        broadcast(daemon.setDraft(message.sessionId, message.text, ctx.deviceId));
+        // And into the agent's own window, when the conversation is open there.
+        daemon.nativeDraft(message.sessionId, message.text);
+        break;
+      }
+
+      case "daemon.keepAwake": {
+        // Persisted and re-announced, so every client's switch moves together.
+        await daemon.setKeepAwake(message.enabled);
+        break;
+      }
+
+      case "desk.open": {
+        // Replied, not broadcast: it answers the one tap that asked. The
+        // project is the session's own, never a path from the client.
+        if (message.target === "native" && message.sessionId) {
+          const result = await daemon.openNative(message.sessionId);
+          console.log(`[desk] native ${message.sessionId}: ${result.ok ? "ok" : result.message}`);
+          reply({ t: "desk.opened", requestId: message.requestId, ...result });
+          break;
+        }
+        const cwd = message.sessionId ? daemon.sessionCwd(message.sessionId) : undefined;
+        if (message.sessionId && !cwd) {
+          reply({
+            t: "desk.opened",
+            requestId: message.requestId,
+            ok: false,
+            message: "That conversation isn't open on the computer. Send it a message first.",
+          });
+          break;
+        }
+        const result = await daemon.desk.open({ sessionId: message.sessionId, cwd });
+        console.log(`[desk] open ${message.sessionId ?? "all"}: ${result.ok ? `ok (${result.app ?? "?"})` : result.message}`);
+        reply({ t: "desk.opened", requestId: message.requestId, ...result });
         break;
       }
 

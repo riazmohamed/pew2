@@ -48,6 +48,8 @@ import {
 import { loadPairing, setRelay } from "../pairing.js";
 import { cmdPair } from "./pair.js";
 import { cmdVoice } from "./voice.js";
+import { cmdAwake } from "./awake.js";
+import { cmdChat } from "./chat.js";
 import {
   agentSections,
   bucketFor,
@@ -750,6 +752,8 @@ async function main() {
   if (group === "detect") return cmdDetect(flags);
   if (group === "registry") return cmdRegistry(command, flags);
   if (group === "voice") return cmdVoice(command, flags);
+  if (group === "awake") return cmdAwake(command, flags);
+  if (group === "chat") return cmdChat(argv.slice(1));
 
   if (group !== "providers") {
     console.log(`${BOLD}pew2${RESET}\n`);
@@ -761,6 +765,8 @@ async function main() {
     console.log("  pew2 serve                       Run the daemon in this terminal");
     console.log("  pew2 doctor [--json]             What is wrong, and the command that fixes it");
     console.log("  pew2 voice key|status|off        OpenAI key for the voice assistant");
+    console.log("  pew2 chat [--here]               Open a window that types live with the phone");
+    console.log("  pew2 awake [on|off|status]       Keep this machine from idle-sleeping while in use");
     console.log("  pew2 detect [--json]             Find installed agents and configure them");
     console.log("  pew2 registry sync               Add every agent in the public ACP registry");
     console.log("    --dry-run --force --json       Preview / overwrite edited files / machine output");

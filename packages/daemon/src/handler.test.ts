@@ -421,3 +421,92 @@ test("preview.snapshot refuses a port nothing listens on, as an image error", as
   expect(out[0]?.dataUri).toBeUndefined();
   expect(out[0]?.error).toContain("Nothing is listening on port 1");
 });
+
+// ---- Live drafts ---------------------------------------------------------
+
+test("a draft is re-broadcast stamped with the proved sender, never logged", async () => {
+  const { daemon } = stubbed();
+
+  const out = await send(daemon, { t: "session.draft", sessionId: "s1", text: "hel", from: "forged" }, "phone-1");
+
+  expect(out).toHaveLength(1);
+  expect(out[0]).toMatchObject({ t: "session.draft", sessionId: "s1", text: "hel", from: "phone-1" });
+  expect(typeof out[0].at).toBe("number");
+  // Held for a client that joins later, as a frame of its own (not a seq'd event).
+  expect(daemon.draftFrames()).toEqual([
+    { t: "session.draft", sessionId: "s1", text: "hel", from: "phone-1", at: out[0].at },
+  ]);
+});
+
+test("an empty draft clears it, and a not-yet-started conversation keys as no sessionId", async () => {
+  const { daemon } = stubbed();
+  await send(daemon, { t: "session.draft", text: "new chat" }, "phone-1");
+  expect(daemon.draftFrames()).toMatchObject([{ t: "session.draft", text: "new chat" }]);
+  expect(daemon.draftFrames()[0]).not.toHaveProperty("sessionId");
+
+  await send(daemon, { t: "session.draft", text: "" }, "phone-1");
+  expect(daemon.draftFrames()).toEqual([]);
+});
+
+test("a prompt clears that conversation's draft everywhere, from the sender", async () => {
+  const { daemon } = stubbed();
+  Object.assign(daemon, { prompt: async () => {}, sessionOrigin: () => ({}), sessionNotice: () => ({}) });
+  await send(daemon, { t: "session.draft", sessionId: "s1", text: "fix it" }, "pew2-cli@mac#chat-1");
+  await send(daemon, { t: "session.draft", sessionId: "s2", text: "other" }, "phone-1");
+
+  const out = await send(daemon, { t: "session.prompt", sessionId: "s1", text: "fix it" }, "phone-1");
+
+  expect(out[0]).toMatchObject({ t: "session.draft", sessionId: "s1", text: "", from: "phone-1" });
+  expect(daemon.draftFrames().map((d) => d.sessionId)).toEqual(["s2"]);
+});
+
+test("starting a conversation clears the new-conversation draft", async () => {
+  const { daemon } = stubbed();
+  await send(daemon, { t: "session.draft", text: "start something" }, "phone-1");
+
+  const out = await send(daemon, { t: "session.start", providerId: "echo" }, "phone-1");
+
+  const clear = out.find((m) => m.t === "session.draft");
+  expect(clear).toMatchObject({ text: "", from: "phone-1" });
+  expect(clear).not.toHaveProperty("sessionId");
+  expect(out.some((m) => m.t === "session.started")).toBe(true);
+  expect(daemon.draftFrames()).toEqual([]);
+});
+
+test("closing a session drops its draft", async () => {
+  const { daemon } = stubbed();
+  await send(daemon, { t: "session.draft", sessionId: "s1", text: "x" }, "phone-1");
+  // A live entry for the close path to find.
+  (daemon as unknown as { sessions: Map<string, unknown> }).sessions.set("s1", {
+    handle: { close: () => {} },
+    log: { sessionId: "s1" },
+  });
+  await daemon.close("s1");
+  expect(daemon.draftFrames()).toEqual([]);
+});
+
+test("providers are announced with drafts and keep-awake", async () => {
+  const { daemon } = stubbed();
+  const sent: any[] = [];
+  daemon.attach((m) => sent.push(m));
+  await daemon.refreshProviders();
+  daemon.closeAll();
+  const announce = sent.find((m) => m.t === "providers");
+  expect(announce.drafts).toBe(true);
+  expect(announce.keepAwake).toMatchObject({ enabled: true, active: false });
+  expect(typeof announce.keepAwake.supported).toBe("boolean");
+});
+
+test("daemon.keepAwake persists the switch and re-announces it", async () => {
+  const env = scratchHome();
+  const { daemon } = stubbed(env);
+  const sent: any[] = [];
+  daemon.attach((m) => sent.push(m));
+
+  await send(daemon, { t: "daemon.keepAwake", enabled: false }, "phone-1");
+  daemon.closeAll();
+
+  const { readKeepAwakeEnabled } = await import("./keep-awake.js");
+  expect(await readKeepAwakeEnabled(env)).toBe(false);
+  expect(sent.filter((m) => m.t === "providers").at(-1)?.keepAwake?.enabled).toBe(false);
+});

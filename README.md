@@ -147,6 +147,18 @@ and get on with your life.
 
 ---
 
+### Type on the phone, watch it in the terminal
+`pew2 chat` opens a window of its own onto the same conversation (not a second agent). It streams the agent's reply and mirrors what you type letter by letter both ways: start a sentence on the phone, finish it at the desk. Esc, Ctrl-C or `/quit` closes it.
+
+**Open in the real OG Coder.** For an OG Coder conversation, the computer icon on the phone offers *Open in OG Coder*: your own OG Coder opens on the Mac, resumed on that conversation, with every one of its features. The phone keeps typing into it live, Send presses Enter, its model and thinking pills drive OG Coder, and what you do in OG Coder shows up on the phone. Close the window and the phone carries on as normal. (Needs iTerm.)
+
+**pew2 chat looks like OG Coder** and has `/model`, `/thinking`, `/mode`, the agent's own commands, Tab completion, inline pictures (iTerm), `/shot` for a screenshot of the Mac and `/attach <image>`.
+
+**One window per project.** Run it inside a project and the window belongs to that project: titled with its name, following only its conversations, and starting new ones there. Run it in each project you're working in and the windows sit side by side, each one live with whatever the phone does in that project. Outside any project (or with `--all`) one window follows whatever was active last. `--here` runs it in the current terminal instead of a new window, `--agent <id>` picks the agent for new conversations, `/sessions` and `/switch <n>` move between that project's conversations, and `/help` lists the rest.
+
+### Keeps your Mac awake while you use it
+While an agent is working, a permission is waiting, or you used the app in the last 10 minutes, pew2 stops the Mac from idle-sleeping (`caffeinate -i`, released as soon as it's quiet). Turn it off from the app or with `pew2 awake off`. A locked screen is fine and keeps working. If the Mac does sleep, everything pauses, and anything you sent from the phone is delivered when it wakes. A closed lid on battery always sleeps; nothing can stop that.
+
 ## 🔒 About your data
 
 **Your machine, your agents, your files.** pew2 runs no AI and has no server that

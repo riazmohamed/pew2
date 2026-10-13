@@ -1,4 +1,4 @@
-import { Alert, Pressable, ScrollView, StyleSheet, Text } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { Sheet, useSheetCardHeight } from "./Sheet";
 import { PrivacyLink } from "./PrivacyLink";
 import { haptics } from "./haptics";
@@ -13,10 +13,13 @@ interface Props {
   machineRemote: boolean;
   status: Status;
   update?: { latest: string; automatic: boolean };
+  /** Absent = a daemon older than keep-awake: no row at all. */
+  keepAwake?: { supported: boolean; enabled: boolean; active: boolean; reason?: string };
+  onKeepAwake?: (enabled: boolean) => void;
   onClose: () => void;
   onUnpair: () => void;
 }
-export function ConnectionSheet({ visible, machineLabel, machineRemote, status, update, onClose, onUnpair }: Props) {
+export function ConnectionSheet({ visible, machineLabel, machineRemote, status, update, keepAwake, onKeepAwake, onClose, onUnpair }: Props) {
   const cardHeight = useSheetCardHeight();
   return <Sheet visible={visible} title="Connection" onClose={onClose} dismissLabel="Close connection details">
     <ScrollView style={{ maxHeight: cardHeight }} contentContainerStyle={styles.content}>
@@ -27,6 +30,16 @@ export function ConnectionSheet({ visible, machineLabel, machineRemote, status, 
           haptics.tap();
           Alert.alert(`pew2 ${update.latest} is available`, `This computer can't update itself, so run this on ${machineLabel}:\n\n${INSTALL_COMMAND}`, [{ text: "OK" }]);
         }}><Text style={styles.actionText}>New pew2 version available</Text></Pressable>)}
+      {keepAwake && <View style={styles.row}>
+        <View style={styles.rowText}>
+          <Text style={styles.actionText}>Keep computer awake while in use</Text>
+          <Text style={styles.detail}>{!keepAwake.supported ? (keepAwake.reason ?? "Not supported on this computer.")
+            : !keepAwake.enabled ? "It sleeps on its normal schedule."
+            : keepAwake.active ? "Awake now, because an agent is working or you're connected."
+            : "It can still sleep when nothing's happening."}</Text>
+        </View>
+        <Switch value={keepAwake.supported && keepAwake.enabled} disabled={!keepAwake.supported || status !== "online"} accessibilityLabel="Keep computer awake while in use" onValueChange={(enabled) => { haptics.tap(); onKeepAwake?.(enabled); }} />
+      </View>}
       <PrivacyLink />
       <Pressable accessibilityRole="button" accessibilityLabel={`Forget pairing with ${machineLabel}`} style={styles.action} onPress={() => {
         haptics.tap();
@@ -42,6 +55,8 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: theme.gutter, paddingVertical: theme.sectionGap, gap: theme.sectionGap },
   title: { color: theme.color.text, fontSize: theme.font.title, lineHeight: theme.line.body },
   detail: { color: theme.color.textDim, fontSize: theme.font.body, lineHeight: theme.line.body },
+  row: { flexDirection: "row", alignItems: "center", gap: theme.space(3) },
+  rowText: { flex: 1, gap: theme.space(1) },
   action: { minHeight: theme.size.touch, justifyContent: "center" },
   actionText: { color: theme.color.text, fontSize: theme.font.body, lineHeight: 20 },
   destructive: { color: theme.color.danger, fontSize: theme.font.body, lineHeight: 20 },

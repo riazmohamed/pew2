@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createStreamBatch, foldStreamBatch } from "./streamBatch";
 import type { LiveStreamIdentity } from "./smoothText";
 import { matchesRestore, restoreTarget, type RestoreTarget } from "./restoreState";
+import type { DeskTarget } from "./deskChoice";
 import { SecureChannel, e2e, envelopeHeader, wire } from "@pew2/protocol";
 
 const { WIRE_VERSION } = wire;
@@ -80,11 +81,19 @@ import {
   type ReplayEvent,
 } from "./replayFold";
 import { readPermissionRequest } from "./permissions";
+import { createDraftThrottle, shouldApplyRemoteDraft, shouldSendDraft, type DraftThrottle } from "./draftSync";
 
 export type Status = "connecting" | "online" | "offline";
 
 /** Voice frames from the daemon, handed to `useVoice` untouched. */
 export type VoiceFrame = wire.VoiceAnswer | wire.VoiceStatus;
+
+/** The computer's answer to "open on computer". */
+export interface DeskResult {
+  ok: boolean;
+  app?: string;
+  message?: string;
+}
 
 export interface Provider {
   id: string;
@@ -356,6 +365,18 @@ interface State {
    * daemon older than voice, and the app then shows no voice button at all.
    */
   voice?: { available: boolean; reason?: string };
+  /**
+   * The daemon relays live drafts. Absent = older daemon: never send one, since
+   * it would answer `unknown_message` (read here as a refused push token).
+   */
+  drafts?: boolean;
+  /** Keep-awake switch state. Absent = older daemon, and no switch is shown. */
+  keepAwake?: { supported: boolean; enabled: boolean; active: boolean; reason?: string };
+  /**
+   * The computer can open a `pew2 chat` window for a conversation. Absent =
+   * older daemon, and the "open on computer" button is not shown.
+   */
+  desk?: { available: boolean; reason?: string; native?: string[] };
   sessionId?: string;
   /** The agent the composer will talk to. Chosen before a session exists. */
   activeProviderId?: string;
@@ -777,6 +798,13 @@ export function useDaemon(
   // listings in flight, and the slower one must not land last and rewind the
   // view the user is already looking at.
   const voiceListener = useRef<((message: VoiceFrame) => void) | undefined>(undefined);
+  // Pending "open on computer" taps, by request id.
+  const deskReplies = useRef(new Map<string, (result: DeskResult) => void>());
+  // Remote drafts go straight to the dock through this, never through state:
+  // keystroke-rate updates must not re-render the app.
+  const draftListener = useRef<((text: string) => void) | undefined>(undefined);
+  // Mirrors the announced `drafts` gate for `sendDraft`, outside render.
+  const draftsEnabled = useRef<boolean | undefined>(undefined);
 
   const browseRequest = useRef<string | undefined>(undefined);
   const browseCounter = useRef(0);
@@ -1181,6 +1209,9 @@ export function useDaemon(
         // Cleartext, because it is what establishes the connection — and carries
         // a sealed proof beside it, so the daemon can tell a paired phone from
         // anyone who merely learned the relay room id.
+        // A new connection may be to a different (older) daemon: no drafts
+        // until this one's `providers` says so.
+        draftsEnabled.current = undefined;
         ws.send(
           JSON.stringify({
             t: "hello",
@@ -1249,6 +1280,18 @@ export function useDaemon(
         // phone no longer holds the key for. Silently ignored — there is nothing
         // useful to show and nothing safe to act on.
         if (message === undefined) return;
+
+        // Live drafts: ephemeral, keystroke-rate, and not a stream boundary, so
+        // handled before the batch is flushed and never through state.
+        if (message.t === "session.draft") {
+          if (
+            draftsEnabled.current === true &&
+            shouldApplyRemoteDraft(message, deviceId, sessionRef.current)
+          ) {
+            draftListener.current?.(message.text);
+          }
+          return;
+        }
 
         // Only authenticated, visible prose may wait. Control/replay/background
         // frames flush before any notification or state transition below.
@@ -1626,6 +1669,7 @@ export function useDaemon(
         // from the agent, so an app that updates its model line-up is reflected
         // without changing anything here.
         if (message.t === "providers") {
+          draftsEnabled.current = message.drafts === true;
           // Hand the daemon somewhere to push, once per connection.
           //
           // Here rather than beside `hello` because `hello` is cleartext and
@@ -1804,6 +1848,14 @@ export function useDaemon(
 
         // A live voice call is owned by `useVoice`, which matches the answer by
         // `requestId` and statuses by `liveSessionId`. Nothing here is state.
+        // The answer to "open on computer": one tap's result, never state.
+        if (message.t === "desk.opened" && typeof message.requestId === "string") {
+          const done = deskReplies.current.get(message.requestId);
+          deskReplies.current.delete(message.requestId);
+          done?.({ ok: message.ok === true, app: message.app, message: message.message });
+          return;
+        }
+
         if (message.t === "voice.answer" || message.t === "voice.status") {
           voiceListener.current?.(message as VoiceFrame);
           return;
@@ -1847,6 +1899,9 @@ export function useDaemon(
                 // update it describes.
                 update: message.update,
                 voice: message.voice,
+                drafts: message.drafts,
+                keepAwake: message.keepAwake,
+                desk: message.desk,
                 loadingSessions: pendingCapabilities.current.size > 0,
               };
 
@@ -2310,6 +2365,29 @@ export function useDaemon(
     ws.send(JSON.stringify(secure.seal(message, envelopeHeader(message))));
     return true;
   }, []);
+
+  // Drafts bypass `post` on purpose: `post` flushes the streaming batch, and a
+  // keystroke is not a stream boundary. Gated on the announced `drafts`.
+  const draftThrottle = useRef<DraftThrottle | undefined>(undefined);
+  const draftSession = useRef<string | undefined>(undefined);
+  if (!draftThrottle.current) {
+    draftThrottle.current = createDraftThrottle(
+      (text) => {
+        const ws = socket.current;
+        const secure = channel.current;
+        const open = !!ws && !!secure && ws.readyState === WebSocket.OPEN;
+        if (!ws || !secure || !shouldSendDraft(open, draftsEnabled.current)) return;
+        // Past the ceiling it stops mirroring; still sendable as a prompt.
+        if (text.length > wire.MAX_DRAFT_CHARS) return;
+        // The conversation the text was typed in, captured at the keystroke:
+        // a trailing send that fires after a switch must not land in the new one.
+        const message = { t: "session.draft", sessionId: draftSession.current, text };
+        ws.send(JSON.stringify(secure.seal(message, envelopeHeader(message))));
+      },
+      { set: (fn, ms) => setTimeout(fn, ms), clear: (h) => clearTimeout(h as ReturnType<typeof setTimeout>) },
+    );
+  }
+  useEffect(() => () => draftThrottle.current?.cancel(), []);
 
   // Sent outside any state updater: React may invoke an updater twice, and a
   // socket write in one would ask the daemon for the same picture twice.
@@ -2933,6 +3011,73 @@ export function useDaemon(
       /** One listener at a time: there is one voice screen. */
       setVoiceListener: (listener: ((message: VoiceFrame) => void) | undefined) => {
         voiceListener.current = listener;
+      },
+      /**
+       * Mirror the composer's text to the other clients. Sent only to a daemon
+       * that announced `drafts: true`; never queued (offline = dropped).
+       */
+      sendDraft: (text: string) => {
+        // A pending trailing draft belongs to the conversation it was typed
+        // in; switching drops it rather than re-addressing it.
+        if (draftSession.current !== sessionRef.current) draftThrottle.current?.cancel();
+        draftSession.current = sessionRef.current;
+        draftThrottle.current?.push(text);
+      },
+      /** One listener at a time: there is one composer. */
+      setDraftListener: (listener: ((text: string) => void) | undefined) => {
+        draftListener.current = listener;
+      },
+      /** Turn the daemon's keep-awake on or off; the re-announce is the truth. */
+      /**
+       * Open a `pew2 chat` window on the computer for the conversation on
+       * screen. Resolves with the daemon's answer, or a plain failure when it
+       * cannot be asked (offline) or does not answer in time.
+       */
+      openOnComputer: (target: DeskTarget = "chat"): Promise<DeskResult> => {
+        const requestId = `desk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        // A native open hands the conversation to the agent's own window,
+        // which the daemon announces as a resumed session for the same
+        // conversation. Expecting it like a reopen is what lets that
+        // `session.started` take this screen (see `claimsScreen`).
+        const current = sessionRef.current;
+        const row = target === "native" && current ? sessionsRef.current.find((entry) => entry.id === current) : undefined;
+        const expected = row?.agentSessionId ? restoreTarget(row) : undefined;
+        if (expected) {
+          restoring.current = expected;
+          awaitingResume.current = true;
+        }
+        // Undone if the window never opened, so a later announce for some
+        // other conversation cannot land on this screen.
+        const settle = (result: DeskResult) => {
+          if (expected && !result.ok && restoring.current === expected) {
+            restoring.current = undefined;
+            awaitingResume.current = false;
+          }
+          return result;
+        };
+        return new Promise<DeskResult>((resolve) => {
+          const sent = post({
+            t: "desk.open",
+            requestId,
+            sessionId: current,
+            ...(target === "native" && { target }),
+          });
+          if (!sent) {
+            resolve(settle({ ok: false, message: "Your computer isn't reachable right now." }));
+            return;
+          }
+          deskReplies.current.set(requestId, (result) => resolve(settle(result)));
+          // iTerm's one-time permission prompt can hold the daemon ~12s.
+          setTimeout(() => {
+            if (!deskReplies.current.has(requestId)) return;
+            deskReplies.current.delete(requestId);
+            resolve(settle({ ok: false, message: "The computer didn't answer. Check its screen." }));
+          }, 20_000);
+        });
+      },
+      setKeepAwake: (enabled: boolean) => {
+        if (!post({ t: "daemon.keepAwake", enabled })) return;
+        setState((s) => (s.keepAwake ? { ...s, keepAwake: { ...s.keepAwake, enabled } } : s));
       },
       fetchImage: (uri: string) => {
         if (requestedImages.current.has(uri)) return;

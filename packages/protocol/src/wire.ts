@@ -182,6 +182,130 @@ export const ProviderAnnounce = z.object({
       reason: z.string().optional(),
     })
     .optional(),
+  /**
+   * This daemon relays live drafts (`session.draft`).
+   *
+   * The gate a client must check before sending one. An older daemon answers
+   * an unknown type with `unknown_message`, and the app reads that code as a
+   * refused push token among other things — at keystroke rate it would be a
+   * flood of errors that also silenced notifications. Absent means "older
+   * daemon": never send drafts, and nothing else changes.
+   */
+  drafts: z.boolean().optional(),
+  /**
+   * Whether this machine is being kept awake while someone is using it.
+   *
+   * Absent means a daemon older than the feature: the app shows no switch.
+   * `supported: false` means this platform has no way to do it (`reason`
+   * says why). `enabled` is the user's switch; `active` is whether a sleep
+   * assertion is held *right now* (an agent working, or a client active
+   * recently). Locking the screen is not sleep and never needed this; it
+   * exists for the idle sleep that follows a lock.
+   */
+  keepAwake: z
+    .object({
+      supported: z.boolean(),
+      enabled: z.boolean(),
+      active: z.boolean(),
+      reason: z.string().optional(),
+    })
+    .optional(),
+  /**
+   * Whether this machine can open a `pew2 chat` window on request
+   * (`desk.open`). Absent means an older daemon: the app shows no button.
+   * `available: false` carries why (not macOS, for now).
+   */
+  desk: z
+    .object({
+      available: z.boolean(),
+      reason: z.string().optional(),
+      /**
+       * Providers whose conversations can also be opened in the agent's *own*
+       * terminal app (`desk.open` with `target: "native"`), e.g. `["ggcoder"]`
+       * for the real OG Coder screen. Absent or empty: only `pew2 chat`.
+       */
+      native: z.array(z.string()).optional(),
+    })
+    .optional(),
+});
+
+/**
+ * Ceiling on one live draft. A composer is not a file upload; anything longer
+ * is still sendable as a prompt, it just stops mirroring.
+ */
+export const MAX_DRAFT_CHARS = 20_000;
+
+/**
+ * A half-typed message, mirrored live between every client watching.
+ *
+ * Both directions use the same `t`: a client sends what is in its composer,
+ * and the daemon re-broadcasts it to every client stamped with `from` (the
+ * device that typed it, from that socket's proved `hello` — never trusted from
+ * the frame) and `at`. A client ignores its own echo by `from`.
+ *
+ * Deliberately *not* a session event. Drafts are ephemeral: logged with a
+ * `seq` they would replay keystroke by keystroke on every reconnect. The daemon
+ * holds only the latest draft per conversation in memory and hands it to a
+ * client that joins, so a terminal opened mid-sentence sees the sentence.
+ *
+ * `sessionId` absent is the draft of a conversation not started yet. An empty
+ * `text` clears it; the daemon also clears it itself when a prompt (or the
+ * start of a new conversation) goes out, from any client.
+ *
+ * Additive, not a `WIRE_VERSION` bump: an older app ignores frames it does not
+ * know, and a client only sends one after seeing `drafts: true` announced.
+ */
+export const DraftUpdate = z.object({
+  t: z.literal("session.draft"),
+  sessionId: z.string().optional(),
+  text: z.string().max(MAX_DRAFT_CHARS),
+  /** Set by the daemon on the way out. Ignored on the way in. */
+  from: z.string().optional(),
+  /** Daemon time, set on the way out. */
+  at: z.number().int().optional(),
+});
+
+/**
+ * Any client -> daemon. Turn keep-awake on or off for this machine.
+ *
+ * Persisted by the daemon, and answered by re-announcing `providers` with the
+ * new `keepAwake`, so every client's switch moves together.
+ */
+export const KeepAwakeSet = z.object({
+  t: z.literal("daemon.keepAwake"),
+  enabled: z.boolean(),
+});
+
+/**
+ * App -> daemon. Open a `pew2 chat` window on the computer's screen for this
+ * conversation, so the same chat can be carried on at the desk.
+ *
+ * Only ids reach the command line: the project is the session's own cwd as
+ * this daemon recorded it, never a path from the client, and the program is
+ * pew2 itself. Without a `sessionId` the window follows every project.
+ */
+export const DeskOpen = z.object({
+  t: z.literal("desk.open"),
+  requestId: z.string().min(1),
+  sessionId: z.string().optional(),
+  /**
+   * Where to open it. `chat` (the default, and all an older daemon knows) is a
+   * `pew2 chat` window. `native` is the agent's own app — the real OG Coder
+   * screen resumed on this conversation — with the phone typing into it.
+   * Offered only for providers listed in the announcement's `desk.native`.
+   */
+  target: z.enum(["chat", "native"]).optional(),
+});
+
+/** Daemon -> app, as a reply. Whether the window opened, and where. */
+export const DeskOpened = z.object({
+  t: z.literal("desk.opened"),
+  requestId: z.string(),
+  ok: z.boolean(),
+  /** "iTerm" or "Terminal", when it opened. */
+  app: z.string().optional(),
+  /** Why not, or a note worth showing (e.g. how to allow iTerm), in words. */
+  message: z.string().optional(),
 });
 
 /**
@@ -928,6 +1052,9 @@ export const ClientMessage = z.discriminatedUnion("t", [
   PreviewSnapshotRequest,
   VoiceStart,
   VoiceStop,
+  DraftUpdate,
+  KeepAwakeSet,
+  DeskOpen,
 ]);
 
 export const ServerMessage = z.discriminatedUnion("t", [
@@ -947,6 +1074,8 @@ export const ServerMessage = z.discriminatedUnion("t", [
   DeviceJoined,
   VoiceAnswer,
   VoiceStatus,
+  DraftUpdate,
+  DeskOpened,
   ErrorMessage,
 ]);
 
@@ -989,5 +1118,9 @@ export type VoiceStart = z.output<typeof VoiceStart>;
 export type VoiceAnswer = z.output<typeof VoiceAnswer>;
 export type VoiceStop = z.output<typeof VoiceStop>;
 export type VoiceStatus = z.output<typeof VoiceStatus>;
+export type DraftUpdate = z.output<typeof DraftUpdate>;
+export type KeepAwakeSet = z.output<typeof KeepAwakeSet>;
+export type DeskOpen = z.output<typeof DeskOpen>;
+export type DeskOpened = z.output<typeof DeskOpened>;
 export type ClientMessage = z.output<typeof ClientMessage>;
 export type ServerMessage = z.output<typeof ServerMessage>;

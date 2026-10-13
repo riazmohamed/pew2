@@ -295,6 +295,14 @@ export const DeskOpen = z.object({
    * Offered only for providers listed in the announcement's `desk.native`.
    */
   target: z.enum(["chat", "native"]).optional(),
+  /**
+   * For a conversation not started yet (no `sessionId`): the agent and the
+   * project to open it in. The project is honoured only if this daemon
+   * published it (`knownProject`), like `session.start`'s cwd. An older
+   * daemon ignores both and opens a window following every project.
+   */
+  providerId: z.string().optional(),
+  cwd: z.string().optional(),
 });
 
 /** Daemon -> app, as a reply. Whether the window opened, and where. */

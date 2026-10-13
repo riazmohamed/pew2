@@ -3,7 +3,7 @@ import { appendFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GgCoderMirror } from "./acp/ggcoder-mirror.js";
-import { Daemon, NATIVE_CONFIG_REFUSAL } from "./index.js";
+import { DESK_DRAFT_FROM, Daemon, NATIVE_CONFIG_REFUSAL } from "./index.js";
 import { handleMessage } from "./handler.js";
 import { SessionLog } from "./session/log.js";
 import type { OsaResult } from "./native-desk.js";
@@ -91,8 +91,37 @@ test("the mirror emits only what is appended after the baseline, as history rend
 async function handoverRig(options: { alive?: () => boolean } = {}) {
   const { root, file } = await fixture();
   const scripts: string[] = [];
+  // A fake OG Coder screen: keystrokes written in move its input and status
+  // line the way the real one does, and a read returns its text.
+  const desk = { input: "", model: "Opus", thinking: "high", plan: false };
+  const cycle = ["low", "medium", "high", "xhigh", "max", "off"];
+  const typeInto = (script: string) => {
+    for (const [, raw] of script.matchAll(/write text (.+) newline NO/g)) {
+      const text = raw!.replace(/\(character id (\d+)\)/g, (_, code) => String.fromCharCode(Number(code)))
+        .split(" & ").map((part) => part.replace(/^"|"$/g, "").replace(/\\"/g, '"')).join("");
+      if (text === "\u0015") desk.input = "";
+      else if (text === "\u007f") desk.input = desk.input.slice(0, -1);
+      else if (text === "\u001b[Z") desk.thinking = cycle[(cycle.indexOf(desk.thinking) + 1) % cycle.length]!;
+      else if (text === "\r") {
+        const model = /^\/model (\S+)$/.exec(desk.input);
+        if (model) desk.model = model[1]![0]!.toUpperCase() + model[1]!.slice(1);
+        desk.input = "";
+      } else if (text !== "\u0005" && text !== "\u001b") desk.input += text;
+    }
+  };
+  const screenText = () =>
+    [
+      " transcript",
+      "▄".repeat(40),
+      ` > ${desk.input || "  Type your message or / to run a command"}`,
+      "▀".repeat(40),
+      " Paddle_ken │ ⎇ main",
+      ` ▏░░ 1% │ ${desk.model} │ Plan ${desk.plan ? "on" : "off"} │ Thinking ${desk.thinking} `,
+    ].join("\n");
   const osa = async (script: string): Promise<OsaResult> => {
     scripts.push(script);
+    if (script.includes("contents of aSession")) return { code: 0, stdout: screenText(), stderr: "", timedOut: false };
+    if (script.includes("write text")) typeInto(script);
     if (script.includes("create window")) return { code: 0, stdout: "ITERM-1\n", stderr: "", timedOut: false };
     if (script.includes("return tty")) {
       return { code: 0, stdout: (options.alive?.() ?? true) ? "/dev/ttys009" : "gone", stderr: "", timedOut: false };
@@ -108,6 +137,9 @@ async function handoverRig(options: { alive?: () => boolean } = {}) {
     pollMs: 20,
     alivePollMs: 20,
     throttleMs: 10,
+    readPollMs: 15,
+    readQuietMs: 40,
+    settleMs: 5,
   });
   const sent: any[] = [];
   daemon.attach((message) => sent.push(message));
@@ -137,7 +169,7 @@ async function handoverRig(options: { alive?: () => boolean } = {}) {
   const replies: any[] = [];
   const ctx = { daemon, reply: (m: unknown) => replies.push(m), broadcast: (m: unknown) => sent.push(m) };
   const send = (message: unknown) => handleMessage(JSON.stringify(message), ctx);
-  return { daemon, sent, replies, scripts, session, send, file, closedCount: () => closed };
+  return { daemon, sent, replies, scripts, session, send, file, desk, closedCount: () => closed };
 }
 
 test("the announcement names ggcoder as native", async () => {
@@ -164,7 +196,7 @@ test("a busy session is refused in words, and nothing is opened", async () => {
 test("handover, routing and teardown", async () => {
   let alive = true;
   const rig = await handoverRig({ alive: () => alive });
-  const { daemon, sent, replies, scripts, send, file } = rig;
+  const { daemon, sent, replies, scripts, send, file, desk } = rig;
   await send({ t: "desk.open", requestId: "r1", sessionId: "ggcoder-old", target: "native" });
   expect(replies[0]).toEqual({ t: "desk.opened", requestId: "r1", ok: true, app: "iTerm" });
 
@@ -234,26 +266,60 @@ test("handover, routing and teardown", async () => {
     { id: "mode", name: "Mode", category: "mode", type: "select", currentValue: "default", options: [{ value: "default", name: "Default" }, { value: "plan", name: "Plan" }] },
   ];
   await send({ t: "session.config", sessionId: id, configId: "model", value: "sonnet" });
-  expect(scripts.at(-1)).toContain('"/model sonnet" newline NO');
+  expect(scripts.some((script) => script.includes('"/model sonnet" newline NO'))).toBe(true);
+  expect(desk.model).toBe("Sonnet");
   expect(sent.at(-1)).toMatchObject({ t: "session.config", sessionId: id });
   expect(sent.at(-1).configOptions[0].currentValue).toBe("sonnet");
+  // Thinking: Shift+Tab one at a time until the status line says so, whatever
+  // the cycle (OG Coder's here runs low → … → max → off).
   await send({ t: "session.config", sessionId: id, configId: "thinking", value: "low" });
-  expect(scripts.at(-1)!.match(/\[Z/g)).toHaveLength(4);
+  expect(desk.thinking).toBe("low");
+  expect(sent.at(-1).configOptions[1].currentValue).toBe("low");
   await send({ t: "session.config", sessionId: id, configId: "mode", value: "plan" });
   expect(replies.at(-1).message).toBe(NATIVE_CONFIG_REFUSAL);
+
+  // The desk talks back: typing in OG Coder becomes a draft from "desk", a
+  // clear clears the phone, and a status-line change moves the phone's pills.
+  desk.input = "typed at the desk";
+  await until(() => sent.find((m) => m.t === "session.draft" && m.from === DESK_DRAFT_FROM && m.text === "typed at the desk"), "desk draft");
+  desk.input = "";
+  await until(() => sent.find((m) => m.t === "session.draft" && m.from === DESK_DRAFT_FROM && m.text === ""), "desk clear");
+  desk.thinking = "max";
+  desk.plan = true;
+  await until(
+    () => sent.find((m) => m.t === "session.config" && m.sessionId === id && m.configOptions[1]?.currentValue === "max" && m.configOptions[2]?.currentValue === "plan"),
+    "desk pills",
+  );
 
   // A second device resuming the same conversation is pointed at the mirror.
   const count = sent.filter((m) => m.t === "session.started").length;
   await send({ t: "session.resume", providerId: "ggcoder", agentSessionId: AGENT_ID });
   const again = sent.filter((m) => m.t === "session.started");
   expect(again).toHaveLength(count + 1);
-  expect(again.at(-1).sessionId).toBe(id);
+  // Re-keyed, so a phone that saw the old id's events replays them all
+  // instead of skipping every one as already seen (the empty-screen bug).
+  const reopened = again.at(-1);
+  expect(reopened.sessionId).not.toBe(id);
+  expect(reopened).toMatchObject({ resumed: true, agentSessionId: AGENT_ID, providerId: "ggcoder" });
+  expect(reopened.configOptions.length).toBeGreaterThan(0);
+  expect(daemon.isNative(id)).toBe(false);
+  expect(daemon.isNative(reopened.sessionId)).toBe(true);
+  const replayed = sent
+    .filter((m) => m.t === "session.replay" && m.sessionId === reopened.sessionId)
+    .flatMap((m) => m.events);
+  expect(replayed.some((m) => m.payload?.update?.content?.text === "Did it")).toBe(true);
+  const newId = reopened.sessionId;
+
+  // Still the same window: typing reaches it under the new id.
+  const sinceReopen = scripts.length;
+  await send({ t: "session.draft", sessionId: newId, text: "x" });
+  await until(() => scripts.slice(sinceReopen).some((s) => s.includes('write text "x"')), "draft after reopen");
 
   // The window closes: the mirror is dropped and re-announced, nothing typed.
   const typed = scripts.filter((s) => s.includes("write text")).length;
   alive = false;
   await until(() => sent.findLast((m) => m.t === "providers").activeSessions.length === 0, "teardown");
-  expect(daemon.isNative(id)).toBe(false);
+  expect(daemon.isNative(newId)).toBe(false);
   expect(scripts.filter((s) => s.includes("write text")).length).toBe(typed);
   daemon.closeAll();
 });
@@ -267,5 +333,36 @@ test("closing the session only stops mirroring: no keys go to the window", async
   expect(daemon.isNative(id)).toBe(false);
   expect(scripts.filter((s) => s.includes("write text")).length).toBe(n);
   expect(daemon.reapIdleSessions(Date.now() + 10 ** 9)).toEqual([]);
+  daemon.closeAll();
+});
+
+test("a new conversation opens the app plain in the project and mirrors what it writes", async () => {
+  const { daemon, sent, scripts, send, file } = await handoverRig();
+  const directory = path.dirname(file);
+  (daemon as any).probes.set("ggcoder", Promise.resolve({ configOptions: [{ id: "model", name: "Model", category: "model", type: "select", currentValue: "opus", options: [{ value: "opus", name: "Opus" }] }], sessions: [] }));
+  (daemon as any).knownProject = async (_p: string, cwd: string) => cwd;
+  (daemon as any).nativeOptions.pollMs = 10;
+  const NEW_ID = "new-conversation-id";
+  // OG Coder writes its header moments after it starts.
+  setTimeout(() => {
+    void writeFile(path.join(directory, "2026-10-13T20-00-00-000Z_newconv.jsonl"), line({ type: "session", id: NEW_ID, cwd: CWD, timestamp: new Date().toISOString() }));
+  }, 30);
+  const replies: any[] = [];
+  await handleMessage(JSON.stringify({ t: "desk.open", requestId: "n1", target: "native", providerId: "ggcoder", cwd: CWD }), {
+    daemon,
+    reply: (m: unknown) => replies.push(m),
+    broadcast: (m: unknown) => sent.push(m),
+  });
+  expect(replies.at(-1)).toMatchObject({ t: "desk.opened", ok: true });
+  const open = scripts.find((s) => s.includes("create window"))!;
+  expect(open).toContain("exec ogcoder");
+  expect(open).not.toContain("--resume");
+  const started = sent.findLast((m) => m.t === "session.started");
+  // New, not a resume: the phone's empty screen takes it.
+  expect(started.resumed).toBeUndefined();
+  expect(started.agentSessionId).toBe(NEW_ID);
+  expect(started.configOptions[0].id).toBe("model");
+  expect(daemon.isNative(started.sessionId)).toBe(true);
+  void send;
   daemon.closeAll();
 });

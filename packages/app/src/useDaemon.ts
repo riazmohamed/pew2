@@ -3033,7 +3033,7 @@ export function useDaemon(
        * screen. Resolves with the daemon's answer, or a plain failure when it
        * cannot be asked (offline) or does not answer in time.
        */
-      openOnComputer: (target: DeskTarget = "chat"): Promise<DeskResult> => {
+      openOnComputer: (target: DeskTarget = "chat", fresh?: { providerId?: string; cwd?: string }): Promise<DeskResult> => {
         const requestId = `desk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
         // A native open hands the conversation to the agent's own window,
         // which the daemon announces as a resumed session for the same
@@ -3061,6 +3061,8 @@ export function useDaemon(
             requestId,
             sessionId: current,
             ...(target === "native" && { target }),
+            // A conversation not started yet opens in the project on screen.
+            ...(!current && fresh?.providerId && fresh.cwd && { providerId: fresh.providerId, cwd: fresh.cwd }),
           });
           if (!sent) {
             resolve(settle({ ok: false, message: "Your computer isn't reachable right now." }));

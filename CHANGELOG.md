@@ -34,6 +34,18 @@ Dates are the day the tag was cut.
   types its own `/model` command). Plan mode is switched in OG Coder itself.
   Close the OG Coder window and the phone carries on with the conversation as
   normal. Needs iTerm.
+- **The laptop talks back.** What you type or clear in OG Coder's own window
+  shows up on the phone as you type, and a model or thinking change made on
+  the laptop moves the phone's pills too. Thinking set from the phone now
+  lands on the level you picked. Plan mode follows OG Coder (it enters plan
+  mode by itself); tapping Plan on the phone says so.
+- **Start on the computer from a new chat.** The computer icon is on the
+  empty "New conversation" screen as well: it opens OG Coder (or `pew2 chat`)
+  fresh in the project shown above the message box, and the phone follows the
+  conversation it starts.
+- **Several sessions at once.** Each OG Coder window opened from the phone is
+  tied to its own conversation, so typing, Send and pills always go to the
+  window for the chat on screen.
 - **`pew2 chat` looks and works like OG Coder.** Its banner, colours, message
   style, input box and status line follow OG Coder's, replies render as
   markdown, and it has `/model`, `/thinking`, `/mode` (synced with the phone),
@@ -51,6 +63,10 @@ Dates are the day the tag was cut.
   `pew2 awake off`, or `/awake off` in a chat window. A locked screen was never
   a problem and still isn't; a sleeping Mac still pauses everything, and what
   you type on the phone meanwhile is sent when it wakes.
+
+### Fixed
+
+- Reopening a conversation that was open in OG Coder showed it empty.
 
 ### Compatibility
 

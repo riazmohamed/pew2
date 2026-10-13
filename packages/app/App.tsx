@@ -1447,7 +1447,9 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
         {/* Carry this conversation on at the desk: opens a `pew2 chat`
             window on the computer, and typing mirrors both ways from then on.
             Only for a daemon that says it can (absent on older ones). */}
-        {inThread && daemon.sessionId && daemon.desk?.available && (
+        {/* In a conversation, or on a new one once its project is known: a
+            new one opens there, and the phone follows what is started. */}
+        {daemon.desk?.available && (inThread ? !!daemon.sessionId : !daemon.sessionId && !!daemon.workspace?.cwd) && (
           // Deliberately quiet: a bare dim glyph, no glass, no confirmation.
           // Only a failure (or a note, like iTerm needing permission) speaks.
           <Pressable
@@ -1457,7 +1459,8 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
             style={({ pressed }) => [styles.deskButton, pressed && { opacity: 0.4 }]}
             onPress={() => {
               const open = (target: DeskTarget) => {
-                void daemon.openOnComputer(target).then((result) => {
+                const fresh = daemon.sessionId ? undefined : { providerId: daemon.effectiveProviderId, cwd: daemon.workspace?.cwd };
+                void daemon.openOnComputer(target, fresh).then((result) => {
                   if (result.ok && !result.message) return;
                   Alert.alert(result.ok ? "Opened on the computer" : "Couldn't open it on the computer", result.message ?? "");
                 });

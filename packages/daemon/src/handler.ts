@@ -199,19 +199,8 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         // one writer, so the client is pointed at its mirror instead of a
         // second agent being started on the same file.
         const mirrorId = daemon.nativeSessionFor(message.providerId, message.agentSessionId);
-        if (mirrorId) {
-          broadcast({
-            t: "session.started",
-            sessionId: mirrorId,
-            providerId: message.providerId,
-            configOptions: [],
-            resumed: true,
-            cwd: daemon.sessionCwd(mirrorId),
-            agentSessionId: message.agentSessionId,
-          });
-          daemon.replayNative(mirrorId);
-          break;
-        }
+        // Re-keyed and replayed whole, announced to every client like a resume.
+        if (mirrorId && daemon.reopenNative(mirrorId)) break;
         const recorded = await daemon.agentSessionCwd(
           message.providerId,
           message.agentSessionId,
@@ -406,6 +395,22 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         if (message.target === "native" && message.sessionId) {
           const result = await daemon.openNative(message.sessionId);
           console.log(`[desk] native ${message.sessionId}: ${result.ok ? "ok" : result.message}`);
+          reply({ t: "desk.opened", requestId: message.requestId, ...result });
+          break;
+        }
+        // A conversation not started yet: open it in the project the phone is
+        // in, which must be one this daemon published (as for session.start).
+        if (!message.sessionId && message.cwd && message.providerId) {
+          const project = await daemon.knownProject(message.providerId, message.cwd);
+          if (!project) {
+            reply({ t: "desk.opened", requestId: message.requestId, ok: false, message: "Choose a project first, then open it on the computer." });
+            break;
+          }
+          const result =
+            message.target === "native"
+              ? await daemon.openNativeNew(message.providerId, project)
+              : await daemon.desk.open({ cwd: project, providerId: message.providerId });
+          console.log(`[desk] new ${message.target ?? "chat"} in ${project}: ${result.ok ? "ok" : result.message}`);
           reply({ t: "desk.opened", requestId: message.requestId, ...result });
           break;
         }

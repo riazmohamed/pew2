@@ -12,6 +12,8 @@ import {
   nativeWriteScript,
   typeable,
   type OsaResult,
+  applyDeskScreen,
+  parseOgCoderScreen,
 } from "./native-desk.js";
 
 const ok = (stdout = "ok"): OsaResult => ({ code: 0, stdout, stderr: "", timedOut: false });
@@ -136,4 +138,42 @@ test("OG Coder's own commands run in its input, then the draft comes back", asyn
   expect(scripts[1]!.indexOf("character id 13")).toBeLessThan(scripts[1]!.lastIndexOf('"h" newline NO'));
   expect(await typer.shiftTab(2)).toBe(true);
   expect(scripts[2]!.match(/\[Z/g)).toHaveLength(2);
+});
+
+test("OG Coder's screen is read: input, placeholder, paste block, status line", () => {
+  // Copied from a real OG Coder window (trailing padding included).
+  const real = [
+    " ○ ↻ Restored session (26 messages) ",
+    "─".repeat(80),
+    " ⠿ Ready to go.. ",
+    "▄".repeat(80),
+    " > hello from the Mac                                                           ",
+    "▀".repeat(80),
+    " Paddle_ken │ ⎇ sprint-2 │ 76 changed ",
+    " ▏░░░░░░░ 1% │ Sonnet │ Plan off │ Thinking high ",
+  ].join("\n");
+  expect(parseOgCoderScreen(real)).toEqual({ input: "hello from the Mac", model: "Sonnet", plan: false, thinking: "high" });
+  const empty = real.replace("hello from the Mac", "  Type your message or / to run a command");
+  expect(parseOgCoderScreen(empty).input).toBe("");
+  const pasted = real.replace("hello from the Mac", "[Pasted text #7 +1 lines]");
+  expect(parseOgCoderScreen(pasted).input).toBeUndefined();
+  const wrapped = real.replace(" > hello from the Mac", " > a long line that wraps\n   onto the next line");
+  expect(parseOgCoderScreen(wrapped).input).toBe("a long line that wraps onto the next line");
+  expect(parseOgCoderScreen(real.replace("Plan off │ Thinking high", "Plan on │ Thinking off"))).toMatchObject({ plan: true, thinking: "off" });
+  expect(parseOgCoderScreen("no window here")).toEqual({});
+});
+
+test("the status line moves the pills, matched by OG Coder's short names", () => {
+  const options = [
+    { id: "model", category: "model", currentValue: "claude-opus-5-5", options: [{ value: "claude-opus-5-5", name: "Claude Opus 5.5" }, { value: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" }, { value: "gpt-6-astra", name: "GPT-6 Astra" }] },
+    { id: "thinking", category: "thought_level", currentValue: "high", options: ["off", "low", "high", "max"].map((value) => ({ value })) },
+    { id: "mode", category: "mode", currentValue: "default", options: [{ value: "default" }, { value: "plan" }] },
+  ];
+  const moved = applyDeskScreen(options, { model: "Sonnet", thinking: "max", plan: true });
+  expect(moved.changed).toBe(true);
+  expect(moved.options.map((o) => o.currentValue)).toEqual(["claude-sonnet-5-5", "max", "plan"]);
+  expect(applyDeskScreen(options, { model: "GPT-6 Astra" }).options[0]!.currentValue).toBe("gpt-6-astra");
+  expect(applyDeskScreen(options, { model: "Opus", thinking: "high", plan: false }).changed).toBe(false);
+  // An unknown label leaves the pill alone rather than guessing.
+  expect(applyDeskScreen(options, { model: "Mystery" }).changed).toBe(false);
 });

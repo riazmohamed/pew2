@@ -8,6 +8,8 @@
  * so the daemon — not the agent — is what lets a phone and a desktop observe the
  * same session at the same time.
  */
+import { homedir } from "node:os";
+import path from "node:path";
 import { VoiceManager } from "./voice/manager.js";
 import { daemonHost, type SessionView, type VoiceObservation } from "./voice/host.js";
 import { loadProviders, isAvailable, unavailableReason, type LoadedProvider } from "./providers/registry.js";
@@ -19,16 +21,22 @@ import {
   type ConfigOption,
 } from "./acp/connect.js";
 import { loadClaudeDisplayHistory } from "./acp/claude-history.js";
-import { loadGgCoderDisplayHistory } from "./acp/ggcoder-history.js";
+import { encodeCwd, loadGgCoderDisplayHistory } from "./acp/ggcoder-history.js";
 import { SessionLog } from "./session/log.js";
 import { Desk, type DeskResult } from "./desk.js";
-import { GgCoderMirror } from "./acp/ggcoder-mirror.js";
+import { GgCoderMirror, conversationNames, findNewConversation } from "./acp/ggcoder-mirror.js";
 import {
   NATIVE_ALIVE_POLL_MS,
   NativeTyper,
   defaultNativeDeps,
   nativeAlive,
   nativeProviders,
+  nativeReadScript,
+  parseOgCoderScreen,
+  applyDeskScreen,
+  NATIVE_READ_POLL_MS,
+  NATIVE_READ_QUIET_MS,
+  type DeskScreen,
   openNativeWindow,
   typeable,
   type NativeDeskDeps,
@@ -151,6 +159,12 @@ interface NativeSession {
    */
   configOptions: ConfigOption[];
   aliveTimer?: NodeJS.Timeout;
+  /** Reads the window back: desk-side typing and the status line. */
+  readTimer?: NodeJS.Timeout;
+  /** The input as last read off the screen; undefined before the first read. */
+  deskInput?: string;
+  /** Set while a pill change is being driven, so the read-back doesn't fight it. */
+  configuring?: boolean;
 }
 
 /** Test seams for the native window path. */
@@ -159,6 +173,10 @@ export interface NativeOptions extends Partial<NativeDeskDeps> {
   sessionsRoot?: string;
   pollMs?: number;
   alivePollMs?: number;
+  readPollMs?: number;
+  newConversationTimeoutMs?: number;
+  readQuietMs?: number;
+  settleMs?: number;
   throttleMs?: number;
 }
 
@@ -2137,42 +2155,115 @@ export class Daemon {
     // Taken before the ACP session closes, so the phone keeps its pills.
     const configOptions = this.configOptions(sessionId);
 
-    // Baseline before the window exists, so everything OG Coder writes from
-    // its resume onwards is new and nothing already on the phone repeats.
-    const log = new SessionLog(`${providerId}-${Date.now().toString(36)}`);
-    const handles: { native?: NativeSession; mirrorSession?: ActiveSession } = {};
-    const mirror = new GgCoderMirror({
-      agentSessionId,
+    const history = await loadGgCoderDisplayHistory(agentSessionId, cwd, this.nativeOptions.sessionsRoot).catch(() => undefined);
+    return this.attachNative({
+      provider,
+      providerId,
       cwd,
-      sessionsRoot: this.nativeOptions.sessionsRoot,
-      pollMs: this.nativeOptions.pollMs,
-      callbacks: {
-        onUpdate: (update) => handles.mirrorSession && this.record(handles.mirrorSession, { sessionId: agentSessionId, update }),
-        onUserMessage: (text) => handles.mirrorSession && this.record(handles.mirrorSession, { kind: "user_message", text }),
-        onTurnStart: () => handles.mirrorSession && this.nativeTurnStart(handles.mirrorSession),
-        onTurnEnd: () => handles.mirrorSession && this.nativeTurnEnd(handles.mirrorSession),
+      configOptions,
+      agentSessionId,
+      history,
+      resumed: true,
+      // The window has the conversation now; pew2's own agent lets go of it.
+      // Re-read: the session may have been closed while the window opened.
+      beforeRegister: () => {
+        const current = this.sessions.get(sessionId);
+        if (current) this.closeSession(sessionId, current);
       },
     });
-    await mirror.baseline();
-    const history = await loadGgCoderDisplayHistory(agentSessionId, cwd, this.nativeOptions.sessionsRoot).catch(() => undefined);
+  }
+
+  /**
+   * A new conversation in the agent's own app, from the phone's empty screen:
+   * the app is started plain in the project, and its conversation is mirrored
+   * as soon as the app has written it. Announced as a *new* session (not a
+   * resume), so the phone's empty view takes it as its own.
+   */
+  async openNativeNew(providerId: string, cwd: string): Promise<DeskResult> {
+    const provider = this.providers.find((p) => p.manifest.id === providerId);
+    const allowed = this.deskAnnouncement()?.native ?? [];
+    if (!provider || !allowed.includes(providerId)) {
+      return { ok: false, message: "This agent can't be opened in its own app on this computer." };
+    }
+    const configOptions = withStoredPrefs(
+      (await this.probes.get(providerId)?.catch(() => undefined))?.configOptions ??
+        (await readProbeCache(providerId, this.env))?.configOptions ??
+        [],
+      await readConfigPrefs(providerId),
+    );
+    return this.attachNative({ provider, providerId, cwd, configOptions, resumed: false });
+  }
+
+  /**
+   * Open the window and present it to the phone as a session. With an
+   * `agentSessionId` the window resumes that conversation; without one the app
+   * starts fresh and the conversation it writes is found and mirrored.
+   */
+  private async attachNative(args: {
+    provider: { command: string };
+    providerId: string;
+    cwd: string;
+    configOptions: ConfigOption[];
+    agentSessionId?: string;
+    history?: unknown[];
+    resumed: boolean;
+    beforeRegister?: () => void;
+  }): Promise<DeskResult> {
+    const { providerId, cwd, configOptions } = args;
+    const directory = path.join(this.nativeOptions.sessionsRoot ?? path.join(homedir(), ".gg", "sessions"), encodeCwd(cwd));
+    const known = args.agentSessionId ? undefined : await conversationNames(directory);
+    const openedAt = Date.now();
+
+    // Baseline before the window exists, so everything OG Coder writes from
+    // its resume onwards is new and nothing already on the phone repeats.
+    const handles: { mirrorSession?: ActiveSession } = {};
+    const makeMirror = (agentSessionId: string) =>
+      new GgCoderMirror({
+        agentSessionId,
+        cwd,
+        sessionsRoot: this.nativeOptions.sessionsRoot,
+        pollMs: this.nativeOptions.pollMs,
+        callbacks: {
+          onUpdate: (update) => handles.mirrorSession && this.record(handles.mirrorSession, { sessionId: agentSessionId, update }),
+          onUserMessage: (text) => handles.mirrorSession && this.record(handles.mirrorSession, { kind: "user_message", text }),
+          onTurnStart: () => handles.mirrorSession && this.nativeTurnStart(handles.mirrorSession),
+          onTurnEnd: () => handles.mirrorSession && this.nativeTurnEnd(handles.mirrorSession),
+        },
+      });
+    let mirror = args.agentSessionId ? makeMirror(args.agentSessionId) : undefined;
+    await mirror?.baseline();
 
     const opened = await openNativeWindow(this.nativeDeps, {
-      command: provider.command,
+      command: args.provider.command,
       providerId,
-      agentSessionId,
+      agentSessionId: args.agentSessionId,
       cwd,
     });
     if (!opened.ok) return { ok: false, message: opened.message };
 
-    // The window has the conversation now; pew2's own agent lets go of it.
-    // Re-read: the session may have been closed while the window opened.
-    const current = this.sessions.get(sessionId);
-    if (current) this.closeSession(sessionId, current);
+    // A fresh app names its conversation once it has started: wait for the
+    // file it writes, so the phone gets one session with its id attached.
+    let agentSessionId = args.agentSessionId;
+    if (!agentSessionId) {
+      const deadline = Date.now() + (this.nativeOptions.newConversationTimeoutMs ?? 20_000);
+      while (!agentSessionId && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, this.nativeOptions.pollMs ?? 300));
+        agentSessionId = (await findNewConversation(directory, known ?? new Set(), openedAt))?.agentSessionId;
+      }
+      if (!agentSessionId) {
+        return { ok: true, app: "iTerm", message: "OG Coder opened, but pew2 couldn't find its conversation, so the phone isn't linked to it." };
+      }
+      mirror = makeMirror(agentSessionId);
+      await mirror.baseline();
+    }
 
+    args.beforeRegister?.();
+
+    const log = new SessionLog(`${providerId}-${Date.now().toString(36)}`);
     const native: NativeSession = {
       itermSessionId: opened.itermSessionId,
       typer: new NativeTyper(opened.itermSessionId, this.nativeDeps.osa, this.nativeOptions.throttleMs),
-      mirror,
+      mirror: mirror!,
       configOptions,
     };
     const mirrorSession: ActiveSession = {
@@ -2185,19 +2276,19 @@ export class Daemon {
       ready: Promise.resolve(),
       native,
     };
-    handles.native = native;
     handles.mirrorSession = mirrorSession;
-    for (const update of history ?? []) log.append({ sessionId: agentSessionId, update });
+    for (const update of args.history ?? []) log.append({ sessionId: agentSessionId, update });
     this.sessions.set(log.sessionId, mirrorSession);
 
     // The same frames a resume sends, so the phone swaps the row over and
-    // paints the transcript from this log.
+    // paints the transcript from this log. A new one is announced as new, so
+    // the phone's empty screen claims it.
     this.send({
       t: "session.started",
       sessionId: log.sessionId,
       providerId,
       configOptions,
-      resumed: true,
+      ...(args.resumed && { resumed: true }),
       cwd,
       agentSessionId,
     });
@@ -2206,46 +2297,184 @@ export class Daemon {
     this.send({ t: "session.config", sessionId: log.sessionId, providerId, configOptions });
     this.announceProviders();
 
-    mirror.start();
-    this.watchNativeWindow(log.sessionId, native);
+    native.mirror.start();
+    this.watchNativeWindow(native);
+    this.readNativeWindow(native);
     return { ok: true, app: "iTerm" };
+  }
+
+  /**
+   * A client reopening a conversation that is open in its own window. The
+   * mirror is re-keyed to a fresh id and replayed whole: a reopen under the
+   * *same* id was skipped by the phone's cursor (every event "already seen"),
+   * which showed the conversation empty. Every client is told, like a resume.
+   */
+  reopenNative(sessionId: string): string | undefined {
+    const session = this.sessions.get(sessionId);
+    if (!session?.native) return undefined;
+    const log = new SessionLog(`${session.providerId}-${Date.now().toString(36)}`);
+    for (const event of session.log.since(-1)) log.append(event.payload);
+    this.sessions.delete(sessionId);
+    const draft = this.drafts.get(sessionId);
+    this.drafts.delete(sessionId);
+    if (draft) this.drafts.set(log.sessionId, draft);
+    session.log = log;
+    session.live = false;
+    this.sessions.set(log.sessionId, session);
+    this.send({
+      t: "session.started",
+      sessionId: log.sessionId,
+      providerId: session.providerId,
+      configOptions: session.native.configOptions,
+      resumed: true,
+      cwd: session.cwd,
+      agentSessionId: session.agentSessionId,
+    });
+    this.markStreaming(log.sessionId);
+    this.finishStreaming(log.sessionId);
+    this.send({ t: "session.config", sessionId: log.sessionId, providerId: session.providerId, configOptions: session.native.configOptions });
+    this.announceProviders();
+    return log.sessionId;
+  }
+
+  /** The session id a native window is currently filed under (it changes on reopen). */
+  private nativeSessionId(native: NativeSession): string | undefined {
+    for (const [id, session] of this.sessions) if (session.native === native) return id;
+    return undefined;
   }
 
   /**
    * A phone pill changed on a conversation open in OG Coder: drive OG Coder to
    * it with its own controls. Model is its `/model <id>` command; thinking is
-   * Shift+Tab, pressed until the level comes round (OG Coder cycles the same
-   * list it advertised). Plan mode has no key from outside, so it is refused.
+   * Shift+Tab, pressed until the status line shows the level. Plan mode has no
+   * key from outside, so it is refused.
    */
   private async setNativeConfigOption(native: NativeSession, configId: string, value: string | boolean) {
     const option = native.configOptions.find((o) => o.id === configId);
     if (!option) throw new Error(`Unknown option '${configId}'`);
-    if (option.currentValue === value) return native.configOptions;
-    const typed =
-      option.category === "model"
-        ? await native.typer.command(`/model ${String(value)}`)
-        : option.category === "thought_level"
-          ? await native.typer.shiftTab(cycleDistance(option, value))
-          : undefined;
-    if (typed === undefined) throw new Error(NATIVE_CONFIG_REFUSAL);
-    if (!typed) throw new Error("The OG Coder window didn't take it. Is it still open?");
-    native.configOptions = native.configOptions.map((o) => (o.id === configId ? { ...o, currentValue: value } : o));
-    return native.configOptions;
+    if (option.category !== "model" && option.category !== "thought_level") throw new Error(NATIVE_CONFIG_REFUSAL);
+    native.configuring = true;
+    try {
+      // Start from what OG Coder actually shows, not pew2's last record: the
+      // desk may have changed it since.
+      const before = await this.readNativeScreen(native);
+      if (before) native.configOptions = applyDeskScreen(native.configOptions, before).options;
+      const current = native.configOptions.find((o) => o.id === configId);
+      if (current?.currentValue === value) return native.configOptions;
+
+      if (option.category === "model") {
+        if (!(await native.typer.command(`/model ${String(value)}`))) throw new Error(NATIVE_WINDOW_GONE);
+      } else {
+        // Shift+Tab one press at a time, reading the status line after each:
+        // OG Coder's cycle is per model, so counting presses off the advertised
+        // list goes wrong whenever the two differ.
+        const values = (option.options ?? []).map((o) => o.value);
+        let reached = false;
+        for (let press = 0; press <= values.length && !reached; press++) {
+          if (press > 0 && !(await native.typer.shiftTab(1))) throw new Error(NATIVE_WINDOW_GONE);
+          const screen = press === 0 ? before : await this.settledScreen(native);
+          if (!screen?.thinking) {
+            // Unreadable screen: fall back to counting presses.
+            if (!(await native.typer.shiftTab(cycleDistance(current ?? option, value)))) throw new Error(NATIVE_WINDOW_GONE);
+            reached = true;
+            break;
+          }
+          reached = screen.thinking === String(value);
+        }
+        if (!reached) throw new Error(`OG Coder doesn't offer thinking '${String(value)}' for this model.`);
+      }
+
+      const after = await this.settledScreen(native);
+      native.configOptions = after
+        ? applyDeskScreen(native.configOptions, after).options
+        : native.configOptions.map((o) => (o.id === configId ? { ...o, currentValue: value } : o));
+      return native.configOptions;
+    } finally {
+      native.configuring = false;
+    }
+  }
+
+  /**
+   * Read the OG Coder window back, so what happens at the desk reaches the
+   * phone: text typed (or cleared) in OG Coder's input becomes a draft from
+   * `desk`, and the status line's model, thinking level and plan mode become
+   * the phone's pills. Skipped while the phone's own typing is landing — the
+   * screen is mid-keystroke then — and while a pill change is being driven.
+   */
+  private readNativeWindow(native: NativeSession) {
+    let reading = false;
+    native.readTimer = setInterval(() => {
+      if (reading || native.configuring) return;
+      reading = true;
+      void this.readNativeScreen(native)
+        .then((screen) => {
+          const sessionId = this.nativeSessionId(native);
+          const session = sessionId ? this.sessions.get(sessionId) : undefined;
+          if (!screen || !sessionId || !session || native.configuring) return;
+          this.applyNativeScreen(sessionId, session, native, screen);
+        })
+        .catch(() => {})
+        .finally(() => {
+          reading = false;
+        });
+    }, this.nativeOptions.readPollMs ?? NATIVE_READ_POLL_MS);
+    native.readTimer.unref?.();
+  }
+
+  private async readNativeScreen(native: NativeSession): Promise<DeskScreen | undefined> {
+    const outcome = await this.nativeDeps.osa(nativeReadScript(native.itermSessionId), 5_000);
+    if (outcome.code !== 0 || outcome.stdout.trim() === "gone") return undefined;
+    return parseOgCoderScreen(outcome.stdout);
+  }
+
+  /** The screen once a keystroke has had time to redraw. */
+  private async settledScreen(native: NativeSession): Promise<DeskScreen | undefined> {
+    await new Promise((resolve) => setTimeout(resolve, this.nativeOptions.settleMs ?? 250));
+    return this.readNativeScreen(native);
+  }
+
+  private applyNativeScreen(sessionId: string, session: ActiveSession, native: NativeSession, screen: DeskScreen) {
+    const { options, changed } = applyDeskScreen(native.configOptions, screen);
+    if (changed) {
+      native.configOptions = options;
+      this.send({ t: "session.config", sessionId, providerId: session.providerId, configOptions: options });
+    }
+
+    const input = screen.input;
+    if (input === undefined || native.typer.busy(this.nativeOptions.readQuietMs ?? NATIVE_READ_QUIET_MS)) return;
+    const typed = native.typer.lastTyped;
+    // What the phone typed, as the screen shows it (padding trims trailing
+    // spaces off, so compare without them).
+    if (typed !== undefined && typed.trimEnd() === input) {
+      native.deskInput = input;
+      return;
+    }
+    if (native.deskInput === input) return;
+    // Typed or cleared at the desk: the phone shows it and its next edit
+    // starts from it. An empty window on the first read says nothing about the
+    // phone's box, so it clears nothing.
+    const first = native.deskInput === undefined;
+    native.deskInput = input;
+    native.typer.observe(input);
+    if (first && input === "") return;
+    this.send(this.setDraft(sessionId, input, DESK_DRAFT_FROM));
   }
 
   /** End the mirror when its window closes or the agent in it exits. */
-  private watchNativeWindow(sessionId: string, native: NativeSession) {
+  private watchNativeWindow(native: NativeSession) {
     let checking = false;
     native.aliveTimer = setInterval(() => {
       if (checking) return;
       checking = true;
       void nativeAlive(this.nativeDeps, native.itermSessionId)
         .then((alive) => {
-          const session = this.sessions.get(sessionId);
-          if (alive || session?.native !== native) return;
+          if (alive || !this.nativeSessionId(native)) return;
           // Whatever the agent wrote last is on the phone before it lets go.
           return native.mirror.kick().then(() => {
-            if (this.sessions.get(sessionId)?.native !== native) return;
+            // Looked up again: a reopen may have re-keyed it meanwhile.
+            const sessionId = this.nativeSessionId(native);
+            const session = sessionId ? this.sessions.get(sessionId) : undefined;
+            if (!sessionId || !session) return;
             if (session.working) this.nativeTurnEnd(session);
             this.closeSession(sessionId, session);
             this.announceProviders();
@@ -2586,7 +2815,12 @@ export class Daemon {
 
 /** Said when the phone changes a selector OG Coder can't be driven to from outside. */
 export const NATIVE_CONFIG_REFUSAL =
-  "This conversation is open in OG Coder on the computer. Switch plan mode there.";
+  "OG Coder switches plan mode itself, when it decides to plan (ask it to make a plan). It can't be switched from the phone.";
+
+const NATIVE_WINDOW_GONE = "The OG Coder window didn't take it. Is it still open?";
+
+/** `from` on a draft typed at the desk, in OG Coder's own window. */
+export const DESK_DRAFT_FROM = "desk";
 
 /** How many steps forward through an option's values from current to `value`. */
 export function cycleDistance(option: ConfigOption, value: string | boolean): number {
@@ -2600,6 +2834,8 @@ export function cycleDistance(option: ConfigOption, value: string | boolean): nu
 function stopNative(native: NativeSession) {
   if (native.aliveTimer) clearInterval(native.aliveTimer);
   native.aliveTimer = undefined;
+  if (native.readTimer) clearInterval(native.readTimer);
+  native.readTimer = undefined;
   native.typer.stop();
   native.mirror.stop();
 }

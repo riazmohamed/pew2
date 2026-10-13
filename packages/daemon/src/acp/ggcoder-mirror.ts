@@ -88,6 +88,44 @@ async function entryIds(file: string): Promise<{ ids: Set<string>; bytes: number
  * The file OG Coder is writing this conversation to: the newest plain `.jsonl`
  * whose header names it, falling back to an archive when only that exists.
  */
+/**
+ * The conversation OG Coder started in `directory` since `since` (ms): the
+ * newest plain `.jsonl` not in `known`, by its header. A freshly launched OG
+ * Coder writes its header at start, so this appears within moments.
+ */
+export async function findNewConversation(
+  directory: string,
+  known: ReadonlySet<string>,
+  since: number,
+): Promise<{ file: string; agentSessionId: string } | undefined> {
+  let names: string[];
+  try {
+    names = await readdir(directory);
+  } catch {
+    return undefined;
+  }
+  let best: { file: string; agentSessionId: string; mtime: number } | undefined;
+  for (const name of names) {
+    if (!name.endsWith(".jsonl") || known.has(name)) continue;
+    const file = path.join(directory, name);
+    const info = await stat(file).catch(() => undefined);
+    if (!info || info.birthtimeMs < since - 2_000) continue;
+    const header = await readHeader(file);
+    if (!header?.id) continue;
+    if (!best || info.mtimeMs > best.mtime) best = { file, agentSessionId: header.id, mtime: info.mtimeMs };
+  }
+  return best && { file: best.file, agentSessionId: best.agentSessionId };
+}
+
+/** Names of the conversation files already in `directory`. */
+export async function conversationNames(directory: string): Promise<Set<string>> {
+  try {
+    return new Set((await readdir(directory)).filter((name) => name.endsWith(".jsonl")));
+  } catch {
+    return new Set();
+  }
+}
+
 export async function findConversationFile(
   directory: string,
   identity: { agentSessionId: string; conversationId?: string },

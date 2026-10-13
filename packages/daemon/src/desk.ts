@@ -49,8 +49,13 @@ export function deskStatus(platform: NodeJS.Platform = process.platform): DeskSt
 }
 
 /** Arguments for the window: follow this session's project, starting on it. */
-export function deskArgs(target: { sessionId?: string; cwd?: string }): string[] {
-  if (!target.sessionId) return ["--all"];
+export function deskArgs(target: { sessionId?: string; cwd?: string; providerId?: string }): string[] {
+  if (!target.sessionId) {
+    // A new conversation: a window for that project, starting one with that agent.
+    return target.cwd
+      ? ["--project", target.cwd, ...(target.providerId ? ["--agent", target.providerId] : [])]
+      : ["--all"];
+  }
   return [
     ...(target.cwd ? ["--project", target.cwd] : ["--all"]),
     "--focus",
@@ -157,7 +162,7 @@ export class Desk {
   }
 
   async open(
-    target: { sessionId?: string; cwd?: string },
+    target: { sessionId?: string; cwd?: string; providerId?: string },
     env: Record<string, string | undefined> = process.env,
   ): Promise<DeskResult> {
     const status = this.status();

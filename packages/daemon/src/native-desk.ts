@@ -66,10 +66,12 @@ export function nativeProviders(
 }
 
 /** The shell line the window runs: the agent, resumed, in the project. */
-export function nativeCommand(command: string, providerId: string, agentSessionId: string, cwd: string): string {
+export function nativeCommand(command: string, providerId: string, agentSessionId: string | undefined, cwd: string): string {
   const app = NATIVE_APPS[providerId];
   if (!app) throw new Error(`No native app for '${providerId}'`);
-  return ["cd", shellQuote(cwd), "&&", "exec", shellQuote(command), ...app.resumeArgs(agentSessionId).map(shellQuote)].join(" ");
+  // No id: a new conversation, the app started plain in the project.
+  const resume = agentSessionId ? app.resumeArgs(agentSessionId) : [];
+  return ["cd", shellQuote(cwd), "&&", "exec", shellQuote(command), ...resume.map(shellQuote)].join(" ");
 }
 
 /** AppleScript string literal. */
@@ -183,6 +185,112 @@ export function nativeWriteScript(sessionId: string, steps: Keystrokes): string 
   return findSession(sessionId, body).join("\n");
 }
 
+/** Returns the end of the session's screen text, or "gone". */
+export function nativeReadScript(sessionId: string): string {
+  return findSession(sessionId, [
+    "set c to contents of aSession",
+    "set n to (count of c)",
+    "if n > 8000 then set c to text (n - 7999) thru n of c",
+    "return c",
+  ]).join("\n");
+}
+
+/** How often an open OG Coder window is read back for desk-side edits. */
+export const NATIVE_READ_POLL_MS = 800;
+
+/** After the phone typed, how long the screen is left to settle before it counts. */
+export const NATIVE_READ_QUIET_MS = 1_200;
+
+/** What OG Coder's screen says, as far as pew2 can read it. Absent: not readable. */
+export interface DeskScreen {
+  /** The input box's text; "" when it shows the placeholder. */
+  input?: string;
+  /** The status line's model label (OG Coder's short name, e.g. "Opus"). */
+  model?: string;
+  /** "off", "low", … as the status line shows it. */
+  thinking?: string;
+  plan?: boolean;
+}
+
+const PLACEHOLDER_TEXT = "Type your message or / to run a command";
+const EDGE = /^\s*([▄▀─])\1{9,}\s*$/;
+
+/**
+ * Read OG Coder's input box and status line off its screen text.
+ *
+ * The input is the last ` > ` line sitting under an input edge (a run of
+ * `▄`/`─`), plus its `   ` continuation lines up to the closing edge. Trailing
+ * spaces are padding and cannot be told from typed ones, so callers compare
+ * with `trimEnd()`. A collapsed paste (`[Pasted text #…]`) is unreadable and
+ * yields no input at all.
+ */
+export function parseOgCoderScreen(contents: string): DeskScreen {
+  const lines = contents.split(/\r?\n/);
+  const screen: DeskScreen = {};
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!;
+    if (!line.startsWith(" > ")) continue;
+    const above = lines.slice(Math.max(0, i - 3), i);
+    if (!above.some((l) => EDGE.test(l))) continue;
+    const parts = [line.slice(3)];
+    for (let j = i + 1; j < lines.length && !EDGE.test(lines[j]!); j++) {
+      const next = lines[j]!;
+      if (!next.startsWith("   ")) break;
+      parts.push(next.slice(3));
+    }
+    const text = parts.map((p) => p.trimEnd()).join(" ").trimEnd();
+    if (!text.includes("[Pasted text #")) {
+      screen.input = text.trim() === PLACEHOLDER_TEXT ? "" : text;
+    }
+    break;
+  }
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!;
+    if (!line.includes("│") || !/Thinking \S+/.test(line)) continue;
+    const cells = line.split("│").map((c) => c.trim());
+    const planAt = cells.findIndex((c) => /^Plan (on|off)$/.test(c));
+    const thinking = cells.map((c) => /^Thinking (\S+)$/.exec(c)?.[1]).find(Boolean);
+    if (thinking) screen.thinking = thinking;
+    if (planAt >= 0) {
+      screen.plan = cells[planAt] === "Plan on";
+      const model = cells[planAt - 1];
+      if (model && !/%$/.test(model)) screen.model = model;
+    }
+    break;
+  }
+  return screen;
+}
+
+/** Selectors updated to what OG Coder's status line shows. */
+export function applyDeskScreen<T extends { id: string; name?: string; category?: string | null; currentValue?: unknown; options?: { value: string; name?: string }[] }>(
+  options: T[],
+  screen: DeskScreen,
+): { options: T[]; changed: boolean } {
+  let changed = false;
+  const next = options.map((option) => {
+    const values = option.options ?? [];
+    let value: string | undefined;
+    if (option.category === "model" && screen.model) {
+      const label = screen.model.toLowerCase();
+      const word = new RegExp(`\\b${screen.model.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+      value = (
+        values.find((v) => v.value.toLowerCase() === label || (v.name ?? "").toLowerCase() === label) ??
+        values.find((v) => word.test(v.name ?? "") || word.test(v.value))
+      )?.value;
+    } else if (option.category === "thought_level" && screen.thinking) {
+      value = values.find((v) => v.value === screen.thinking)?.value;
+    } else if (option.category === "mode" && screen.plan !== undefined) {
+      value = values.find((v) => /plan/i.test(v.value) === screen.plan)?.value;
+    }
+    if (value === undefined || value === option.currentValue) return option;
+    changed = true;
+    return { ...option, currentValue: value };
+  });
+  return { options: next, changed };
+}
+
 /** Returns the session's tty, or "gone". */
 export function nativeAliveScript(sessionId: string): string {
   return findSession(sessionId, ["return tty of aSession"]).join("\n");
@@ -255,7 +363,7 @@ export const defaultNativeDeps = (): NativeDeskDeps => ({
 /** Open the window; on success, the iTerm session id to type into. */
 export async function openNativeWindow(
   deps: NativeDeskDeps,
-  options: { command: string; providerId: string; agentSessionId: string; cwd: string },
+  options: { command: string; providerId: string; agentSessionId?: string; cwd: string },
 ): Promise<{ ok: true; itermSessionId: string } | { ok: false; message: string }> {
   const app = NATIVE_APPS[options.providerId];
   const title = `${app?.name ?? options.providerId} · ${folderName(options.cwd) ?? options.cwd}`;
@@ -296,6 +404,9 @@ export class NativeTyper {
   private pendingDraft?: string;
   /** What this typer last left in the input (undefined: unknown, so clear first). */
   private typed?: string;
+  /** Writes queued or running, and when the last one finished. */
+  private inFlight = 0;
+  private lastWriteAt = 0;
   private timer?: NodeJS.Timeout;
 
   constructor(
@@ -303,6 +414,24 @@ export class NativeTyper {
     private readonly osa: NativeDeskDeps["osa"],
     private readonly throttleMs: number = NATIVE_DRAFT_THROTTLE_MS,
   ) {}
+
+  /** What the phone last left in OG Coder's input, as far as this typer knows. */
+  get lastTyped(): string | undefined {
+    return this.typed;
+  }
+
+  /**
+   * True while typing is queued or happened within `quietMs`. The screen read
+   * back meanwhile is mid-keystroke, so it is not evidence of a desk edit.
+   */
+  busy(quietMs: number, now = Date.now()): boolean {
+    return this.inFlight > 0 || this.timer !== undefined || now - this.lastWriteAt < quietMs;
+  }
+
+  /** The input as read off the screen: the next phone edit diffs against it. */
+  observe(text: string): void {
+    this.typed = text;
+  }
 
   /** Replace OG Coder's input with this text, without sending it. */
   draft(text: string): void {
@@ -358,9 +487,15 @@ export class NativeTyper {
 
   private write(steps: Keystrokes): Promise<boolean> {
     const steps_ = steps.filter((step) => step.length > 0);
+    this.inFlight++;
     const run = this.chain.then(async () => {
-      const outcome = await this.osa(nativeWriteScript(this.itermSessionId, steps_), 8_000);
-      return outcome.code === 0 && outcome.stdout.trim() === "ok";
+      try {
+        const outcome = await this.osa(nativeWriteScript(this.itermSessionId, steps_), 8_000);
+        return outcome.code === 0 && outcome.stdout.trim() === "ok";
+      } finally {
+        this.inFlight--;
+        this.lastWriteAt = Date.now();
+      }
     });
     this.chain = run.catch(() => false);
     return run.catch(() => false);

@@ -470,7 +470,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
    * backgrounded or looking at another project, so without this a finished
    * five-minute turn is only discovered by going back to check.
    */
-  const offerIncomingRef = useRef<((turn: { sessionId: string; agentName?: string; folder?: string }) => void) | undefined>(undefined);
+  const offerIncomingRef = useRef<((turn: { sessionId: string; agentName?: string; folder?: string; appActive?: boolean }) => void) | undefined>(undefined);
   const announceTurn = useCallback((turn: TurnFinished) => {
     const notice = finishedNotice({
       ...turn,
@@ -481,7 +481,12 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
     // And offer the same finished turn as an incoming call: the banner and
     // the ring are how "tell me when it's done" reaches someone not reading
     // the screen. The hook itself declines while a call is already live.
-    offerIncomingRef.current?.({ sessionId: turn.sessionId, agentName: turn.agentName, folder: turn.folder });
+    offerIncomingRef.current?.({
+      sessionId: turn.sessionId,
+      agentName: turn.agentName,
+      folder: turn.folder,
+      appActive: foreground.current,
+    });
   }, []);
 
   // The relay identifies devices by this, and it must match the id baked into

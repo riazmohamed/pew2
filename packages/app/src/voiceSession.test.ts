@@ -137,6 +137,15 @@ describe("status", () => {
     expect(shouldRingForTurn({ sessionId: "s1" }, { onScreen: "s2", callActive: true })).toBe(false);
   });
 
+  test("a backgrounded app rings even for the conversation left on screen", () => {
+    // Phone in a pocket: the conversation is still "on screen" in app state.
+    expect(shouldRingForTurn({ sessionId: "s1", appActive: false }, { onScreen: "s1", callActive: false })).toBe(true);
+    // In front and looking at it: no ring, it is visible already.
+    expect(shouldRingForTurn({ sessionId: "s1", appActive: true }, { onScreen: "s1", callActive: false })).toBe(false);
+    // A live call still wins over everything.
+    expect(shouldRingForTurn({ sessionId: "s1", appActive: false }, { onScreen: "s1", callActive: true })).toBe(false);
+  });
+
   test("statuses for another call are ignored", () => {
     const state = voiceReducer(live, { type: "status", status: { liveSessionId: "other", state: "agent_working" } });
     expect(state).toBe(live);

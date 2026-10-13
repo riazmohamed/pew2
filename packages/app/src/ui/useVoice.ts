@@ -111,6 +111,8 @@ export interface IncomingCall {
   sessionId: string;
   agentName?: string;
   folder?: string;
+  /** Whether the app was in front when the turn finished; see shouldRingForTurn. */
+  appActive?: boolean;
 }
 
 interface Call {

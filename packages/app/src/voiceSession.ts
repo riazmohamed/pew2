@@ -222,12 +222,20 @@ export function voiceUsageLine(state: VoiceState, now: number): string {
 /**
  * Whether a finished turn should ring the phone like an incoming call.
  *
- * The turn must be one nobody is watching: the conversation on screen
+ * The turn must be one nobody is watching. The conversation on screen
  * finishing is visible already, and ringing over it is the intrusiveness this
- * feature is meant to avoid being.
+ * feature is meant to avoid being, but only while the app is actually in
+ * front: "on screen" is app state, and it stays set with the phone locked in a
+ * pocket, which is exactly the hang-up-and-call-me-back case. So a
+ * backgrounded app rings for every conversation. `appActive` absent means
+ * "unknown" and keeps the on-screen rule.
  */
-export function shouldRingForTurn(turn: { sessionId: string }, opts: { onScreen?: string; callActive: boolean }): boolean {
+export function shouldRingForTurn(
+  turn: { sessionId: string; appActive?: boolean },
+  opts: { onScreen?: string; callActive: boolean },
+): boolean {
   if (opts.callActive) return false;
+  if (turn.appActive === false) return true;
   return turn.sessionId !== opts.onScreen;
 }
 

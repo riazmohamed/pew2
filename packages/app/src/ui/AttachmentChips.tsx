@@ -10,7 +10,7 @@
  * Removal is a tap on the chip's own cross rather than a swipe: the row scrolls
  * horizontally, and a swipe would fight it.
  */
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 // expo-image: these thumbnails decode while the user is typing, and a
 // main-thread decode there lands on the composer's own animation.
@@ -20,6 +20,7 @@ import { theme } from "../theme";
 import { touchSlop } from "./controls";
 import { haptics } from "./haptics";
 import { formatSize, isImageAttachment, type PendingAttachment } from "../attachments";
+import { ImageViewer } from "./ImageViewer";
 
 interface AttachmentChipsProps {
   attachments: readonly PendingAttachment[];
@@ -36,8 +37,28 @@ function glyphFor(mimeType: string): keyof typeof Ionicons.glyphMap {
   return "document-outline";
 }
 
+/**
+ * Where a chip's picture is: the phone's file, or (a screenshot of the
+ * computer, which only exists as bytes) a data URI of it.
+ */
+function pictureUri(file: PendingAttachment): string | undefined {
+  if (!isImageAttachment(file)) return undefined;
+  return file.localUri ?? `data:${file.mimeType};base64,${file.data}`;
+}
+
 function AttachmentChipsView({ attachments, onRemove }: AttachmentChipsProps) {
+  const [viewing, setViewing] = useState<PendingAttachment | undefined>(undefined);
+  const viewingUri = viewing ? pictureUri(viewing) : undefined;
   return (
+    <>
+    {viewing && viewingUri && (
+      <ImageViewer
+        image={{ src: viewingUri, mimeType: viewing.mimeType, alt: viewing.name, ...(viewing.localUri && { origin: "device" as const }) }}
+        resolvedSrc={viewingUri}
+        visible
+        onClose={() => setViewing(undefined)}
+      />
+    )}
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
@@ -46,15 +67,24 @@ function AttachmentChipsView({ attachments, onRemove }: AttachmentChipsProps) {
     >
       {attachments.map((file) => (
         <View key={file.id} style={styles.chip}>
-          {isImageAttachment(file) && file.localUri ? (
-            <Image
-              source={{ uri: file.localUri }}
-              style={styles.thumb}
-              accessible={false}
-              // A chip is a small square crop of a photo that is usually neither.
-              contentFit="cover"
-              transition={0}
-            />
+          {pictureUri(file) ? (
+            // Tapped, the picture opens full size: the way to read a screenshot
+            // of the computer before deciding whether to send it.
+            <Pressable
+              accessibilityRole="imagebutton"
+              accessibilityLabel={`View ${file.name}`}
+              hitSlop={touchSlop(theme.space(1))}
+              onPress={() => setViewing(file)}
+            >
+              <Image
+                source={{ uri: pictureUri(file) }}
+                style={styles.thumb}
+                accessible={false}
+                // A chip is a small square crop of a photo that is usually neither.
+                contentFit="cover"
+                transition={0}
+              />
+            </Pressable>
           ) : (
             <View style={styles.glyph}>
               <Ionicons name={glyphFor(file.mimeType)} size={16} color={theme.color.glyph} />
@@ -87,6 +117,7 @@ function AttachmentChipsView({ attachments, onRemove }: AttachmentChipsProps) {
         </View>
       ))}
     </ScrollView>
+    </>
   );
 }
 

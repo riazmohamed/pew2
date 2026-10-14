@@ -26,7 +26,11 @@ import { SessionLog } from "./session/log.js";
 import { Desk, type DeskResult } from "./desk.js";
 import { GgCoderMirror, conversationNames, findNewConversation } from "./acp/ggcoder-mirror.js";
 import {
+  KEYS,
   NATIVE_ALIVE_POLL_MS,
+  NATIVE_APPS,
+  nativeCloseScript,
+  nativeWriteScript,
   NativeTyper,
   defaultNativeDeps,
   nativeAlive,
@@ -109,6 +113,8 @@ interface ActiveSession {
    * the flag that keeps the reaper off a running turn.
    */
   working?: boolean;
+  /** When the current turn of a native mirror began (the screen check waits this out). */
+  turnStartedAt?: number;
   /**
    * Approval requests the agent is blocked on, oldest first.
    *
@@ -165,6 +171,8 @@ interface NativeSession {
   deskInput?: string;
   /** Set while a pill change is being driven, so the read-back doesn't fight it. */
   configuring?: boolean;
+  /** Consecutive reads of the status row agreeing with each other. */
+  statusRun?: { status: "busy" | "idle"; count: number };
 }
 
 /** Test seams for the native window path. */
@@ -173,7 +181,10 @@ export interface NativeOptions extends Partial<NativeDeskDeps> {
   sessionsRoot?: string;
   pollMs?: number;
   alivePollMs?: number;
+  closeWaitMs?: number;
+  closePollMs?: number;
   readPollMs?: number;
+  turnGraceMs?: number;
   newConversationTimeoutMs?: number;
   readQuietMs?: number;
   settleMs?: number;
@@ -2092,7 +2103,139 @@ export class Daemon {
         .map((p) => ({ id: p.manifest.id, commandMissing: p.commandMissing })),
       { platform: this.nativeOptions.platform ?? process.platform, hasITerm: this.nativeDeps.hasITerm() },
     );
-    return native.length > 0 ? { ...status, native } : status;
+    // A picture of the screen goes wherever a window can be opened (macOS).
+    const withCapture = status.available ? { ...status, capture: true } : status;
+    const windows = this.deskWindows();
+    return {
+      ...withCapture,
+      ...(native.length > 0 && { native }),
+      ...(windows.length > 0 && { windows }),
+    };
+  }
+
+  /** The terminal windows the phone can close, by conversation. */
+  private deskWindows(): { agentSessionId: string; kind: "native" | "chat" }[] {
+    const seen = new Set<string>();
+    const windows: { agentSessionId: string; kind: "native" | "chat" }[] = [];
+    const add = (agentSessionId: string | undefined, kind: "native" | "chat") => {
+      if (!agentSessionId || seen.has(`${kind}:${agentSessionId}`)) return;
+      seen.add(`${kind}:${agentSessionId}`);
+      windows.push({ agentSessionId, kind });
+    };
+    for (const session of this.sessions.values()) if (session.native) add(session.agentSessionId, "native");
+    for (const window of this.chatWindows.values()) add(window.agentSessionId, "chat");
+    return windows;
+  }
+
+  /** `pew2 chat` windows opened from the phone, by iTerm session id, so the phone can close them. */
+  private readonly chatWindows = new Map<string, { agentSessionId: string; providerId: string }>();
+  private chatWindowTimer?: NodeJS.Timeout;
+
+  /** Remember a `pew2 chat` window opened for a conversation. */
+  trackChatWindow(sessionId: string, itermSessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session?.agentSessionId) return;
+    this.chatWindows.set(itermSessionId, { agentSessionId: session.agentSessionId, providerId: session.providerId });
+    this.watchChatWindows();
+    this.announceProviders();
+  }
+
+  /** Forget chat windows the user closed by hand, so the phone stops offering to. */
+  private watchChatWindows() {
+    if (this.chatWindowTimer) return;
+    let checking = false;
+    this.chatWindowTimer = setInterval(() => {
+      if (checking) return;
+      if (this.chatWindows.size === 0) {
+        clearInterval(this.chatWindowTimer);
+        this.chatWindowTimer = undefined;
+        return;
+      }
+      checking = true;
+      void (async () => {
+        let changed = false;
+        for (const id of [...this.chatWindows.keys()]) {
+          if (!(await nativeAlive(this.nativeDeps, id))) {
+            this.chatWindows.delete(id);
+            changed = true;
+          }
+        }
+        if (changed) this.announceProviders();
+      })()
+        .catch(() => {})
+        .finally(() => {
+          checking = false;
+        });
+    }, this.nativeOptions.alivePollMs ?? NATIVE_ALIVE_POLL_MS);
+    this.chatWindowTimer.unref?.();
+  }
+
+  /**
+   * Close the terminal window(s) pew2 opened for a conversation, from the
+   * phone. The agent's own app is quit the way a person would (input emptied,
+   * Ctrl-D) and `pew2 chat` with Ctrl-C; a window that ignores that is closed
+   * outright. Refused while the agent is mid-reply: closing then would cut the
+   * turn off. The conversation itself carries on: with its window gone the
+   * phone reopens it through the agent as usual.
+   */
+  async closeDesk(target: { sessionId?: string; agentSessionId?: string }): Promise<DeskResult> {
+    const agentSessionId =
+      (target.sessionId ? this.sessions.get(target.sessionId)?.agentSessionId : undefined) ?? target.agentSessionId;
+    const natives = agentSessionId
+      ? [...this.sessions.values()].filter((session) => session.native && session.agentSessionId === agentSessionId)
+      : [];
+    const chats = agentSessionId
+      ? [...this.chatWindows.entries()].filter(([, window]) => window.agentSessionId === agentSessionId).map(([id]) => id)
+      : [];
+    if (natives.length === 0 && chats.length === 0) {
+      return { ok: false, message: "There's no terminal open on the computer for this conversation." };
+    }
+    for (const session of natives) {
+      if (session.working) {
+        const name = NATIVE_APPS[session.providerId]?.name ?? "The agent";
+        return { ok: false, message: `${name} is in the middle of a reply. Stop it first, then close it.` };
+      }
+    }
+
+    const failed: string[] = [];
+    for (const session of natives) {
+      const native = session.native!;
+      if (!(await this.closeTerminal(native.itermSessionId, () => native.typer.quit()))) {
+        failed.push(NATIVE_APPS[session.providerId]?.name ?? "the agent");
+        continue;
+      }
+      // Whatever it wrote last reaches the phone before the mirror goes.
+      await native.mirror.kick().catch(() => {});
+      const id = this.nativeSessionId(native);
+      const current = id ? this.sessions.get(id) : undefined;
+      if (id && current) this.closeSession(id, current);
+    }
+    for (const id of chats) {
+      const closed = await this.closeTerminal(id, () => this.nativeDeps.osa(nativeWriteScript(id, [KEYS.interrupt]), 8_000));
+      if (closed) this.chatWindows.delete(id);
+      else failed.push("pew2 chat");
+    }
+    this.announceProviders();
+    return failed.length === 0
+      ? { ok: true }
+      : { ok: false, message: `${failed.join(" and ")} didn't close. Close it on the Mac.` };
+  }
+
+  /** Ask politely, wait for the window to go, then close it outright. */
+  private async closeTerminal(itermSessionId: string, ask: () => Promise<unknown>): Promise<boolean> {
+    await ask();
+    if (await this.waitGone(itermSessionId)) return true;
+    await this.nativeDeps.osa(nativeCloseScript(itermSessionId), 8_000);
+    return this.waitGone(itermSessionId);
+  }
+
+  private async waitGone(itermSessionId: string): Promise<boolean> {
+    const deadline = Date.now() + (this.nativeOptions.closeWaitMs ?? 5_000);
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, this.nativeOptions.closePollMs ?? 400));
+      if (!(await nativeAlive(this.nativeDeps, itermSessionId))) return true;
+    }
+    return false;
   }
 
   /** Whether this session is a native window being mirrored. */
@@ -2434,6 +2577,7 @@ export class Daemon {
   }
 
   private applyNativeScreen(sessionId: string, session: ActiveSession, native: NativeSession, screen: DeskScreen) {
+    this.applyNativeStatus(session, native, screen);
     const { options, changed } = applyDeskScreen(native.configOptions, screen);
     if (changed) {
       native.configOptions = options;
@@ -2458,6 +2602,32 @@ export class Daemon {
     native.typer.observe(input);
     if (first && input === "") return;
     this.send(this.setDraft(sessionId, input, DESK_DRAFT_FROM));
+  }
+
+  /**
+   * The screen as the last word on whether OG Coder is working. The file is
+   * the main signal, but a turn stopped with Esc or failed outright may write
+   * no final metric, and the phone would show it working forever. Two reads in
+   * a row must agree, and a turn is given a few seconds to get going first, so
+   * a stale "done" line just after Enter does not end the turn it started.
+   */
+  private applyNativeStatus(session: ActiveSession, native: NativeSession, screen: DeskScreen) {
+    const status = screen.status;
+    if (!status || screen.input === undefined) {
+      native.statusRun = undefined;
+      return;
+    }
+    native.statusRun = native.statusRun?.status === status ? { status, count: native.statusRun.count + 1 } : { status, count: 1 };
+    if (native.statusRun.count < 2) return;
+    if (status === "idle" && session.working) {
+      const since = Date.now() - (session.turnStartedAt ?? 0);
+      if (since < (this.nativeOptions.turnGraceMs ?? NATIVE_TURN_GRACE_MS)) return;
+      // Whatever OG Coder wrote last reaches the phone before the turn ends.
+      void native.mirror.kick().then(() => this.nativeTurnEnd(session));
+    } else if (status === "busy" && !session.working) {
+      // Started at the desk: the phone shows it working too.
+      this.nativeTurnStart(session);
+    }
   }
 
   /** End the mirror when its window closes or the agent in it exits. */
@@ -2491,6 +2661,7 @@ export class Daemon {
     session.lastUsedAt = Date.now();
     if (session.working) return;
     session.working = true;
+    session.turnStartedAt = Date.now();
     session.turnText = undefined;
     this.notify({ sessionId: session.log.sessionId, kind: "turn_start" });
     this.awake.evaluate();
@@ -2789,6 +2960,8 @@ export class Daemon {
 
   closeAll() {
     this.voice.closeAll();
+    if (this.chatWindowTimer) clearInterval(this.chatWindowTimer);
+    this.chatWindowTimer = undefined;
     // The assertion must never outlive the daemon's sessions.
     this.awake.stop();
     if (this.reaper) {
@@ -2818,6 +2991,9 @@ export const NATIVE_CONFIG_REFUSAL =
   "OG Coder switches plan mode itself, when it decides to plan (ask it to make a plan). It can't be switched from the phone.";
 
 const NATIVE_WINDOW_GONE = "The OG Coder window didn't take it. Is it still open?";
+
+/** A turn this young is not ended by an idle-looking screen (it may not have redrawn yet). */
+export const NATIVE_TURN_GRACE_MS = 4_000;
 
 /** `from` on a draft typed at the desk, in OG Coder's own window. */
 export const DESK_DRAFT_FROM = "desk";

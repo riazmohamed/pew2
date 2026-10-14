@@ -35,7 +35,7 @@ import Reanimated, {
 import { StatusBar } from "expo-status-bar";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { theme } from "./src/theme";
-import { deskTargetLabel, deskTargets, type DeskTarget } from "./src/deskChoice";
+import { closeLabel, deskActions, deskTargetLabel, openWindows, type DeskTarget } from "./src/deskChoice";
 import { useDaemon, type Provider, type TurnFinished } from "./src/useDaemon";
 import { projectDrawerRows } from "./src/historyMetadata";
 import { restorePresentation } from "./src/restoreState";
@@ -711,6 +711,10 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
   );
 
   const inThread = daemon.turns.length > 0;
+  // What pew2 has open on the computer for this conversation (the icon fills,
+  // and its menu offers to close it).
+  const currentAgentSessionId = daemon.sessions.find((session) => session.id === daemon.sessionId)?.agentSessionId;
+  const deskOpen = openWindows(daemon.desk, currentAgentSessionId);
   const sessionTitle = daemon.restoreTarget?.title
     ?? daemonSessions.find((session) => session.id === (daemon.sessionId ?? threadKey))?.title
     ?? "New conversation";
@@ -1225,6 +1229,8 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
     setAttachments((current) => current.filter((file) => file.id !== id));
   }, []);
 
+  // Stable across renders (the hook's action object is not), like the others.
+  const captureComputer = daemon.captureComputer;
   const pickAttachment = useCallback(
     (source: AttachmentSource) => {
       setAttachOpen(false);
@@ -1232,6 +1238,20 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
       // through its ref mirror afterwards rather than from this closure: two
       // overlapping picks would otherwise have the second overwrite the first.
       void (async () => {
+        if (source === "computer") {
+          const shot = await captureComputer();
+          if (!shot.ok || !shot.picture) {
+            Alert.alert("Computer Screen", shot.message ?? "Couldn't take the screenshot.");
+            return;
+          }
+          const { name, mimeType, data } = shot.picture;
+          const merged = addAttachments(attachmentsRef.current, [
+            { id: `screen-${Date.now().toString(36)}`, name, mimeType, data, size: Math.floor((data.length * 3) / 4) },
+          ]);
+          setAttachments(merged.attachments);
+          if (merged.rejected) Alert.alert("Attach", merged.rejected);
+          return;
+        }
         const room = MAX_ATTACHMENTS - attachmentsRef.current.length;
         const outcome =
           source === "camera"
@@ -1254,7 +1274,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
         if (merged.rejected) Alert.alert("Attach", merged.rejected);
       })();
     },
-    [],
+    [captureComputer],
   );
 
   /**
@@ -1465,21 +1485,31 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
                   Alert.alert(result.ok ? "Opened on the computer" : "Couldn't open it on the computer", result.message ?? "");
                 });
               };
-              const targets = deskTargets(daemon.desk, daemon.effectiveProviderId);
-              // One place to open it: tap straight through, as always.
-              if (targets.length < 2) {
-                open("chat");
+              const actions = deskActions(daemon.desk, daemon.effectiveProviderId, currentAgentSessionId);
+              const first = actions[0];
+              // One place to open it and nothing open: tap straight through.
+              if (actions.length === 1 && first?.kind === "open") {
+                open(first.target);
                 return;
               }
-              // The agent's own app, or pew2 chat. A plain system alert:
-              // quiet, and gone the moment it is answered.
-              Alert.alert("Open on the computer", undefined, [
-                ...targets.map((target) => ({ text: deskTargetLabel(target, active?.name), onPress: () => open(target) })),
+              const close = () => {
+                void daemon.closeOnComputer(currentAgentSessionId).then((result) => {
+                  if (!result.ok) Alert.alert("Couldn't close it on the computer", result.message ?? "");
+                });
+              };
+              // A plain system alert: quiet, and gone the moment it is answered.
+              Alert.alert(deskOpen.native || deskOpen.chat ? "On the computer" : "Open on the computer", undefined, [
+                ...actions.map((action) =>
+                  action.kind === "close"
+                    ? { text: closeLabel(deskOpen, active?.name), style: "destructive" as const, onPress: close }
+                    : { text: deskTargetLabel(action.target, active?.name), onPress: () => open(action.target) },
+                ),
                 { text: "Cancel", style: "cancel" as const },
               ]);
             }}
           >
-            <Ionicons name="desktop-outline" size={16} color={theme.color.textFaint} />
+            {/* Filled while pew2 has a terminal open for this conversation. */}
+            <Ionicons name={deskOpen.native || deskOpen.chat ? "desktop" : "desktop-outline"} size={16} color={theme.color.textFaint} />
           </Pressable>
         )}
         <View style={styles.navAction}>
@@ -1707,7 +1737,7 @@ function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void })
         onBrowse={daemon.browseWorkspaces}
       />
 
-      <AttachmentSheet visible={attachOpen} onSelect={pickAttachment} onClose={closeAttach} />
+      <AttachmentSheet visible={attachOpen} computer={daemon.desk?.capture === true} onSelect={pickAttachment} onClose={closeAttach} />
 
       <ThoughtSheet visible={thought !== null} text={thought ?? ""} onClose={closeThought} />
 

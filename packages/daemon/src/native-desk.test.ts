@@ -152,7 +152,7 @@ test("OG Coder's screen is read: input, placeholder, paste block, status line", 
     " Paddle_ken │ ⎇ sprint-2 │ 76 changed ",
     " ▏░░░░░░░ 1% │ Sonnet │ Plan off │ Thinking high ",
   ].join("\n");
-  expect(parseOgCoderScreen(real)).toEqual({ input: "hello from the Mac", model: "Sonnet", plan: false, thinking: "high" });
+  expect(parseOgCoderScreen(real)).toEqual({ input: "hello from the Mac", model: "Sonnet", plan: false, thinking: "high", status: "idle" });
   const empty = real.replace("hello from the Mac", "  Type your message or / to run a command");
   expect(parseOgCoderScreen(empty).input).toBe("");
   const pasted = real.replace("hello from the Mac", "[Pasted text #7 +1 lines]");
@@ -176,4 +176,16 @@ test("the status line moves the pills, matched by OG Coder's short names", () =>
   expect(applyDeskScreen(options, { model: "Opus", thinking: "high", plan: false }).changed).toBe(false);
   // An unknown label leaves the pill alone rather than guessing.
   expect(applyDeskScreen(options, { model: "Mystery" }).changed).toBe(false);
+});
+
+test("the status row above the input says whether OG Coder is working", () => {
+  const screen = (row: string) =>
+    [" earlier", row, "▄".repeat(60), " >   Type your message or / to run a command ", "▀".repeat(60), " ▏░ 8% │ Opus │ Plan off │ Thinking high "].join("\n");
+  expect(parseOgCoderScreen(screen(" ✻ Conjured a response in 4s · ↓ 160 tokens ")).status).toBe("idle");
+  expect(parseOgCoderScreen(screen(" ⠿ Ready to go.. ")).status).toBe("idle");
+  expect(parseOgCoderScreen(screen("⚠ API provider stream interrupted — retries exhausted.")).status).toBe("idle");
+  expect(parseOgCoderScreen(screen(" ⠹ Working… (12s · ↓ 300 tokens)")).status).toBe("busy");
+  expect(parseOgCoderScreen(screen(" ● Working…")).status).toBe("busy");
+  // Anything else (a panel, a queued message) is not evidence either way.
+  expect(parseOgCoderScreen(screen(" Queued: fix the tests")).status).toBeUndefined();
 });

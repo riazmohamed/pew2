@@ -5,6 +5,7 @@ import path from "node:path";
 import { GgCoderMirror } from "./acp/ggcoder-mirror.js";
 import { DESK_DRAFT_FROM, Daemon, NATIVE_CONFIG_REFUSAL } from "./index.js";
 import { handleMessage } from "./handler.js";
+import { Desk } from "./desk.js";
 import { SessionLog } from "./session/log.js";
 import type { OsaResult } from "./native-desk.js";
 
@@ -87,13 +88,74 @@ test("the mirror emits only what is appended after the baseline, as history rend
   expect(JSON.stringify(events)).not.toContain("Earlier");
 });
 
+test("OG Coder's own turns end on its final turn_metric, in the order its file really has", async () => {
+  // OG Coder's screen writes a metric per model call as it ends, and the
+  // turn's messages in one batch at the end, either side of the last metric.
+  // Shapes copied from a real conversation file.
+  const { root, file } = await fixture();
+  // Tracked the way the daemon does: a start while working is a no-op.
+  const events: string[] = [];
+  let working = false;
+  const mirror = new GgCoderMirror({
+    agentSessionId: AGENT_ID,
+    cwd: CWD,
+    sessionsRoot: root,
+    pollMs: 10,
+    turnEndQuietMs: 40,
+    batchSettleMs: 400,
+    callbacks: {
+      onUpdate: () => events.push("update"),
+      onUserMessage: () => events.push("user"),
+      onTurnStart: () => {
+        if (!working) events.push("start");
+        working = true;
+      },
+      onTurnEnd: () => {
+        if (working) events.push("end");
+        working = false;
+      },
+    },
+  });
+  await mirror.baseline();
+  mirror.start();
+  const metric = (id: string, stopReason: string) => line({ type: "custom", kind: "turn_metric", id, data: { stopReason } });
+  const ends = () => events.filter((e) => e === "end").length;
+
+  // 1. Tools, final metric, then the batch.
+  await appendFile(file, metric("m1", "tool_use"));
+  await until(() => events.includes("start"), "work under way");
+  await appendFile(file, metric("m2", "end_turn") + msg("u1", "user", "q1") + msg("a1", "assistant", [{ type: "text", text: "r1" }], "u1"));
+  await until(() => ends() === 1, "turn 1 end");
+
+  // 2. Tools, then the batch's user line just before the final metric.
+  await appendFile(file, metric("m3", "tool_use"));
+  await until(() => events.filter((e) => e === "start").length === 2, "turn 2 start");
+  await appendFile(file, msg("u2", "user", "q2") + metric("m4", "end_turn") + msg("a2", "assistant", [{ type: "text", text: "r2" }], "u2"));
+  await until(() => ends() === 2, "turn 2 end");
+
+  // 3. No tools: user, final metric, reply.
+  await appendFile(file, msg("u3", "user", "Hello") + metric("m5", "end_turn") + msg("a3", "assistant", [{ type: "text", text: "Hi" }], "u3"));
+  await until(() => ends() === 3, "turn 3 end");
+
+  // 4. A user line with no metric at all still settles rather than hang.
+  await appendFile(file, msg("u4", "user", "aborted"));
+  await until(() => ends() === 4, "turn 4 settles");
+  mirror.stop();
+
+  // Four turns, each started once and ended once, never left working, and
+  // no turn ended before its reply had arrived.
+  expect(events.filter((e) => e === "start")).toHaveLength(4);
+  expect(working).toBe(false);
+  expect(events.indexOf("end")).toBeGreaterThan(events.indexOf("update"));
+});
+
 /** A Daemon with one planted, idle ggcoder session and fake iTerm. */
 async function handoverRig(options: { alive?: () => boolean } = {}) {
   const { root, file } = await fixture();
   const scripts: string[] = [];
   // A fake OG Coder screen: keystrokes written in move its input and status
   // line the way the real one does, and a read returns its text.
-  const desk = { input: "", model: "Opus", thinking: "high", plan: false };
+  const desk = { input: "", model: "Opus", thinking: "high", plan: false, status: " ⠿ Ready to go.. " };
   const cycle = ["low", "medium", "high", "xhigh", "max", "off"];
   const typeInto = (script: string) => {
     for (const [, raw] of script.matchAll(/write text (.+) newline NO/g)) {
@@ -112,6 +174,7 @@ async function handoverRig(options: { alive?: () => boolean } = {}) {
   const screenText = () =>
     [
       " transcript",
+      desk.status,
       "▄".repeat(40),
       ` > ${desk.input || "  Type your message or / to run a command"}`,
       "▀".repeat(40),
@@ -140,6 +203,7 @@ async function handoverRig(options: { alive?: () => boolean } = {}) {
     readPollMs: 15,
     readQuietMs: 40,
     settleMs: 5,
+    turnGraceMs: 60,
   });
   const sent: any[] = [];
   daemon.attach((message) => sent.push(message));
@@ -175,7 +239,8 @@ async function handoverRig(options: { alive?: () => boolean } = {}) {
 test("the announcement names ggcoder as native", async () => {
   const { daemon, sent } = await handoverRig();
   (daemon as any).announceProviders();
-  expect(sent.findLast((m) => m.t === "providers").desk).toEqual({ available: true, native: ["ggcoder"] });
+  // Where windows can open (macOS), the screen can be sent too.
+  expect(sent.findLast((m) => m.t === "providers").desk).toEqual({ available: true, capture: true, native: ["ggcoder"] });
   daemon.closeAll();
 });
 
@@ -364,5 +429,93 @@ test("a new conversation opens the app plain in the project and mirrors what it 
   expect(started.configOptions[0].id).toBe("model");
   expect(daemon.isNative(started.sessionId)).toBe(true);
   void send;
+  daemon.closeAll();
+});
+
+test("a turn the file never closes is freed by OG Coder's idle screen, and a desk turn shows as working", async () => {
+  const { daemon, sent, send, desk } = await handoverRig();
+  await send({ t: "desk.open", requestId: "r1", sessionId: "ggcoder-old", target: "native" });
+  const id = sent.find((m) => m.t === "session.started").sessionId;
+  const idles = () => sent.filter((m) => m.t === "session.idle" && m.sessionId === id).length;
+
+  // The phone sends; OG Coder is stopped with Esc and writes nothing more.
+  desk.status = " ⠹ Working… (2s)";
+  await send({ t: "session.prompt", sessionId: id, text: "go" });
+  await Bun.sleep(80);
+  expect(idles()).toBe(0);
+  desk.status = " ⠿ Ready to go.. ";
+  await until(() => idles() === 1, "idle from the screen");
+
+  // Started at the desk: the spinner reaches the phone, and ends with it.
+  desk.status = " ⠙ Working…";
+  await until(() => (daemon as any).sessions.get(id)?.working === true, "desk turn start");
+  desk.status = " ✻ Worked for 3s";
+  await until(() => idles() === 2, "desk turn end");
+  daemon.closeAll();
+});
+
+test("the phone closes OG Coder's window: refused mid-reply, otherwise quit and the mirror let go", async () => {
+  let quit = false;
+  const rig = await handoverRig({ alive: () => !quit });
+  const { daemon, sent, send, scripts } = rig;
+  (daemon as any).nativeOptions.closePollMs = 10;
+  await send({ t: "desk.open", requestId: "r1", sessionId: "ggcoder-old", target: "native" });
+  const id = sent.find((m) => m.t === "session.started").sessionId;
+  const windows = () => sent.findLast((m) => m.t === "providers")?.desk?.windows;
+  (daemon as any).announceProviders();
+  expect(windows()).toEqual([{ agentSessionId: AGENT_ID, kind: "native" }]);
+
+  // Mid-reply: refused in words, nothing typed.
+  const mirror = (daemon as any).sessions.get(id);
+  mirror.working = true;
+  const before = scripts.length;
+  await send({ t: "desk.close", requestId: "c1", sessionId: id });
+  expect(rig.replies.at(-1)).toMatchObject({ t: "desk.closed", ok: false });
+  expect(rig.replies.at(-1).message).toContain("middle of a reply");
+  expect(scripts.slice(before).some((s) => s.includes("write text"))).toBe(false);
+
+  // Idle: input emptied, then Ctrl-D, and the window is gone.
+  mirror.working = false;
+  const watch = setInterval(() => {
+    if (scripts.some((s) => s.includes("character id 4"))) quit = true;
+  }, 5);
+  await send({ t: "desk.close", requestId: "c2", agentSessionId: AGENT_ID });
+  clearInterval(watch);
+  expect(rig.replies.at(-1)).toEqual({ t: "desk.closed", requestId: "c2", ok: true });
+  const keys = scripts.find((s) => s.includes("character id 4"))!;
+  expect(keys.indexOf("character id 21")).toBeLessThan(keys.indexOf("character id 4"));
+  expect(daemon.isNative(id)).toBe(false);
+  expect(windows()).toBeUndefined();
+  daemon.closeAll();
+});
+
+test("a pew2 chat window opened from the phone is remembered, offered, and closed with Ctrl-C", async () => {
+  let interrupted = false;
+  const rig = await handoverRig({ alive: () => !interrupted });
+  const { daemon, sent, send, scripts } = rig;
+  (daemon as any).nativeOptions.closePollMs = 10;
+  // The window opens through iTerm and answers with its session id.
+  (daemon as any).desk = new Desk({
+    runAppleScript: async () => ({ code: 0, stderr: "", timedOut: false, stdout: "ITERM-CHAT\n" }),
+    openCommandFile: async () => {},
+    hasITerm: () => true,
+    now: () => 0,
+  });
+  await send({ t: "desk.open", requestId: "o1", sessionId: "ggcoder-old" });
+  // The iTerm id stays in the daemon.
+  expect(rig.replies.at(-1)).toEqual({ t: "desk.opened", requestId: "o1", ok: true, app: "iTerm" });
+  expect(sent.findLast((m) => m.t === "providers").desk.windows).toEqual([{ agentSessionId: AGENT_ID, kind: "chat" }]);
+
+  const watch = setInterval(() => {
+    if (scripts.some((s) => s.includes('"ITERM-CHAT"') && s.includes("character id 3"))) interrupted = true;
+  }, 5);
+  await send({ t: "desk.close", requestId: "c1", sessionId: "ggcoder-old" });
+  clearInterval(watch);
+  expect(rig.replies.at(-1)).toEqual({ t: "desk.closed", requestId: "c1", ok: true });
+  expect(sent.findLast((m) => m.t === "providers").desk.windows).toBeUndefined();
+
+  // Nothing left to close: said so.
+  await send({ t: "desk.close", requestId: "c2", sessionId: "ggcoder-old" });
+  expect(rig.replies.at(-1)).toMatchObject({ ok: false, message: expect.stringContaining("no terminal open") });
   daemon.closeAll();
 });

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { DENIED_NOTE, Desk, PENDING_NOTE, deskArgs, deskStatus, explainAppleScript } from "./desk.js";
+import { DENIED_NOTE, Desk, PENDING_NOTE, deskArgs, deskStatus, explainAppleScript, captureScreen, CAPTURE_MAX_EDGE, SCREEN_PERMISSION_NOTE } from "./desk.js";
 
 test("only macOS can open a window", () => {
   expect(deskStatus("darwin")).toEqual({ available: true });
@@ -66,3 +66,64 @@ if (process.platform === "darwin") {
     expect(calls.applescript).toHaveLength(2);
   });
 }
+
+test("the screen is captured, shrunk to a JPEG, read, and nothing is left on disk", async () => {
+  const calls: string[][] = [];
+  let dir = "";
+  const run = async (command: string, args: string[]) => {
+    calls.push([command, ...args]);
+    if (command.endsWith("screencapture")) {
+      const out = args.at(-1)!;
+      dir = out.slice(0, out.lastIndexOf("/"));
+      await Bun.write(out, "PNGBYTES");
+    } else {
+      await Bun.write(args.at(-1)!, "JPEGBYTES");
+    }
+    return { code: 0, stderr: "" };
+  };
+  const shot = await captureScreen({ run, now: () => new Date(2026, 9, 14, 9, 5) });
+  expect(shot).toEqual({ ok: true, name: "mac-screen-0905.jpg", mimeType: "image/jpeg", data: Buffer.from("JPEGBYTES").toString("base64") });
+  // Silent, whole screen, then a JPEG no longer than the cap.
+  expect(calls[0]).toEqual(["/usr/sbin/screencapture", "-x", "-t", "png", expect.stringMatching(/screen\.png$/)]);
+  expect(calls[1]).toContain(String(CAPTURE_MAX_EDGE));
+  expect(await Bun.file(dir).exists()).toBe(false);
+});
+
+test("a refused or empty capture says how to allow it on the Mac", async () => {
+  const denied = await captureScreen({ run: async () => ({ code: 1, stderr: "could not create image from display" }) });
+  expect(denied).toEqual({ ok: false, message: SCREEN_PERMISSION_NOTE });
+  // Exit 0 but no file (permission prompt dismissed) is the same story.
+  const empty = await captureScreen({ run: async () => ({ code: 0, stderr: "" }) });
+  expect(empty.message).toBe(SCREEN_PERMISSION_NOTE);
+});
+
+test("a JPEG that cannot be made falls back to the PNG", async () => {
+  const run = async (command: string, args: string[]) => {
+    if (command.endsWith("screencapture")) await Bun.write(args.at(-1)!, "PNGBYTES");
+    return { code: command.endsWith("sips") ? 1 : 0, stderr: "" };
+  };
+  const shot = await captureScreen({ run });
+  expect(shot.mimeType).toBe("image/png");
+  expect(shot.name).toMatch(/\.png$/);
+});
+
+test("taps while a capture is running share it", async () => {
+  const desk = new Desk();
+  if (!desk.status().available) return;
+  let taken = 0;
+  let release!: () => void;
+  const slow = () => {
+    taken++;
+    return new Promise<{ ok: boolean }>((resolve) => (release = () => resolve({ ok: true })));
+  };
+  const a = desk.capture(slow);
+  const b = desk.capture(slow);
+  release();
+  expect(await a).toEqual({ ok: true });
+  expect(await b).toEqual({ ok: true });
+  expect(taken).toBe(1);
+  // Done: the next tap takes a fresh one.
+  void desk.capture(slow);
+  release();
+  expect(taken).toBe(2);
+});

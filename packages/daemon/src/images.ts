@@ -100,13 +100,21 @@ function isInside(path: string, root: string): boolean {
  * The directories an image may be read from.
  *
  * The session's own working directory is the point: the user pointed an agent
- * at that project, so its files are already in play. The temp directory is
- * included because generation tools routinely write there before anything is
- * committed. Nothing else — the pairing token is a bearer secret, and a stolen
- * one must not turn into "read any file on the machine as a picture".
+ * at that project, so its files are already in play. The temp directories are
+ * included because generation and screenshot tools routinely write there
+ * before anything is committed — both the per-user one (`tmpdir()`, under
+ * `/var/folders` on macOS) and the shared `/tmp` agents reach for by name.
+ * Nothing else — the pairing token is a bearer secret, and a stolen one must
+ * not turn into "read any file on the machine as a picture"; and only image
+ * extensions are ever served from any of them.
  */
-export function allowedImageRoots(cwd: string, env: NodeJS.ProcessEnv = process.env): string[] {
+export function allowedImageRoots(
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
   const roots = [resolve(cwd), resolve(tmpdir())];
+  if (platform !== "win32") roots.push("/tmp");
   if (env.PEW2_IMAGE_ROOTS) {
     for (const extra of env.PEW2_IMAGE_ROOTS.split(":")) {
       if (extra.trim()) roots.push(resolve(extra.trim()));
@@ -138,11 +146,22 @@ export type HistoryImage = ImageBlock | {
  * without this a resumed conversation silently lost every picture it contained
  * while the live stream showed them fine.
  */
-export function historyImages(content: unknown): HistoryImage[] {
+export function historyImages(content: unknown, resolveData?: (data: string) => string | undefined): HistoryImage[] {
   if (!Array.isArray(content)) return [];
   const images: HistoryImage[] = [];
   for (const part of content) {
     if (!part || typeof part !== "object") continue;
+
+    // OG Coder keeps a picture's bytes beside the conversation and leaves a
+    // marker in their place. Resolved when the caller can; otherwise skipped,
+    // because painting the marker would show a broken image.
+    if (part.type === "image" && typeof part.data === "string" && part.data.startsWith(SESSION_ASSET_PREFIX)) {
+      const data = resolveData?.(part.data);
+      if (data) {
+        images.push({ type: "image", mimeType: imageMime(part) ?? "image/png", data });
+      }
+      continue;
+    }
 
     // Anthropic: { type: "image", source: { type: "base64", media_type, data } }
     const source = part.source;
@@ -155,11 +174,11 @@ export function historyImages(content: unknown): HistoryImage[] {
       continue;
     }
 
-    // Already ACP-shaped, which is what GG Coder stores.
+    // Already ACP-shaped, which is what GG Coder stores (as `mediaType`).
     if (part.type === "image" && typeof part.data === "string") {
       images.push({
         type: "image",
-        mimeType: typeof part.mimeType === "string" ? part.mimeType : "image/png",
+        mimeType: imageMime(part) ?? "image/png",
         data: part.data,
       });
       continue;
@@ -189,12 +208,41 @@ export function historyImages(content: unknown): HistoryImage[] {
   return images;
 }
 
-/** Only explicit tool-result blocks contribute pictures, never arbitrary tool text. */
-export function historyToolImages(content: unknown): HistoryImage[] {
+/** OG Coder's marker for a picture it read from a file: the bytes stay in the file. */
+export const SESSION_ASSET_PREFIX = "gg-session-asset:";
+const OMITTED_IMAGE_NOTE = /^\[Session storage omitted duplicated image data; read the source again at (.+)\.\]$/;
+
+function imageMime(part: { mimeType?: unknown; mediaType?: unknown }): string | undefined {
+  if (typeof part.mimeType === "string") return part.mimeType;
+  if (typeof part.mediaType === "string") return part.mediaType;
+  return undefined;
+}
+
+/**
+ * Only explicit tool-result blocks contribute pictures, never arbitrary tool text.
+ *
+ * One exception, and only inside a tool result: OG Coder stores a picture a
+ * tool read from disk (a screenshot, say) as a note naming that file instead of
+ * its bytes. The note is OG Coder's own exact sentence, so it is turned back
+ * into the picture by path — fetched like any other, under the same rules.
+ */
+export function historyToolImages(content: unknown, resolveData?: (data: string) => string | undefined): HistoryImage[] {
   if (!Array.isArray(content)) return [];
-  return content.flatMap((part) =>
-    part?.type === "tool_result" ? historyImages(part.content) : [],
-  );
+  return content.flatMap((part) => {
+    if (part?.type !== "tool_result") return [];
+    const images = historyImages(part.content, resolveData);
+    if (Array.isArray(part.content)) {
+      for (const item of part.content) {
+        if (item?.type !== "text" || typeof item.text !== "string") continue;
+        const path = OMITTED_IMAGE_NOTE.exec(item.text.trim())?.[1];
+        const mimeType = path ? imageMimeType(path) : undefined;
+        if (path && mimeType) {
+          images.push({ type: "resource_link", uri: path, name: path.split("/").pop() ?? "Image", mimeType });
+        }
+      }
+    }
+    return images;
+  });
 }
 
 export interface LoadedImage {

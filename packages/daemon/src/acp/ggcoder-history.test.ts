@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AgentSession } from "./connect";
-import { hydrateGgCoderMessageCounts, loadGgCoderDisplayHistory } from "./ggcoder-history";
+import { assetDirFor, hydrateGgCoderMessageCounts, loadGgCoderDisplayHistory, messageDisplayUpdates } from "./ggcoder-history";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -110,4 +110,28 @@ test("loads a compacted GG Coder chain locally without the child summary or over
     { sessionUpdate: "user_message_chunk", content: { type: "text", text: "Second" } },
     { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Done" } },
   ]);
+});
+
+test("a picture OG Coder stored beside the conversation is read back from its asset folder", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pew2-assets-"));
+  const file = path.join(dir, "2026-10-14T08-29-49-779Z_43c774b7.jsonl");
+  const sha = "b".repeat(64);
+  await mkdir(assetDirFor(file), { recursive: true });
+  await writeFile(path.join(assetDirFor(file), sha), Buffer.from("PNGDATA"));
+  const message = {
+    role: "user",
+    content: [
+      { type: "text", text: "look" },
+      { type: "image", mediaType: "image/png", data: `gg-session-asset:v1:${sha}` },
+      { type: "image", mediaType: "image/png", data: `gg-session-asset:v1:${"c".repeat(64)}` },
+    ],
+  };
+  const updates = messageDisplayUpdates(message, { assetDirs: [assetDirFor(file)] });
+  const content = (updates[0] as { content: unknown[] }).content;
+  // The one on disk comes back as bytes; the missing one is left out, not broken.
+  expect(content).toEqual([
+    { type: "text", text: "look" },
+    { type: "image", mimeType: "image/png", data: Buffer.from("PNGDATA").toString("base64") },
+  ]);
+  expect(assetDirFor(file)).toBe(path.join(dir, "2026-10-14T08-29-49-779Z_43c774b7.assets"));
 });

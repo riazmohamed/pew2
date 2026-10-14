@@ -18,37 +18,44 @@ import { theme } from "../theme";
 import { touchSlop } from "./controls";
 import { Sheet, SHEET_ROW_HEIGHT, sheetCardStyle } from "./Sheet";
 
-export type AttachmentSource = "library" | "camera" | "files";
+export type AttachmentSource = "computer" | "library" | "camera" | "files";
 
 interface AttachmentSheetProps {
   visible: boolean;
+  /** Offer the computer's screen (the daemon said it can take one). */
+  computer?: boolean;
   onSelect: (source: AttachmentSource) => void;
   onClose: () => void;
 }
 
-const SOURCES: {
+type Source = {
   id: AttachmentSource;
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   hint: string;
-}[] = [
+};
+
+const COMPUTER: Source = { id: "computer", icon: "desktop-outline", label: "Computer Screen", hint: "What's on your Mac right now" };
+
+const SOURCES: Source[] = [
   { id: "library", icon: "images-outline", label: "Photo Library", hint: "Screenshots and photos" },
   { id: "camera", icon: "camera-outline", label: "Take Photo", hint: "Point at a screen or a whiteboard" },
   { id: "files", icon: "document-outline", label: "Files", hint: "Logs, diffs, anything else" },
 ];
 
-function AttachmentSheetView({ visible, onSelect, onClose }: AttachmentSheetProps) {
+function AttachmentSheetView({ visible, computer, onSelect, onClose }: AttachmentSheetProps) {
+  const sources = computer ? [COMPUTER, ...SOURCES] : SOURCES;
   return (
     <Sheet visible={visible} title="Attach" onClose={onClose} dismissLabel="Close attachments">
       <View style={styles.card}>
-        {SOURCES.map((source, index) => (
+        {sources.map((source, index) => (
           <Pressable
             key={source.id}
             style={({ pressed }) => [
               styles.row,
               // Never under the last row: a rule at the card's edge reads as a
               // broken border.
-              index < SOURCES.length - 1 && styles.rowDivided,
+              index < sources.length - 1 && styles.rowDivided,
               pressed && styles.rowPressed,
             ]}
             hitSlop={touchSlop(theme.space(1))}

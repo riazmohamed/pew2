@@ -225,6 +225,21 @@ export const ProviderAnnounce = z.object({
        * for the real OG Coder screen. Absent or empty: only `pew2 chat`.
        */
       native: z.array(z.string()).optional(),
+      /**
+       * This machine can send a picture of its own screen (`desk.capture`).
+       * Absent: an older daemon or a platform without it; the app offers no
+       * "Computer Screen" source.
+       */
+      capture: z.boolean().optional(),
+      /**
+       * Terminal windows pew2 opened on this screen that the phone can close
+       * (`desk.close`): the agent's own app (`native`) or a `pew2 chat`
+       * window, by the conversation's agent id. Absent: none, or an older
+       * daemon that cannot close anything.
+       */
+      windows: z
+        .array(z.object({ agentSessionId: z.string(), kind: z.enum(["native", "chat"]) }))
+        .optional(),
     })
     .optional(),
 });
@@ -303,6 +318,50 @@ export const DeskOpen = z.object({
    */
   providerId: z.string().optional(),
   cwd: z.string().optional(),
+});
+
+/**
+ * App -> daemon. A picture of the computer's screen, right now.
+ *
+ * Nothing but an id travels: what is captured is the whole main display, and
+ * the reply carries the picture for the app to attach. No agent is involved.
+ */
+export const DeskCapture = z.object({
+  t: z.literal("desk.capture"),
+  requestId: z.string().min(1),
+});
+
+/** Daemon -> app, as a reply. The screen as an image, or why not in words. */
+export const DeskCaptured = z.object({
+  t: z.literal("desk.captured"),
+  requestId: z.string(),
+  ok: z.boolean(),
+  name: z.string().optional(),
+  mimeType: z.string().optional(),
+  /** Base64, no `data:` prefix — the same shape as a prompt attachment. */
+  data: z.string().optional(),
+  message: z.string().optional(),
+});
+
+/**
+ * App -> daemon. Close the terminal window(s) pew2 opened on the computer for
+ * this conversation: the agent's own app (quit as it would be by hand) and any
+ * `pew2 chat` window. Refused, in words, while the agent is mid-reply.
+ */
+export const DeskClose = z.object({
+  t: z.literal("desk.close"),
+  requestId: z.string().min(1),
+  sessionId: z.string().optional(),
+  /** The conversation's agent id: survives the session being reopened under a new id. */
+  agentSessionId: z.string().optional(),
+});
+
+/** Daemon -> app, as a reply. Whether the window(s) closed, or why not. */
+export const DeskClosed = z.object({
+  t: z.literal("desk.closed"),
+  requestId: z.string(),
+  ok: z.boolean(),
+  message: z.string().optional(),
 });
 
 /** Daemon -> app, as a reply. Whether the window opened, and where. */
@@ -1063,6 +1122,8 @@ export const ClientMessage = z.discriminatedUnion("t", [
   DraftUpdate,
   KeepAwakeSet,
   DeskOpen,
+  DeskCapture,
+  DeskClose,
 ]);
 
 export const ServerMessage = z.discriminatedUnion("t", [
@@ -1084,6 +1145,8 @@ export const ServerMessage = z.discriminatedUnion("t", [
   VoiceStatus,
   DraftUpdate,
   DeskOpened,
+  DeskCaptured,
+  DeskClosed,
   ErrorMessage,
 ]);
 
@@ -1130,5 +1193,9 @@ export type DraftUpdate = z.output<typeof DraftUpdate>;
 export type KeepAwakeSet = z.output<typeof KeepAwakeSet>;
 export type DeskOpen = z.output<typeof DeskOpen>;
 export type DeskOpened = z.output<typeof DeskOpened>;
+export type DeskCapture = z.output<typeof DeskCapture>;
+export type DeskCaptured = z.output<typeof DeskCaptured>;
+export type DeskClose = z.output<typeof DeskClose>;
+export type DeskClosed = z.output<typeof DeskClosed>;
 export type ClientMessage = z.output<typeof ClientMessage>;
 export type ServerMessage = z.output<typeof ServerMessage>;

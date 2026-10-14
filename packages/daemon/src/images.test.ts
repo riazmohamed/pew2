@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { POSIX_PATHS } from "./testing/platform.js";
 import {
+  allowedImageRoots,
   historyImages,
+  historyToolImages,
   imageMimeType,
   loadImage,
   nodeImageFs,
@@ -190,4 +192,45 @@ test("a windows drive letter is a path, not a URI scheme", () => {
   // Drive-relative: a path on C:'s *current directory*, wherever that is. Not
   // something an agent means, and it would resolve outside the session's cwd.
   expect(toLocalPath("C:notes.png", "/work")).toBeUndefined();
+});
+
+test("the shared /tmp is readable too, where agents save screenshots by name", async () => {
+  expect(allowedImageRoots("/p", {}, "darwin")).toContain("/tmp");
+  expect(allowedImageRoots("/p", {}, "win32")).not.toContain("/tmp");
+  if (process.platform === "win32") return;
+  const dir = await mkdtemp("/tmp/pew2-shot-");
+  await writeFile(join(dir, "phone.png"), PNG);
+  try {
+    const image = await loadImage(join(dir, "phone.png"), { cwd: await project(), env: {} });
+    expect(image.mimeType).toBe("image/png");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("OG Coder's note for a picture read from disk becomes that picture, by path", () => {
+  const note = (path: string) => ({
+    type: "tool_result",
+    toolCallId: "t1",
+    content: [
+      { type: "text", text: `Read image file ${path} [image/png]` },
+      { type: "text", text: `[Session storage omitted duplicated image data; read the source again at ${path}.]` },
+    ],
+  });
+  expect(historyToolImages([note("/tmp/pew2shot/phone-115131.png")])).toEqual([
+    { type: "resource_link", uri: "/tmp/pew2shot/phone-115131.png", name: "phone-115131.png", mimeType: "image/png" },
+  ]);
+  // Not an image the app can paint: nothing.
+  expect(historyToolImages([note("/tmp/clip.mov")])).toEqual([]);
+  // The same sentence outside a tool result is just text.
+  expect(historyImages([{ type: "text", text: "[Session storage omitted duplicated image data; read the source again at /tmp/a.png.]" }])).toEqual([]);
+});
+
+test("an OG Coder asset marker is read back when it can be, and never painted raw", () => {
+  const marker = `gg-session-asset:v1:${"a".repeat(64)}`;
+  const block = { type: "image", mediaType: "image/jpeg", data: marker };
+  expect(historyImages([block])).toEqual([]);
+  expect(historyImages([block], (data) => (data === marker ? "QUJD" : undefined))).toEqual([
+    { type: "image", mimeType: "image/jpeg", data: "QUJD" },
+  ]);
 });

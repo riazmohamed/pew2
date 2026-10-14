@@ -46,6 +46,16 @@ Dates are the day the tag was cut.
 - **Several sessions at once.** Each OG Coder window opened from the phone is
   tied to its own conversation, so typing, Send and pills always go to the
   window for the chat on screen.
+- **Close the terminal from the phone.** While pew2 has a terminal open on the
+  computer for a conversation, the computer icon is filled in and its menu
+  offers *Close OG Coder* (or *Close pew2 chat*). OG Coder is quit the way you
+  would by hand, and the conversation carries on from the phone. Refused while
+  the agent is mid-reply.
+- **Computer Screen.** The attach menu's first option takes a picture of the
+  computer's screen there and then, with no agent involved, and adds it to
+  your message. Tap the thumbnail to see it full size before sending. The
+  first time, macOS asks you to allow Screen Recording for pew2 (it runs as
+  `bun`), and the phone says where.
 - **`pew2 chat` looks and works like OG Coder.** Its banner, colours, message
   style, input box and status line follow OG Coder's, replies render as
   markdown, and it has `/model`, `/thinking`, `/mode` (synced with the phone),
@@ -67,6 +77,12 @@ Dates are the day the tag was cut.
 ### Fixed
 
 - Reopening a conversation that was open in OG Coder showed it empty.
+- After a turn in an OG Coder window the phone stayed "working" and would not
+  send. OG Coder's own screen never writes the end-of-run marker pew2 waited
+  for; turns now end on what it does write, with its status line as a backstop.
+- Screenshots and pictures an agent saved to `/tmp`, or that OG Coder keeps
+  beside a conversation, now show on the phone instead of "outside this
+  session's project directory".
 
 ### Compatibility
 

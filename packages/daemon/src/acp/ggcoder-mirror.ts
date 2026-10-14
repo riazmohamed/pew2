@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
-import { encodeCwd, isTranscriptMessage, messageDisplayUpdates, type GgCoderDisplayUpdate } from "./ggcoder-history.js";
+import { assetDirFor, encodeCwd, isTranscriptMessage, messageDisplayUpdates, type GgCoderDisplayUpdate } from "./ggcoder-history.js";
 
 const gunzipAsync = promisify(gunzip);
 
@@ -169,6 +169,8 @@ export class GgCoderMirror {
   private again = false;
   private stopped = false;
   private expectedEcho: string[] = [];
+  /** Pending end of a turn: fires once the file has been quiet a moment. */
+  private endTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly options: {
@@ -177,9 +179,29 @@ export class GgCoderMirror {
       callbacks: MirrorCallbacks;
       sessionsRoot?: string;
       pollMs?: number;
+      /** How long the file must be quiet after a final `turn_metric` before the turn ends. */
+      turnEndQuietMs?: number;
+      /** A user message with no metric yet: ended after this much quiet unless work shows. */
+      batchSettleMs?: number;
     },
   ) {
     this.directory = path.join(options.sessionsRoot ?? path.join(homedir(), ".gg", "sessions"), encodeCwd(options.cwd));
+  }
+
+  private scheduleEnd(quietMs = this.options.turnEndQuietMs ?? 800): void {
+    if (this.endTimer) clearTimeout(this.endTimer);
+    this.endTimer = setTimeout(() => this.endTurn(), quietMs);
+    this.endTimer.unref?.();
+  }
+
+  private cancelEnd(): void {
+    if (this.endTimer) clearTimeout(this.endTimer);
+    this.endTimer = undefined;
+  }
+
+  private endTurn(): void {
+    this.cancelEnd();
+    if (!this.stopped) this.options.callbacks.onTurnEnd();
   }
 
   /**
@@ -215,6 +237,8 @@ export class GgCoderMirror {
 
   stop(): void {
     this.stopped = true;
+    if (this.endTimer) clearTimeout(this.endTimer);
+    this.endTimer = undefined;
     this.watcher?.close();
     this.watcher = undefined;
     if (this.timer) clearInterval(this.timer);
@@ -312,13 +336,30 @@ export class GgCoderMirror {
     const { callbacks } = this.options;
     if (entry.type === "custom") {
       if (entry.kind === "run_started") callbacks.onTurnStart();
-      else if (entry.kind === "run_finished") callbacks.onTurnEnd();
+      else if (entry.kind === "run_finished") this.endTurn();
+      else if (entry.kind === "turn_metric") {
+        // OG Coder's own screen writes no run journal. It leaves a
+        // `turn_metric` as each model call ends, live, but the turn's messages
+        // only when the turn is over, in one batch that can land either side
+        // of the last metric. So a call that stopped to use a tool means work
+        // is under way, and one that did not is the end, once the batch that
+        // follows it has gone quiet.
+        const stopReason = (entry as { data?: { stopReason?: unknown } }).data?.stopReason;
+        if (stopReason === "tool_use" || stopReason === "pause_turn") {
+          this.cancelEnd();
+          callbacks.onTurnStart();
+        } else {
+          this.scheduleEnd();
+        }
+      }
       return;
     }
+    // More of the turn arrived: a pending end waits for it to settle.
+    if (this.endTimer) this.scheduleEnd();
     if (entry.type !== "message" || !entry.message) return;
     const message = entry.message;
     if (!isTranscriptMessage(message)) return;
-    const updates = messageDisplayUpdates(message, { tools: true });
+    const updates = messageDisplayUpdates(message, { tools: true, ...(this.file && { assetDirs: [assetDirFor(this.file)] }) });
     if (message.role === "user") {
       const user = updates.find((update) => update.sessionUpdate === "user_message_chunk");
       if (!user) return;
@@ -327,15 +368,26 @@ export class GgCoderMirror {
       // A prefix, not equality: attachment paths are typed after the text,
       // and OG Coder may turn an image path into an attachment of its own.
       const echoed = this.expectedEcho.findIndex((expected) => text.trim().startsWith(expected));
+      // Part of a finished turn's batch when an end is pending (handled
+      // above): shown, but it starts nothing.
+      const ending = this.endTimer !== undefined;
       if (echoed >= 0) {
         this.expectedEcho.splice(echoed, 1);
-        callbacks.onTurnStart();
+        if (!ending) {
+          callbacks.onTurnStart();
+          this.scheduleEnd(this.options.batchSettleMs ?? 5_000);
+        }
         return;
       }
       // Pictures pasted at the desk keep the history shape, which carries them.
       if (Array.isArray(content)) callbacks.onUpdate(user);
       else callbacks.onUserMessage(text);
-      callbacks.onTurnStart();
+      if (!ending) {
+        callbacks.onTurnStart();
+        // Written with the turn's last batch, so the end may already be in
+        // the file: it is settled by the quiet check, not left open forever.
+        this.scheduleEnd(this.options.batchSettleMs ?? 5_000);
+      }
       return;
     }
     for (const update of updates) callbacks.onUpdate(update);

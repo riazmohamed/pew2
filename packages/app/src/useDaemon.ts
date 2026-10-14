@@ -88,6 +88,13 @@ export type Status = "connecting" | "online" | "offline";
 /** Voice frames from the daemon, handed to `useVoice` untouched. */
 export type VoiceFrame = wire.VoiceAnswer | wire.VoiceStatus;
 
+/** The computer's answer to "screenshot the computer". */
+export interface CaptureResult {
+  ok: boolean;
+  picture?: { name: string; mimeType: string; data: string };
+  message?: string;
+}
+
 /** The computer's answer to "open on computer". */
 export interface DeskResult {
   ok: boolean;
@@ -376,7 +383,13 @@ interface State {
    * The computer can open a `pew2 chat` window for a conversation. Absent =
    * older daemon, and the "open on computer" button is not shown.
    */
-  desk?: { available: boolean; reason?: string; native?: string[] };
+  desk?: {
+    available: boolean;
+    reason?: string;
+    native?: string[];
+    capture?: boolean;
+    windows?: { agentSessionId: string; kind: "native" | "chat" }[];
+  };
   sessionId?: string;
   /** The agent the composer will talk to. Chosen before a session exists. */
   activeProviderId?: string;
@@ -798,6 +811,8 @@ export function useDaemon(
   // listings in flight, and the slower one must not land last and rewind the
   // view the user is already looking at.
   const voiceListener = useRef<((message: VoiceFrame) => void) | undefined>(undefined);
+  // Pending "screenshot the computer" taps, by request id.
+  const captureReplies = useRef(new Map<string, (result: CaptureResult) => void>());
   // Pending "open on computer" taps, by request id.
   const deskReplies = useRef(new Map<string, (result: DeskResult) => void>());
   // Remote drafts go straight to the dock through this, never through state:
@@ -1848,8 +1863,22 @@ export function useDaemon(
 
         // A live voice call is owned by `useVoice`, which matches the answer by
         // `requestId` and statuses by `liveSessionId`. Nothing here is state.
+        // A picture of the computer's screen, for the one tap that asked.
+        if (message.t === "desk.captured" && typeof message.requestId === "string") {
+          const done = captureReplies.current.get(message.requestId);
+          captureReplies.current.delete(message.requestId);
+          done?.({
+            ok: message.ok === true,
+            ...(typeof message.data === "string" && typeof message.mimeType === "string" && {
+              picture: { name: typeof message.name === "string" ? message.name : "mac-screen.jpg", mimeType: message.mimeType, data: message.data },
+            }),
+            message: message.message,
+          });
+          return;
+        }
+
         // The answer to "open on computer": one tap's result, never state.
-        if (message.t === "desk.opened" && typeof message.requestId === "string") {
+        if ((message.t === "desk.opened" || message.t === "desk.closed") && typeof message.requestId === "string") {
           const done = deskReplies.current.get(message.requestId);
           deskReplies.current.delete(message.requestId);
           done?.({ ok: message.ok === true, app: message.app, message: message.message });
@@ -3075,6 +3104,51 @@ export function useDaemon(
             deskReplies.current.delete(requestId);
             resolve(settle({ ok: false, message: "The computer didn't answer. Check its screen." }));
           }, 20_000);
+        });
+      },
+      /**
+       * A picture of the computer's screen, taken now by the daemon (no agent
+       * turn). Resolves with it, or with why not.
+       */
+      /**
+       * Close the terminal window(s) pew2 opened on the computer for the
+       * conversation on screen. Resolves with the daemon's answer.
+       */
+      closeOnComputer: (agentSessionId?: string): Promise<DeskResult> => {
+        const requestId = `close-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        return new Promise<DeskResult>((resolve) => {
+          const sent = post({
+            t: "desk.close",
+            requestId,
+            ...(sessionRef.current && { sessionId: sessionRef.current }),
+            ...(agentSessionId && { agentSessionId }),
+          });
+          if (!sent) {
+            resolve({ ok: false, message: "Your computer isn't reachable right now." });
+            return;
+          }
+          deskReplies.current.set(requestId, resolve);
+          setTimeout(() => {
+            if (!deskReplies.current.has(requestId)) return;
+            deskReplies.current.delete(requestId);
+            resolve({ ok: false, message: "The computer didn't answer. Check its screen." });
+          }, 20_000);
+        });
+      },
+      captureComputer: (): Promise<CaptureResult> => {
+        const requestId = `shot-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        return new Promise<CaptureResult>((resolve) => {
+          if (!post({ t: "desk.capture", requestId })) {
+            resolve({ ok: false, message: "Your computer isn't reachable right now." });
+            return;
+          }
+          captureReplies.current.set(requestId, resolve);
+          // The first capture can wait on macOS's permission prompt.
+          setTimeout(() => {
+            if (!captureReplies.current.has(requestId)) return;
+            captureReplies.current.delete(requestId);
+            resolve({ ok: false, message: "The computer didn't answer. Check its screen." });
+          }, 30_000);
         });
       },
       setKeepAwake: (enabled: boolean) => {

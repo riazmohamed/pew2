@@ -1,4 +1,4 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, readFileSync, statSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -383,10 +383,41 @@ export async function loadGgCoderDisplayHistory(
   }
 
   const updates: GgCoderDisplayUpdate[] = [];
+  const assetDirs = checkpoints.map((checkpoint) => assetDirFor(checkpoint.path));
   for (const message of reconstructCheckpoints(checkpoints)) {
-    updates.push(...messageDisplayUpdates(message));
+    updates.push(...messageDisplayUpdates(message, { assetDirs }));
   }
   return updates;
+}
+
+/** Largest picture read back from OG Coder's asset folder, as for attachments. */
+const MAX_ASSET_BYTES = 8 * 1024 * 1024;
+
+/** OG Coder keeps a conversation's pictures in `<file without .jsonl>.assets/`. */
+export function assetDirFor(file: string): string {
+  return `${file.replace(/\.jsonl(\.gz)?$/, "")}.assets`;
+}
+
+/**
+ * Reads a `gg-session-asset:v1:<sha256>` marker back into base64, from the
+ * first folder that has it. Only a bare hex name is looked up, so a marker can
+ * never name a path; anything missing or oversized is left out.
+ */
+function assetResolver(dirs: string[]): (data: string) => string | undefined {
+  return (data) => {
+    const sha = /^gg-session-asset:v\d+:([0-9a-f]{64})$/.exec(data)?.[1];
+    if (!sha) return undefined;
+    for (const dir of dirs) {
+      try {
+        const file = path.join(dir, sha);
+        if (statSync(file).size > MAX_ASSET_BYTES) return undefined;
+        return readFileSync(file).toString("base64");
+      } catch {
+        // Not in this checkpoint's folder; try the next.
+      }
+    }
+    return undefined;
+  };
 }
 
 /**
@@ -403,8 +434,9 @@ export function messageDisplayUpdates(
     content: unknown;
     provenance?: { kind?: string; visibility?: "transcript" | "hidden" | "summary" };
   },
-  options: { tools?: boolean } = {},
+  options: { tools?: boolean; assetDirs?: string[] } = {},
 ): GgCoderDisplayUpdate[] {
+  const resolveData = options.assetDirs?.length ? assetResolver(options.assetDirs) : undefined;
   const updates: GgCoderDisplayUpdate[] = [];
   if (message.provenance?.kind === "automation" || message.provenance?.kind === "notification") {
     return updates;
@@ -421,7 +453,7 @@ export function messageDisplayUpdates(
         }
       }
     }
-    const images = [...historyImages(message.content), ...historyToolImages(message.content)];
+    const images = [...historyImages(message.content, resolveData), ...historyToolImages(message.content, resolveData)];
     if (images.length > 0) {
       updates.push({ sessionUpdate: "agent_message_chunk", content: images });
     }
@@ -429,7 +461,7 @@ export function messageDisplayUpdates(
   }
   if (message.role === "user") {
     const text = messageText(message.content).trim();
-    const images = historyImages(message.content);
+    const images = historyImages(message.content, resolveData);
     // A pasted screenshot may be the whole message, so both are checked.
     if (text || images.length > 0) {
       updates.push({
@@ -445,7 +477,7 @@ export function messageDisplayUpdates(
       updates.push({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: thought } });
     }
     const text = messageText(message.content);
-    const images = historyImages(message.content);
+    const images = historyImages(message.content, resolveData);
     if (text || images.length > 0) {
       updates.push({
         sessionUpdate: "agent_message_chunk",

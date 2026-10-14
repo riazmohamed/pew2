@@ -406,10 +406,13 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
             reply({ t: "desk.opened", requestId: message.requestId, ok: false, message: "Choose a project first, then open it on the computer." });
             break;
           }
-          const result =
+          // The iTerm id stays in the daemon; a new chat has no conversation to
+          // file a window under yet, so it is not offered for closing.
+          const { itermSessionId: _untracked, ...result } =
             message.target === "native"
               ? await daemon.openNativeNew(message.providerId, project)
               : await daemon.desk.open({ cwd: project, providerId: message.providerId });
+          void _untracked;
           console.log(`[desk] new ${message.target ?? "chat"} in ${project}: ${result.ok ? "ok" : result.message}`);
           reply({ t: "desk.opened", requestId: message.requestId, ...result });
           break;
@@ -424,9 +427,29 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           });
           break;
         }
-        const result = await daemon.desk.open({ sessionId: message.sessionId, cwd });
+        const { itermSessionId, ...result } = await daemon.desk.open({ sessionId: message.sessionId, cwd });
+        // Remembered so the phone can close this window later.
+        if (result.ok && itermSessionId && message.sessionId) daemon.trackChatWindow(message.sessionId, itermSessionId);
         console.log(`[desk] open ${message.sessionId ?? "all"}: ${result.ok ? `ok (${result.app ?? "?"})` : result.message}`);
         reply({ t: "desk.opened", requestId: message.requestId, ...result });
+        break;
+      }
+
+      case "desk.close": {
+        // Replied to the asking device; every client learns the window went
+        // through the re-announced `desk.windows`.
+        const result = await daemon.closeDesk({ sessionId: message.sessionId, agentSessionId: message.agentSessionId });
+        console.log(`[desk] close ${message.sessionId ?? message.agentSessionId ?? "?"}: ${result.ok ? "ok" : result.message}`);
+        reply({ t: "desk.closed", requestId: message.requestId, ok: result.ok, ...(result.message && { message: result.message }) });
+        break;
+      }
+
+      case "desk.capture": {
+        // Replied to the asking device only. The picture is never logged and
+        // never broadcast: it is for the phone that asked, to attach or not.
+        const result = await daemon.desk.capture();
+        console.log(`[desk] screenshot: ${result.ok ? `ok (${Math.round(((result.data?.length ?? 0) * 3) / 4 / 1024)} KB)` : result.message}`);
+        reply({ t: "desk.captured", requestId: message.requestId, ...result });
         break;
       }
 

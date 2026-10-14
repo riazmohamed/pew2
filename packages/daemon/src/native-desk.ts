@@ -37,6 +37,10 @@ export const KEYS = {
   cancel: "\u001b",
   /** One character back. Each must be its own write (see CLEAR). */
   backspace: "\u007f",
+  /** Ctrl-D on an empty input: OG Coder exits, as it does by hand. */
+  quit: "\u0004",
+  /** Ctrl-C: `pew2 chat` exits (its input is raw, so this reaches it as a key). */
+  interrupt: "\u0003",
   /** Shift+Tab: OG Coder cycles its thinking level. */
   shiftTab: "\u001b[Z",
 } as const;
@@ -185,6 +189,11 @@ export function nativeWriteScript(sessionId: string, steps: Keystrokes): string 
   return findSession(sessionId, body).join("\n");
 }
 
+/** Closes the session's window outright (the fallback when a polite quit was ignored). */
+export function nativeCloseScript(sessionId: string): string {
+  return findSession(sessionId, ["close aSession", 'return "ok"']).join("\n");
+}
+
 /** Returns the end of the session's screen text, or "gone". */
 export function nativeReadScript(sessionId: string): string {
   return findSession(sessionId, [
@@ -210,7 +219,16 @@ export interface DeskScreen {
   /** "off", "low", … as the status line shows it. */
   thinking?: string;
   plan?: boolean;
+  /**
+   * The status row above the input: `busy` while the spinner runs, `idle` once
+   * it shows a finished turn (`✻ …`), "Ready to go" or the stall warning.
+   * Absent when that row cannot be read.
+   */
+  status?: "busy" | "idle";
 }
+
+const SPINNER = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏●] /;
+const IDLE_STATUS = /^(✻ |⠿ Ready to go|⚠ API provider stream interrupted)/;
 
 const PLACEHOLDER_TEXT = "Type your message or / to run a command";
 const EDGE = /^\s*([▄▀─])\1{9,}\s*$/;
@@ -233,6 +251,12 @@ export function parseOgCoderScreen(contents: string): DeskScreen {
     if (!line.startsWith(" > ")) continue;
     const above = lines.slice(Math.max(0, i - 3), i);
     if (!above.some((l) => EDGE.test(l))) continue;
+    // The status row sits directly above the input's top edge.
+    let edge = i - 1;
+    while (edge >= 0 && !EDGE.test(lines[edge]!)) edge--;
+    const row = (lines[edge - 1] ?? "").trim();
+    if (IDLE_STATUS.test(row)) screen.status = "idle";
+    else if (SPINNER.test(row)) screen.status = "busy";
     const parts = [line.slice(3)];
     for (let j = i + 1; j < lines.length && !EDGE.test(lines[j]!); j++) {
       const next = lines[j]!;
@@ -467,6 +491,13 @@ export class NativeTyper {
     this.typed = draft;
     const restore = draft ? bulkOrKeys(draft) : [];
     return this.write([...CLEAR, typeable(text), KEYS.enter, ...restore]);
+  }
+
+  /** Empty the input, then quit the app the way a person would. */
+  quit(): Promise<boolean> {
+    this.dropDraft();
+    this.typed = "";
+    return this.write([...CLEAR, KEYS.quit]);
   }
 
   /** Press Shift+Tab `times` times (thinking level), one write each. */

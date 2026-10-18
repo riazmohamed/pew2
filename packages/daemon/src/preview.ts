@@ -106,6 +106,82 @@ export async function listeningPorts(
   }
 }
 
+/** The port this daemon itself answers on (`server.ts`). */
+export function daemonPort(env: NodeJS.ProcessEnv = process.env): number {
+  return Number(env.PEW2_PORT ?? 8787);
+}
+
+/**
+ * The ports worth previewing: every listener except pew2's own.
+ *
+ * The daemon is a listener like any other, and 8787 is also a common dev
+ * server port, so it ranked first in the phone's list and "Open" landed on
+ * pew2's own "pairing token required" page instead of the user's site. Never
+ * offered, and never snapshotted either, since the snapshot re-checks against
+ * this same list.
+ */
+export async function previewablePorts(
+  env: NodeJS.ProcessEnv = process.env,
+  list: () => Promise<ListeningPort[]> = () => listeningPorts(),
+): Promise<ListeningPort[]> {
+  const own = daemonPort(env);
+  return (await list()).filter((listener) => listener.port !== own);
+}
+
+/** How long one port gets to answer the "are you a website?" check. */
+export const SITE_PROBE_MS = 1_500;
+
+/**
+ * Does this port serve a web page?
+ *
+ * Asks `GET /` on loopback and keeps it if it answers with HTML, or if a dev
+ * server's 404/redirect still came back as HTML. Everything else (an API that
+ * answers JSON, a database, adb, Ollama, an IDE helper that speaks its own
+ * protocol or never answers) is not something a person wants to look at, and
+ * those were the whole list on a machine with no site running. Loopback only,
+ * and only ports this daemon itself just saw listening.
+ */
+export async function servesHtml(
+  port: number,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = SITE_PROBE_MS,
+): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl(`http://127.0.0.1:${port}/`, {
+      redirect: "manual",
+      signal: controller.signal,
+      headers: { accept: "text/html" },
+    });
+    const type = response.headers.get("content-type") ?? "";
+    // Only the head is wanted; dropping the body frees the socket.
+    await response.body?.cancel().catch(() => {});
+    if (/text\/html|application\/xhtml/i.test(type)) return true;
+    // A redirect (e.g. `/` -> `/login`) is a site even without a body type.
+    return response.status >= 300 && response.status < 400 && response.headers.has("location");
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * The listeners worth showing in Preview: not pew2's own port, and only ones
+ * that serve a web page. Checked in parallel, so a machine with many
+ * listeners still answers within one probe timeout.
+ */
+export async function previewSites(
+  env: NodeJS.ProcessEnv = process.env,
+  list: () => Promise<ListeningPort[]> = () => listeningPorts(),
+  isSite: (port: number) => Promise<boolean> = (port) => servesHtml(port),
+): Promise<ListeningPort[]> {
+  const candidates = await previewablePorts(env, list);
+  const checks = await Promise.all(candidates.map((listener) => isSite(listener.port)));
+  return candidates.filter((_, index) => checks[index]);
+}
+
 /**
  * A path the client may ask for on the local server: absolute, one segment
  * chain, no authority. `//evil.example` would be read by the browser as a new

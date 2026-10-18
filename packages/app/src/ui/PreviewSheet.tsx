@@ -107,39 +107,40 @@ function PreviewSheetView({
             {ranked.length === 0 && (
               <View style={styles.row}>
                 <Text style={styles.description}>
-                  Nothing is listening on your computer. Ask the agent to start the dev server.
+                  No website is running on your computer. Start your dev server, or ask the agent
+                  to, and it shows up here.
                 </Text>
               </View>
             )}
             {ranked.map((server, index) => (
               <View
                 key={server.port}
-                style={[styles.row, index < ranked.length - 1 && styles.rowDivided]}
+                style={[styles.site, index < ranked.length - 1 && styles.rowDivided]}
               >
-                <View style={styles.rowText}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    :{server.port}
-                  </Text>
-                  <Text style={styles.description} numberOfLines={1}>
-                    {server.process}
-                  </Text>
-                </View>
-                {/* Live only when the desktop has a LAN address to name; the
+                {/* Port and process on their own line, full width: beside the
+                    two buttons a phone had room for ":50…" and nothing else. */}
+                <Text style={styles.name} numberOfLines={1}>
+                  :{server.port}
+                  <Text style={styles.description}>{`  ${server.process}`}</Text>
+                </Text>
+                <View style={styles.actions}>
+                  {/* Live only when the desktop has a LAN address to name; the
                     snapshot works from anywhere the daemon does. */}
-                {lanHosts.length > 0 && (
+                  {lanHosts.length > 0 && (
+                    <Action
+                      icon="globe-outline"
+                      label="Open live"
+                      accessibilityLabel={`Open port ${server.port} live in the browser`}
+                      onPress={() => open(server.port)}
+                    />
+                  )}
                   <Action
-                    icon="globe-outline"
-                    label="Open live"
-                    accessibilityLabel={`Open port ${server.port} live in the browser`}
-                    onPress={() => open(server.port)}
+                    icon="camera-outline"
+                    label="Snapshot"
+                    accessibilityLabel={`Render port ${server.port} as a picture`}
+                    onPress={() => snapshot(server.port)}
                   />
-                )}
-                <Action
-                  icon="camera-outline"
-                  label="Snapshot"
-                  accessibilityLabel={`Render port ${server.port} as a picture`}
-                  onPress={() => snapshot(server.port)}
-                />
+                </View>
               </View>
             ))}
           </ScrollView>
@@ -227,6 +228,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space(4),
     gap: theme.space(3),
   },
+  site: {
+    paddingHorizontal: theme.space(4),
+    paddingVertical: theme.space(3),
+    gap: theme.space(2),
+  },
+  actions: { flexDirection: "row", gap: theme.space(2) },
   rowDivided: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.color.border,

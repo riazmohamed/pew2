@@ -17,7 +17,7 @@ import { loadImage } from "./images.js";
 import { workspaceStatus } from "./git.js";
 import { resolveWorkspace } from "./workspace.js";
 import { suggestionRoots, discoverRepos, listDirectory } from "./workspaces.js";
-import { listeningPorts, snapshot } from "./preview.js";
+import { previewSites, previewablePorts, snapshot } from "./preview.js";
 import { lanAddresses } from "./pairing.js";
 import { wire } from "@pew2/protocol";
 import { storeGoalFiles } from "./goalFiles";
@@ -473,7 +473,9 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           t: "preview.servers",
           sessionId: message.sessionId,
           lanHosts: lanAddresses(),
-          servers: await listeningPorts(),
+          // Only what serves a page; the snapshot below still accepts any
+          // listener but pew2's own, so a page that answers slowly can be shot.
+          servers: await previewSites(),
         });
         break;
       }
@@ -489,7 +491,7 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
             port: message.port,
             path: message.path,
             width: message.width,
-            listening: await listeningPorts(),
+            listening: await previewablePorts(),
           });
           reply({ t: "image", requestId: message.requestId, uri, ...image });
         } catch (error) {

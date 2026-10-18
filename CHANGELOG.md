@@ -87,6 +87,14 @@ Dates are the day the tag was cut.
 
 ### Fixed
 
+- **Preview opened pew2's own page.** pew2 listens on port 8787, which is also
+  a common dev-server port, so it came first in the Preview list and *Open*
+  showed "pairing token required" instead of your site. pew2's own port is no
+  longer offered.
+- **Preview lists only websites.** It used to list every program listening on
+  the computer (adb, Ollama, OneDrive…). Each one is now asked for a page, and
+  only those that answer with a web page are shown, each with its full port
+  number.
 - Reopening a conversation that was open in OG Coder showed it empty.
 - After a turn in an OG Coder window the phone stayed "working" and would not
   send. OG Coder's own screen never writes the end-of-run marker pew2 waited

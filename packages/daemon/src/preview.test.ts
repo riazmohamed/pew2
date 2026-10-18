@@ -5,6 +5,9 @@ import {
   listeningPorts,
   parseLsof,
   parseSs,
+  previewSites,
+  previewablePorts,
+  servesHtml,
   snapshot,
   validatePreviewPath,
 } from "./preview.js";
@@ -164,4 +167,49 @@ describe("snapshot", () => {
     },
     30_000,
   );
+});
+
+test("pew2's own port is never offered for preview", async () => {
+  const listeners = async () => [
+    { port: 8787, process: "bun" },
+    { port: 5173, process: "node" },
+  ];
+  expect(await previewablePorts({}, listeners)).toEqual([{ port: 5173, process: "node" }]);
+  // A daemon on another port leaves 8787 alone (it may be the user's wrangler).
+  expect((await previewablePorts({ PEW2_PORT: "8899" }, listeners)).map((p) => p.port)).toEqual([8787, 5173]);
+});
+
+test("only listeners that serve a web page are offered", async () => {
+  const html = createServer((_, res) => {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end("<!doctype html><title>site</title>");
+  });
+  const json = createServer((_, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end("{}");
+  });
+  const redirect = createServer((_, res) => {
+    res.writeHead(302, { location: "/login" });
+    res.end();
+  });
+  const listen = (server: ReturnType<typeof createServer>) =>
+    new Promise<number>((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as { port: number }).port)));
+  const [h, j, r] = await Promise.all([listen(html), listen(json), listen(redirect)]);
+  try {
+    expect(await servesHtml(h)).toBe(true);
+    expect(await servesHtml(j)).toBe(false);
+    expect(await servesHtml(r)).toBe(true);
+    // Nothing there at all: not a site, and quickly.
+    expect(await servesHtml(1, fetch, 300)).toBe(false);
+    const sites = await previewSites({}, async () => [
+      { port: h, process: "node" },
+      { port: j, process: "ollama" },
+      { port: r, process: "next" },
+    ]);
+    expect(sites.map((s) => s.port)).toEqual([h, r]);
+  } finally {
+    html.close();
+    json.close();
+    redirect.close();
+  }
 });

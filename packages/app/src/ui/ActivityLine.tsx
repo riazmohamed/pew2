@@ -13,12 +13,14 @@
  * `ui/TurnReceipt.tsx` takes its place with what actually happened.
  */
 import { memo, useEffect, useRef } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Pressable, StyleSheet, Text } from "react-native";
 import { theme } from "../theme";
 import { currentTool, queuedTools, type Activity } from "../activity";
 import { ShimmerText } from "./ShimmerText";
-import { ThinkingOrb } from "./ThinkingOrb";
+import { Pew } from "../pew/Pew";
+import { activityMood } from "../pew/palette";
 import { activityOrbState } from "../activityOrb";
+import { Dissolve } from "./motion/Dissolve";
 import { useReducedMotion } from "./useReducedMotion";
 import { STATUS_ROW_MAX_FONT_SCALE } from "./statusRow";
 import { useStatusRowHeight } from "./useStatusRowHeight";
@@ -34,11 +36,13 @@ const SWAP_FROM = 0.35;
 
 function ActivityLineView({
   activity,
+  color,
   onPress,
 }: {
   activity: Activity;
+  color?: string;
   /** Opens the tools so far: what each one is doing, and its output. */
-  onPress: () => void;
+  onPress?: () => void;
 }) {
   const tool = currentTool(activity);
   const queued = queuedTools(activity);
@@ -71,22 +75,21 @@ function ActivityLineView({
   const title = tool?.title?.trim() || "Working";
   const orbState = activityOrbState(activity);
 
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityHint="Shows what each tool is doing"
-    >
+  const row = (
     <Animated.View
       style={[styles.row, { height, opacity: fade }]}
       // Grouped into one node, and announced when it changes rather than
-      // stealing focus: the progress is what is read out, the tap is extra.
+      // stealing focus: this is progress, not something to act on.
       accessible
       accessibilityLiveRegion="polite"
       accessibilityLabel={queued > 0 ? `${title}, and ${queued} more` : title}
     >
-      <ThinkingOrb state={orbState} />
-      <View style={styles.label}>
+      {/* Pew at work, in the agent's colour: talking while it writes,
+          busy on a tool, otherwise thinking. */}
+      <Pew size={28} mood={activityMood(orbState)} color={color} style={styles.pew} />
+      {/* The label dissolves in place on a tool change; the row stays mounted so
+          ShimmerText's sweep never restarts. */}
+      <Dissolve kind="swap" dissolveKey={tool?.id ?? "working"} style={styles.label}>
         <ShimmerText
           text={title}
           color={theme.color.textDim}
@@ -99,7 +102,7 @@ function ActivityLineView({
           // together, so large text grows the line instead of clipping in it.
           maxFontSizeMultiplier={STATUS_ROW_MAX_FONT_SCALE}
         />
-      </View>
+      </Dissolve>
       {/* Agents run tools in parallel. Naming one and counting the rest keeps
           the line a single readable row instead of a scrolling log. */}
       {queued > 0 && (
@@ -108,11 +111,19 @@ function ActivityLineView({
         </Text>
       )}
     </Animated.View>
+  );
+  if (!onPress) return row;
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityHint="Shows what each tool is doing">
+      {row}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  // Pew's globe fills the middle of its box; the rest is room to bounce,
+  // so the box overhangs the old icon's footprint instead of growing the row.
+  pew: { margin: -4 },
   // Mirrors `ChatThread`'s dot row so replacing one with the other never moves
   // the transcript, horizontally or vertically.
   row: {

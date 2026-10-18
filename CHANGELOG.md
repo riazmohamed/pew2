@@ -51,6 +51,17 @@ Dates are the day the tag was cut.
   offers *Close OG Coder* (or *Close pew2 chat*). OG Coder is quit the way you
   would by hand, and the conversation carries on from the phone. Refused while
   the agent is mid-reply.
+- **Start in a folder the agent has never been used in.** On a new chat, tap
+  the project name above the message box and choose a project or *Browse
+  folders*. The drawer's project row also ends with *Another folder…*. Before,
+  only folders an agent had already worked in could be picked.
+- **Agents settings.** Connection now lists every agent pew2 knows with an
+  on/off switch. A turned-off agent disappears from the phone and never starts
+  on your computer; turn Hermes or any other one on from there when you want
+  it. (`pew2 providers enable|disable <id>` does the same from the computer.)
+- **Merged the original repo up to 0.9.23** (GG Goals on the phone, alerts for
+  approvals and questions, widgets, the Stage look) with everything on this
+  branch kept, plus the original repo's open PR #1 (send while dictating).
 - **Computer Screen.** The attach menu's first option takes a picture of the
   computer's screen there and then, with no agent involved, and adds it to
   your message. Tap the thumbnail to see it full size before sending. The
@@ -90,6 +101,70 @@ Dates are the day the tag was cut.
   before; this app on an older pew2 shows no live typing, no switch and no
   computer icon, and on a pew2 without *Open in OG Coder* the icon just opens
   `pew2 chat`. The relay is unchanged.
+
+## 0.9.23 — 2026-10-17
+
+### Added
+
+- **Your phone is told when an agent needs you, not only when it finishes.**
+  An approval waiting, a question from the agent, or a turn that failed now
+  sends a notification too, and the app icon's badge counts the conversations
+  stopped on an answer from you. A finished turn clears a badge left by an
+  approval you have since given.
+
+### Fixed
+
+- **GG Goals no longer fails with "ACP connection closed".** pew2 reused a
+  GG Coder process kept ready in the background without checking it was still
+  running, so after that process exited, opening GG Goals failed until pew2
+  happened to clear it. It now starts a fresh one instead.
+
+## 0.9.22 — 2026-10-14
+
+### Fixed
+
+- **Starting a new goal from the phone works.** GG Coder reports a brand-new
+  goal with no conversation yet, and pew2 read that as a broken answer, so
+  every new goal failed and the phone sat on "Launching". If your computer
+  does not answer within 20 seconds, the phone now says so and lets you try
+  again.
+
+## 0.9.21 — 2026-10-13
+
+### Changed
+
+- **A new look for the installer and every `pew2` command.** The install line,
+  `pew2 setup`, `doctor`, `pair`, `providers` and `registry sync` share one
+  style that matches the phone app: a dot-matrix mark opens each screen, its
+  title is set in spaced capitals, and each line is marked done, worth a look,
+  or stopped. `pew2 --help` groups its commands into Setup, Run and Agents.
+- **Choosing a folder for a goal no longer sets off a run of macOS "Allow"
+  prompts.** Suggestions now come only from folders you have already added, in
+  GG Coder or in pew2, instead of a search through your whole home folder.
+  Browsing to any other folder still works, and macOS asks only when you open it.
+
+## 0.9.20 — 2026-10-13
+
+### Added
+
+- **GG Goals works from the phone.** You can see your goals, start a new one
+  with a name, the goal itself, folders and files, and standing instructions,
+  and change those instructions later from the goal's settings. Goals run on
+  the computer exactly as they do from the desktop app.
+- **Files from your phone can go into a goal.** Pick them with the phone's own
+  file picker. pew2 saves a copy in its own folder on the computer
+  (`~/.pew2/goal-files`), not in your project, so they never end up in Git.
+  An older pew2 can't receive them yet; the phone then tells you the goal was
+  made without its files, rather than leaving that out silently.
+
+### Fixed
+
+- **Goal folders no longer show up as ordinary projects** in GG Coder's list,
+  or as the place a new GG Coder chat opens.
+- **The phone no longer shows the relay's address.** Its status line and the
+  connection settings name the computer instead.
+- **Autopilot's messages come back when you reopen a conversation**, in the
+  same place they were written.
 
 ## 0.9.14 — 2026-08-08
 

@@ -15,7 +15,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { theme } from "../theme";
-import { Orb } from "./Orb";
+import { Pew } from "../pew/Pew";
 import { Glass } from "./Glass";
 import type { Voice } from "./useVoice";
 
@@ -39,7 +39,7 @@ function VoiceBarView({ voice, color }: { voice: Voice; color?: string }) {
           onPress={voice.expand}
           style={({ pressed }) => [styles.body, pressed && styles.pressed]}
         >
-          <Orb color={color} size={26} busy={orb === "connecting" || orb === "working" || orb === "speaking"} />
+          <Pew color={color} size={26} mood={orb === "speaking" ? "talking" : orb === "connecting" || orb === "working" ? "working" : "idle"} />
           <Text numberOfLines={1} style={styles.status}>
             {voice.statusLine}
           </Text>

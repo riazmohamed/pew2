@@ -16,10 +16,31 @@ import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, 
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { DotGlyph } from "./stage/DotGlyph";
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 import { theme } from "../theme";
+import { Led } from "./stage/Led";
+import { StageButton } from "./stage/StageButton";
+import { useAgentColor } from "./stage/agentColor";
 import { haptics } from "./haptics";
 import { saveImageToDevice, shareImage, type SaveResult } from "./imageSaver";
 import type { ChatImage as ChatImageModel } from "../images";
+import { SPRING } from "../motion";
+
+/** The picture's file name for the top bar, from its path; data URIs have none. */
+function fileName(image: ChatImageModel): string {
+  if (!image.src.startsWith("data:")) {
+    const last = image.src.split(/[?#]/)[0]?.split("/").filter(Boolean).pop();
+    if (last) {
+      try {
+        return decodeURIComponent(last);
+      } catch {
+        return last;
+      }
+    }
+  }
+  return image.alt || "Image";
+}
 
 /** What the last save/share attempt did, shown under the buttons. */
 type Feedback = { tone: "ok" | "bad"; text: string };
@@ -51,6 +72,8 @@ export function ImageViewer({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  // The lit Save button glows in the agent's colour, so its icon does too.
+  const agent = useAgentColor();
   const [busy, setBusy] = useState<"save" | "share" | undefined>(undefined);
   const [feedback, setFeedback] = useState<Feedback | undefined>(undefined);
 
@@ -102,25 +125,34 @@ export function ImageViewer({
 
         <View
           style={[
-            styles.closeRow,
-            // Right as well as top: held sideways one long edge is the notch,
+            styles.topBar,
+            // Sides as well as top: held sideways one long edge is the notch,
             // and this is the only way out of a viewer whose backdrop is
             // otherwise a photograph.
-            { top: insets.top + theme.headerInset, right: theme.gutter + insets.right },
+            {
+              paddingTop: insets.top + theme.headerInset,
+              paddingLeft: theme.gutter + insets.left,
+              paddingRight: theme.gutter + insets.right,
+            },
           ]}
         >
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close image"
             hitSlop={12}
-            onPress={onClose}
+            onPress={() => {
+              haptics.tap();
+              onClose();
+            }}
             style={styles.closeButton}
           >
-            <Ionicons name="close" size={20} color={theme.color.text} />
+            <DotGlyph name="close" size={14} />
           </Pressable>
+          <Text style={styles.title} numberOfLines={1} ellipsizeMode="middle">{fileName(image)}</Text>
         </View>
 
         <ViewerImage key={resolvedSrc} uri={resolvedSrc} alt={image.alt || "Image from the agent"} />
+        <Led tone="dim" style={styles.hint}>Tap to zoom</Led>
 
         <View
           style={[
@@ -143,45 +175,44 @@ export function ImageViewer({
             </Text>
           )}
 
+          {/* Stage buttons, the same panel every other action in the app is
+              drawn as: Save is the one lit primary, Share the unlit secondary.
+              Quiet on press, because `run` plays the haptic that says how it
+              went. */}
           <View style={styles.buttonRow}>
-            <Pressable
-              accessibilityRole="button"
+            <StageButton
+              compact
+              style={styles.half}
+              label="Save"
               accessibilityLabel="Save image to photos"
               disabled={!!busy}
+              feel="none"
+              icon={
+                busy === "save" ? (
+                  <ActivityIndicator color={agent} size="small" />
+                ) : (
+                  <Ionicons name="download-outline" size={16} color={busy ? theme.color.textDim : agent} />
+                )
+              }
               onPress={() => void run("save")}
-              style={({ pressed }) => [
-                styles.button,
-                styles.primaryButton,
-                pressed && { opacity: 0.8 },
-                !!busy && { opacity: 0.6 },
-              ]}
-            >
-              {busy === "save" ? (
-                <ActivityIndicator color={theme.color.text} size="small" />
-              ) : (
-                <Ionicons name="download-outline" size={18} color={theme.color.text} />
-              )}
-              <Text style={styles.buttonText}>Save</Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
+            />
+            <StageButton
+              compact
+              kind="secondary"
+              style={styles.half}
+              label="Share"
               accessibilityLabel="Share image"
               disabled={!!busy}
+              feel="none"
+              icon={
+                busy === "share" ? (
+                  <ActivityIndicator color={theme.color.text} size="small" />
+                ) : (
+                  <Ionicons name="share-outline" size={16} color={busy ? theme.color.textDim : theme.color.text} />
+                )
+              }
               onPress={() => void run("share")}
-              style={({ pressed }) => [
-                styles.button,
-                pressed && { backgroundColor: theme.color.surfacePressed },
-                !!busy && { opacity: 0.6 },
-              ]}
-            >
-              {busy === "share" ? (
-                <ActivityIndicator color={theme.color.text} size="small" />
-              ) : (
-                <Ionicons name="share-outline" size={18} color={theme.color.text} />
-              )}
-              <Text style={styles.buttonText}>Share</Text>
-            </Pressable>
+            />
           </View>
         </View>
       </View>
@@ -195,14 +226,26 @@ function ViewerImage({ uri, alt }: { uri: string; alt: string }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [zoomed, setZoomed] = useState(false);
   const canZoom = Platform.OS === "ios";
+  const reduce = useReducedMotion();
+  // Android has no native zoom ScrollView: a tap springs the picture instead.
+  const scale = useSharedValue(1);
+  const springStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const toggleSpring = () => {
+    haptics.select();
+    const next = scale.value > 1 ? 1 : 2.5;
+    scale.value = reduce ? withTiming(next, { duration: 0 }) : withSpring(next, SPRING.settle);
+  };
   const toggleZoom = () => {
+    haptics.select();
     const scale = zoomed ? 1 : 3;
     scroll.current?.scrollResponderZoomTo({
       x: size.width * (1 - 1 / scale) / 2,
       y: size.height * (1 - 1 / scale) / 2,
       width: size.width / scale,
       height: size.height / scale,
-      animated: false,
+      // UIScrollView's own zoom curve: the native spring, and it holds still
+      // under Reduce Motion.
+      animated: !reduce,
     });
   };
   const picture = (
@@ -220,7 +263,18 @@ function ViewerImage({ uri, alt }: { uri: string; alt: string }) {
       style={styles.imageFill}
     />
   );
-  if (!canZoom) return <View style={styles.image} pointerEvents="none">{picture}</View>;
+  if (!canZoom) {
+    return (
+      <Pressable
+        style={styles.image}
+        accessibilityRole="button"
+        accessibilityLabel={`${alt}. Toggle zoom`}
+        onPress={toggleSpring}
+      >
+        <Animated.View style={[styles.imageFill, springStyle]}>{picture}</Animated.View>
+      </Pressable>
+    );
+  }
   return (
     <View style={styles.image} onLayout={({ nativeEvent: { layout } }) => {
       setSize({ width: layout.width, height: layout.height });
@@ -264,7 +318,16 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.94)",
     justifyContent: "center",
   },
-  closeRow: { position: "absolute", zIndex: 2 },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(3),
+    paddingHorizontal: theme.gutter,
+    paddingBottom: theme.space(2),
+    zIndex: 2,
+  },
+  title: { flex: 1, color: theme.color.text, fontSize: theme.font.body, fontWeight: "600" },
+  hint: { alignSelf: "center", marginTop: theme.space(2) },
   closeButton: {
     width: theme.size.control,
     height: theme.size.control,
@@ -276,25 +339,17 @@ const styles = StyleSheet.create({
   image: { flex: 1, width: "100%" },
   imageFill: { flex: 1, width: "100%" },
   actions: {
+    paddingHorizontal: theme.gutter,
     paddingTop: theme.space(3),
     gap: theme.space(2),
-    alignItems: "center",
   },
   feedback: {
     color: theme.color.textDim,
     fontSize: theme.font.small,
     textAlign: "center",
   },
-  buttonRow: { flexDirection: "row", gap: theme.space(3) },
-  button: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.space(2),
-    minHeight: theme.size.control,
-    paddingHorizontal: theme.space(5),
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.color.surface,
-  },
-  primaryButton: { backgroundColor: theme.color.surfaceRaised },
-  buttonText: { color: theme.color.text, fontSize: theme.font.body, fontWeight: "600" },
+  // Same pairing as Plan review's Feedback / Reject row: two equal halves on
+  // the gutter rail.
+  buttonRow: { flexDirection: "row", gap: theme.space(2) },
+  half: { flex: 1 },
 });

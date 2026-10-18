@@ -15,7 +15,7 @@ import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "r
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { theme } from "../theme";
-import { Orb } from "./Orb";
+import { Pew } from "../pew/Pew";
 import { Glass } from "./Glass";
 import type { Voice } from "./useVoice";
 
@@ -54,7 +54,7 @@ function VoiceScreenView({ voice, color }: { voice: Voice; color?: string }) {
         )}
         <View style={styles.stage}>
           <View style={[styles.orb, speaking && styles.speaking]}>
-            <Orb color={color} size={orbSize} busy={orb === "connecting" || orb === "working" || speaking} />
+            <Pew color={color} size={orbSize} mood={orb === "speaking" ? "talking" : orb === "connecting" || orb === "working" ? "working" : "idle"} />
           </View>
           <Text style={[styles.status, failed && styles.error]} accessibilityLiveRegion="polite" numberOfLines={3}>
             {voice.statusLine}

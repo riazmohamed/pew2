@@ -16,6 +16,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { wire } from "@pew2/protocol";
 import { Daemon } from "./index.js";
 import { SessionLog } from "./session/log.js";
 import { readConfigPrefs, writeConfigPref } from "./config-prefs.js";
@@ -1065,4 +1066,22 @@ test("an empty daemon is quiet", () => {
   const { daemon } = daemonWithCollector();
 
   expect(daemon.busyReason()).toBeUndefined();
+});
+
+test("provider.enable turns an agent off, re-announces, and keeps it in the catalog", async () => {
+  const home = await mkdtemp(join(tmpdir(), "pew2-enable-"));
+  const sent: unknown[] = [];
+  const daemon = new Daemon({ id: "test", name: "test" }, false, { ...process.env, PEW2_HOME: home });
+  daemon.attach((message) => sent.push(message));
+  await daemon.refreshProviders();
+  const last = () => sent.filter((m): m is wire.ProviderAnnounce => (m as { t?: string }).t === "providers").at(-1);
+  const someone = last()?.catalog?.find((entry) => entry.id !== "gg-goals" && entry.id !== "ggcoder");
+  expect(someone).toBeDefined();
+  if (!someone) return;
+  await daemon.setProviderEnabled(someone.id, false);
+  expect(last()?.providers.some((p) => p.id === someone.id)).toBe(false);
+  expect(last()?.catalog?.find((entry) => entry.id === someone.id)?.enabled).toBe(false);
+  await daemon.setProviderEnabled(someone.id, true);
+  expect(last()?.catalog?.find((entry) => entry.id === someone.id)?.enabled).toBe(true);
+  daemon.closeAll();
 });

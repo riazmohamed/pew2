@@ -39,6 +39,7 @@ import type { Dictation } from "./useDictation";
 import { Composer, type ComposerHandle, type ComposerSelector } from "./Composer";
 import { ContextBar } from "./ContextBar";
 import { PlanCard } from "./PlanCard";
+import { changesAccessibilityLabel } from "../workspaceLabel";
 
 export interface ComposerDockHandle {
   /**
@@ -67,8 +68,14 @@ interface Props {
   showCommands: boolean;
   onCommands: () => void;
   onProjectDetails: () => void;
+  /** GG Coder's checklist chip, joined onto the context row when present. */
+  onChecklist?: () => void;
+  /** GG Coder is in plan mode: a lit chip on the context row. */
+  planMode?: boolean;
   showPreview?: boolean;
   onPreview?: () => void;
+  /** The project pill chooses a project instead (an empty new conversation). */
+  onChooseProject?: () => void;
   /** The agent's plan for this conversation, when it sent one. */
   plan?: readonly PlanEntry[];
   /**
@@ -116,8 +123,11 @@ function ComposerDockView(
     showCommands,
     onCommands,
     onProjectDetails,
+    onChecklist,
+    planMode,
     showPreview,
     onPreview,
+    onChooseProject,
     plan,
     onSend,
     busy,
@@ -209,18 +219,24 @@ function ComposerDockView(
           fill, uncommitted work, and the commands the agent offers (an empty
           sheet is worse than no button). Never while typing: the draft is the
           subject then, and the row would only crowd it. */}
+      {/* Held from the first frame (empty until the agent's commands and the
+          project arrive, a moment after launch): rendering it only once they
+          had arrived pushed the input down after the screen was drawn. */}
       {/* The plan, when there is one in progress; hidden while typing for the
           same reason as the row below. */}
       {!typing && plan && <PlanCard plan={plan} />}
-      {!typing && (showCommands || showPreview || workspace || usage) && (
+      {!typing && (
         <ContextBar
           workspace={workspace}
           usage={usage}
           showCommands={showCommands}
           onCommands={onCommands}
           onDetails={onProjectDetails}
+          onChecklist={onChecklist}
+          planMode={planMode}
           showPreview={showPreview}
           onPreview={onPreview}
+          onChooseProject={onChooseProject}
         />
       )}
       <Composer
@@ -233,6 +249,11 @@ function ComposerDockView(
         editable={editable}
         placeholder={placeholder}
         selectors={selectors}
+        changes={
+          workspace?.uncommitted !== undefined
+            ? { count: workspace.uncommitted, accessibilityLabel: changesAccessibilityLabel(workspace.uncommitted), onPress: onProjectDetails }
+            : undefined
+        }
         attachments={attachments}
         onAttach={onAttach}
         onRemoveAttachment={onRemoveAttachment}

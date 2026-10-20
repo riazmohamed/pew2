@@ -39,13 +39,24 @@ export function blankPicture(): SkPicture {
 interface FrameKit {
   recorder: ReturnType<typeof Skia.PictureRecorder>;
   rects: Record<string, ReturnType<typeof Skia.XYWHRect>>;
+  /** The most recent pictures, held so none is freed while still being drawn (see `endFrame`). */
+  recent: SkPicture[];
+  next: number;
 }
+
+/**
+ * How many finished frames stay referenced, across every painter on the UI
+ * thread. The call screen runs about six at once (Pew, a Pew per lane, the
+ * listening wave) at 60 fps, so this is roughly ten frames, a sixth of a
+ * second, each: far longer than a draw can be in flight.
+ */
+const KEEP_RECENT = 64;
 
 /** Start recording a w×h frame on the UI thread, with the runtime's one recorder. */
 export function beginFrame(w: number, h: number): SkCanvas {
   "worklet";
   const g = globalThis as unknown as { __pewFrameKit?: FrameKit };
-  if (!g.__pewFrameKit) g.__pewFrameKit = { recorder: Skia.PictureRecorder(), rects: {} };
+  if (!g.__pewFrameKit) g.__pewFrameKit = { recorder: Skia.PictureRecorder(), rects: {}, recent: [], next: 0 };
   const kit = g.__pewFrameKit;
   const key = w + "x" + h;
   let rect = kit.rects[key];
@@ -56,9 +67,24 @@ export function beginFrame(w: number, h: number): SkCanvas {
   return kit.recorder.beginRecording(rect);
 }
 
-/** Finish the frame `beginFrame` started. */
+/**
+ * Finish the frame `beginFrame` started.
+ *
+ * The picture is also kept in a small ring, so the one it replaces on screen
+ * stays alive for a few more frames. Skia 2.3 can still be drawing a picture
+ * on the render thread when the next frame replaces it, and if the garbage
+ * collector frees it meanwhile the draw reads freed memory: a SIGSEGV in
+ * `SkRecordDraw` (Shopify/react-native-skia#3925, fixed upstream only in
+ * releases newer than this app can take). It crashed the call screen, with
+ * its several 60 fps painters, every few minutes on Android (20-21 Oct).
+ * Holding the recent ones is the mitigation that report confirms.
+ */
 export function endFrame(): SkPicture {
   "worklet";
   const g = globalThis as unknown as { __pewFrameKit: FrameKit };
-  return g.__pewFrameKit.recorder.finishRecordingAsPicture();
+  const kit = g.__pewFrameKit;
+  const picture = kit.recorder.finishRecordingAsPicture();
+  kit.recent[kit.next] = picture;
+  kit.next = (kit.next + 1) % KEEP_RECENT;
+  return picture;
 }

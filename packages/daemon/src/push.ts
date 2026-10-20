@@ -43,6 +43,8 @@ interface Target {
   platform: "ios" | "android";
   /** Android needs the channel named on the message, not just on the device. */
   channelId?: string;
+  /** Android: the app rings like a call itself (`app.push` `ringer: "native"`). */
+  nativeRing?: boolean;
 }
 
 export interface FinishedTurnPush extends NoticeOrigin {
@@ -113,12 +115,13 @@ export class PushRegistry {
    *
    * @returns whether the token was accepted, so a caller can log the refusal.
    */
-  register(deviceId: string, token: string, platform: "ios" | "android"): boolean {
+  register(deviceId: string, token: string, platform: "ios" | "android", ringer?: string): boolean {
     if (!TOKEN_SHAPE.test(token)) return false;
     this.targets.set(deviceId, {
       token,
       platform,
       ...(platform === "android" ? { channelId: ANDROID_CHANNEL } : null),
+      ...(platform === "android" && ringer === "native" ? { nativeRing: true } : null),
     });
     return true;
   }
@@ -281,8 +284,38 @@ export function ringCaller(ring: Pick<VoiceRingPush, "who">): string {
  */
 export type VoiceRingMessage = ExpoMessage<{ voice: true; focus?: string }>;
 
-export function voiceRingMessages(registry: PushRegistry, ring: VoiceRingPush): VoiceRingMessage[] {
-  return registry.list().map((target) => ({
+/**
+ * Android, to an app that rings like a call itself: data only, no title or
+ * body, so no notification is shown for it and the app's push service gets
+ * it even when closed (`modules/pew-ring`). Dropped after 45 seconds: a ring
+ * delivered later than that is not a call any more.
+ */
+export interface NativeRingMessage {
+  to: string;
+  data: { pewRing: true; ring: string; title: string; text: string; focus?: string };
+  priority: "high";
+  ttl: number;
+}
+
+export function voiceRingMessages(
+  registry: PushRegistry,
+  ring: VoiceRingPush,
+  ringId = `ring_${Date.now().toString(36)}`,
+): (VoiceRingMessage | NativeRingMessage)[] {
+  return registry.list().map((target) =>
+    target.nativeRing
+      ? {
+          to: target.token,
+          data: { pewRing: true, ring: ringId, title: ringTitle(ring), text: ring.body, ...(ring.focus ? { focus: ring.focus } : {}) },
+          priority: "high",
+          ttl: 45,
+        }
+      : voiceRingBanner(target, ring),
+  );
+}
+
+function voiceRingBanner(target: Target, ring: VoiceRingPush): VoiceRingMessage {
+  return {
     to: target.token,
     title: ringTitle(ring),
     body: ring.body,
@@ -293,7 +326,7 @@ export function voiceRingMessages(registry: PushRegistry, ring: VoiceRingPush): 
     ...(ring.badge !== undefined ? { badge: ring.badge } : null),
     ...(target.platform === "ios" ? { mutableContent: true } : null),
     priority: "high",
-  }));
+  };
 }
 
 /**
@@ -367,7 +400,7 @@ export async function pushVoiceRing(registry: PushRegistry, ring: VoiceRingPush,
   if (banners.length > 0) options.log?.(`[voice] banner to ${banners.length} phone(s)`);
   if (rung.length === 0 && banners.length === 0) options.log?.("[voice] nothing to ring: no phone registered for alerts");
   if (banners.length > 0) {
-    const messages = voiceRingMessages(registry, ring).filter((message) =>
+    const messages = voiceRingMessages(registry, ring, ringId).filter((message) =>
       banners.some(([, target]) => target.token === message.to),
     );
     await sendMessages(registry, messages);
@@ -410,11 +443,20 @@ async function sendMessages(registry: PushRegistry, messages: { to: string }[]):
       // race with the user reaching for their phone.
       signal: AbortSignal.timeout(10_000),
     });
-    if (!response.ok) return;
+    if (!response.ok) {
+      console.log(`[push] refused by the push service: HTTP ${response.status}`);
+      return;
+    }
     const payload = (await response.json()) as { data?: unknown };
     applyTickets(registry, messages, payload?.data);
-  } catch {
+    // One line per send, so "it didn't ring" can be told apart from "it was
+    // never sent" in the log. Never the token or the text.
+    const tickets = Array.isArray(payload?.data) ? (payload.data as { status?: string; details?: { error?: string } }[]) : [];
+    const failed = tickets.filter((ticket) => ticket?.status === "error").map((ticket) => ticket.details?.error ?? "error");
+    console.log(`[push] sent to ${messages.length} phone(s)${failed.length > 0 ? `, refused: ${failed.join(", ")}` : ""}`);
+  } catch (error) {
     // Offline desktop, DNS failure, Expo outage. Nothing here is worth
     // interrupting the session that just finished successfully.
+    console.log(`[push] not sent: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

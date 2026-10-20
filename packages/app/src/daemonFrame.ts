@@ -340,7 +340,18 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
       awaitingResume.current = false;
       restoring.current = undefined;
     }
-    claimsScreen = mine || reopened || (viewingRef.current === undefined && message.resumed !== true);
+    // The conversation on screen, re-announced under a new id: opened in its
+    // own app on the computer (or reopened there), with the reply to the tap
+    // that asked lost on a dropped connection. Same conversation, so it takes
+    // the screen; without this the phone kept the old id and every message
+    // answered "Unknown session" (20 Oct).
+    const onScreen = sessionRef.current ? sessionsRef.current.find((entry) => entry.id === sessionRef.current) : undefined;
+    const replacesScreen =
+      message.resumed === true &&
+      typeof message.agentSessionId === "string" &&
+      onScreen?.agentSessionId === message.agentSessionId &&
+      onScreen?.id !== message.sessionId;
+    claimsScreen = mine || reopened || replacesScreen || (viewingRef.current === undefined && message.resumed !== true);
     if (claimsScreen) {
       sessionRef.current = message.sessionId;
       viewingRef.current = message.sessionId;

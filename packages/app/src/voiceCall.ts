@@ -378,6 +378,12 @@ export type CallInput =
   /** Back to idle once the ended/failed screen is dismissed. */
   | { type: "reset" }
   /**
+   * The user typed a message on the call screen instead of saying it: Pew
+   * hears it as their turn and answers by voice. For a noisy road, a quiet
+   * room, or a name it keeps mishearing.
+   */
+  | { type: "typed"; text: string }
+  /**
    * The user answered an item on the call screen's card instead of by voice.
    * `message` is the ordinary answer frame for the daemon (`session.ask` /
    * `session.permission`); `tell` is the line Pew hears so it moves on.
@@ -1069,6 +1075,20 @@ function stepInner(state: CallState, input: CallInput): CallStep {
     case "reset":
       if (callActive(state)) return { state, effects };
       return { state: { ...IDLE_CALL, inbox: state.inbox }, effects };
+    case "typed": {
+      const text = input.text.trim().slice(0, TRANSCRIPT_MAX_CHARS);
+      if (state.phase !== "live" || !text) return { state, effects };
+      // Pew stops talking to read it, as if they had spoken over it.
+      const base = state.pewAudio ? cutOff(state, effects) : state;
+      effects.push({
+        kind: "realtime",
+        event: { type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text }] } },
+      });
+      // Their own turn: Pew may act on it, as on a spoken one.
+      let next = addTranscript(setCaption(base, "you", text, true, undefined), "user", text);
+      next = { ...next, heardUser: true, unprompted: false, userTurns: next.userTurns + 1, activity: "listening" };
+      return { state: requestResponse(next, effects), effects };
+    }
     case "answeredOnScreen": {
       if (!callActive(state)) return { state, effects };
       const item = state.inbox?.find((entry) => entry.id === input.itemId);

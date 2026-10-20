@@ -40,6 +40,11 @@ export function beginAndroidCall(): void {
     if (!routed) return;
     try {
       InCallManager.start({ media: "audio", auto: true });
+      // No screen-off at the ear. `start` turns on the proximity sensor, and
+      // the screen going off and on under Pew's animated canvas is where the
+      // app crashed mid-call (Skia SIGSEGV, 20 Oct, twice). A phone in a car
+      // mount wants the screen on anyway.
+      InCallManager.stopProximitySensor();
     } catch {
       // No routing module: WebRTC's own default route plays the call.
     }

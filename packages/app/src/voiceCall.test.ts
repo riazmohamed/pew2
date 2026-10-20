@@ -739,3 +739,29 @@ describe("a message asking an agent for something that can't be undone is read b
     expect(approvalNeedingReadBack("tell_agent", JSON.stringify({ text: "Check the DB logs." }))).toBeUndefined();
   });
 });
+
+describe("typing on a call", () => {
+  test("a typed line is the user's turn: Pew hears it as their words, may act, and answers", () => {
+    const quiet = quietCall();
+    const { state, effects } = run(quiet, { type: "typed", text: "  switch billing to GPT  " });
+    const sent = realtime(effects);
+    expect(sent).toContainEqual({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: "switch billing to GPT" }] } });
+    expect(creates(effects)).toBe(1);
+    expect(state.heardUser).toBe(true);
+    expect(state.unprompted).toBe(false);
+    expect(state.userTurns).toBe(quiet.userTurns + 1);
+    expect(state.caption).toMatchObject({ who: "you", text: "switch billing to GPT", final: true });
+    expect(state.transcript.at(-1)).toEqual({ role: "user", text: "switch billing to GPT" });
+  });
+
+  test("typing over Pew cuts it off first", () => {
+    const talking = run(liveCall().state, { type: "server", event: { type: "output_audio_buffer.started" } }).state;
+    const { effects } = run(talking, { type: "typed", text: "stop" });
+    expect(realtime(effects).map((event) => event.type)).toContain("output_audio_buffer.clear");
+  });
+
+  test("nothing typed, or no live call, does nothing", () => {
+    expect(run(quietCall(), { type: "typed", text: "   " }).effects).toEqual([]);
+    expect(run(IDLE_CALL, { type: "typed", text: "hello" }).effects).toEqual([]);
+  });
+});

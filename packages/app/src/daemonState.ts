@@ -366,6 +366,8 @@ export const NOTICE_BUFFER = 2000;
 export interface PushAddress {
   token: string;
   platform: "ios" | "android";
+  /** Android: `"native"` when this build rings like a call itself (`modules/pew-ring`). */
+  ringer?: "native";
 }
 
 export interface DaemonOptions {

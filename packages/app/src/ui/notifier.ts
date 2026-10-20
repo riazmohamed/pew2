@@ -157,6 +157,15 @@ Notifications.setNotificationHandler({
 const CHANNEL = "agent-turns";
 
 /**
+ * Android: the app's own ring banner (`notifyRing`, the app alive in the
+ * background without the native ringer), on its own channel: a ringtone
+ * (`pew_ring.wav`, res/raw through the expo-notifications plugin), a call
+ * buzz, and the lock screen. A channel's sound is fixed when it is made.
+ * Rings from the daemon with the app closed are `modules/pew-ring`'s.
+ */
+export const RING_CHANNEL = "pew-calls";
+
+/**
  * Groups the reply box onto the banner. No `:` or `-`: the SDK documents those
  * as breaking category matching.
  */
@@ -210,6 +219,16 @@ function prepare(): Promise<void> {
         // The agent finishing, or stopping to ask, is the thing the user is
         // waiting on: it earns a heads-up banner rather than a silent tray entry.
         importance: Notifications.AndroidImportance.HIGH,
+      });
+      await Notifications.setNotificationChannelAsync(RING_CHANNEL, {
+        name: "Calls from Pew",
+        description: "Pew ringing you when something needs you",
+        importance: Notifications.AndroidImportance.MAX,
+        sound: "pew_ring.wav",
+        vibrationPattern: [0, 900, 700, 900, 700, 900, 700, 900],
+        enableVibrate: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        audioAttributes: { usage: Notifications.AndroidAudioUsage.NOTIFICATION_RINGTONE },
       });
     }
     // Registered before the first banner, or it is delivered without the reply
@@ -307,8 +326,8 @@ export async function notifyRing(ring: { title: string; body: string; focus?: st
         title: ring.title,
         body: ring.body,
         data: { voice: true, local: true, ...(ring.focus ? { focus: ring.focus } : {}) },
-        sound: "default",
-        ...(Platform.OS === "android" ? { channelId: CHANNEL } : null),
+        sound: Platform.OS === "android" ? "pew_ring.wav" : "default",
+        ...(Platform.OS === "android" ? { channelId: RING_CHANNEL } : null),
       },
       trigger: null,
     });

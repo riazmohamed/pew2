@@ -15,6 +15,16 @@ Dates are the day the tag was cut.
 
 ### Added
 
+- **Pew rings your Android phone like a call, even with the app closed
+  and the phone locked.** Your normal ringtone plays on repeat for up to
+  30 seconds, with Answer and Decline. Needs your own Firebase project
+  (a `google-services.json` in `packages/app`, kept out of git) and its
+  key added to your Expo project.
+- **Alerts reach an Android phone with the app closed.** A finished reply,
+  a question or an approval shows on the lock screen through Firebase.
+- **Type on a call.** The call screen has a Type button for a noisy road
+  or a name Pew keeps mishearing; Pew answers out loud.
+
 - **Change a chat's model by voice.** On a call, "switch billing to GPT"
   or "use sonnet" switches it, and "which models are there?" reads a few
   out without switching. If the chat is open in OG Coder on the computer,
@@ -107,6 +117,14 @@ Dates are the day the tag was cut.
   you type on the phone meanwhile is sent when it wakes.
 
 ### Fixed
+
+- **Reopening a chat no longer starts another agent on it.** Each app
+  restart used to add one, so a single chat could have five running at
+  once, all spending your model credit together. That is what OpenRouter's
+  "usage limit reached ... in-flight requests" message was about.
+- **"Unknown session" after the phone lost its connection for a moment,**
+  and the "couldn't open in OG Coder" message when it had in fact opened.
+- **The app crashing a few minutes into a call on Android.**
 
 - **Call captions in the wrong language.** Speech sometimes came back as
   Japanese, Urdu or Swedish in the captions and call history. Transcription

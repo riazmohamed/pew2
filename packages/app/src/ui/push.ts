@@ -18,12 +18,15 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
+import { nativeRinger } from "../../modules/pew-ring";
 import { notificationsAllowed } from "./notifier";
 
 /** What the daemon needs to reach this phone. */
 export interface PushAddress {
   token: string;
   platform: "ios" | "android";
+  /** Android: `"native"` when this build rings like a call itself (`modules/pew-ring`). */
+  ringer?: "native";
 }
 
 /**
@@ -68,7 +71,10 @@ export async function pushAddress(): Promise<PushAddress | undefined> {
   if (!(await notificationsAllowed())) return undefined;
   try {
     const { data } = await Notifications.getExpoPushTokenAsync({ projectId: id });
-    return data ? { token: data, platform: Platform.OS } : undefined;
+    if (!data) return undefined;
+    return Platform.OS === "android" && nativeRinger
+      ? { token: data, platform: "android", ringer: "native" }
+      : { token: data, platform: Platform.OS };
   } catch {
     // Simulator, no network, or a build without push entitlements. The app
     // works; it just falls back to announcing turns it is awake for.

@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon } from "./index.js";
-import { PushRegistry, applyTickets, pushMessages, pushVoiceRing, relayOrigin } from "./push.js";
+import { PushRegistry, applyTickets, pushMessages, pushVoiceRing, relayOrigin, voiceRingMessages } from "./push.js";
 
 const TOKEN = "ExponentPushToken[abcdef123456]";
 
@@ -259,5 +259,40 @@ describe("voice rings: CallKit through the relay, banners for the rest", () => {
     expect(relayOrigin("ws://localhost:8799/x")).toBe("http://localhost:8799");
     expect(relayOrigin(undefined)).toBeUndefined();
     expect(relayOrigin("nonsense")).toBeUndefined();
+  });
+});
+
+describe("Android native ringing", () => {
+  const TOKEN = "ExponentPushToken[ring-test]";
+  it("sends a ring as a data-only push to an app that rings like a call itself", () => {
+    const registry = new PushRegistry();
+    registry.register("phone", TOKEN, "android", "native");
+    const [ring] = voiceRingMessages(registry, { body: "1 thing waiting", who: "billing", focus: "f1" }, "ring_1");
+    // No title or body: Android shows nothing for it, and the app's service rings.
+    expect(ring).toEqual({
+      to: TOKEN,
+      data: { pewRing: true, ring: "ring_1", title: "billing needs you", text: "1 thing waiting", focus: "f1" },
+      priority: "high",
+      ttl: 45,
+    });
+    // A finished turn is still the ordinary alert.
+    const [turn] = pushMessages(registry, { sessionId: "s", kind: "finished" } as never);
+    expect(turn?.channelId).toBe("agent-turns");
+    expect(turn?.title).toBeDefined();
+  });
+
+  it("keeps the banner ring for an app that said nothing (older app) or an unknown ringer", () => {
+    for (const ringer of [undefined, "something-newer"]) {
+      const registry = new PushRegistry();
+      registry.register("phone", TOKEN, "android", ringer);
+      const [ring] = voiceRingMessages(registry, { body: "x" });
+      expect(ring).toMatchObject({ title: "pew2 needs you", body: "x", channelId: "agent-turns" });
+    }
+  });
+
+  it("never sends an iPhone a data-only ring", () => {
+    const registry = new PushRegistry();
+    registry.register("phone", TOKEN, "ios", "native");
+    expect(voiceRingMessages(registry, { body: "x" })[0]).toMatchObject({ title: "pew2 needs you", body: "x" });
   });
 });

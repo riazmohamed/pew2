@@ -16,7 +16,7 @@
  * font for anything read, the LED face (`Led`) for labels and states.
  */
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   Easing,
@@ -151,13 +151,15 @@ interface Props {
   color?: string;
   /** Tap Pew to cut it off mid-sentence. */
   onInterrupt?: () => void;
+  /** Send a typed line to Pew. Absent: no Type button. */
+  onType?: (text: string) => void;
   /** The mic's loudness, for the listening waves. */
   micLevel?: SharedValue<number>;
   /** Pew's speaking clock: the captions follow its voice word by word. */
   speech?: RefObject<SpeechClock>;
 }
 
-export function CallScreen({ call, board = IDLE_BOARD, providers = [], onHangUp, onMute, onDismiss, onRetry, onAnswer, color, onInterrupt, micLevel, speech }: Props) {
+export function CallScreen({ call, board = IDLE_BOARD, providers = [], onHangUp, onMute, onDismiss, onRetry, onAnswer, color, onInterrupt, onType, micLevel, speech }: Props) {
   const visible = call.phase !== "idle";
   const over = call.phase === "ended" || call.phase === "failed";
   return (
@@ -173,6 +175,7 @@ export function CallScreen({ call, board = IDLE_BOARD, providers = [], onHangUp,
         onAnswer={onAnswer}
         color={color}
         onInterrupt={onInterrupt}
+        onType={onType}
         micLevel={micLevel}
         speech={speech}
         onSpeaker={canSwitchSpeaker ? routeSpeaker : androidSpeakerSwitch ? setAndroidSpeaker : undefined}
@@ -203,6 +206,8 @@ export interface MissionControlProps {
   color?: string;
   /** Tap Pew while it talks to cut it off (the mic is closed while it speaks). */
   onInterrupt?: () => void;
+  /** Send a typed line to Pew. Absent: no Type button. */
+  onType?: (text: string) => void;
   /** The mic's loudness for the listening waves (0..1, -1 unknown). */
   micLevel?: SharedValue<number>;
   /** Pew's speaking clock (absent: captions paced by time, as in the demo). */
@@ -272,7 +277,7 @@ function clock(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export function MissionControl({ call, board, providers, onHangUp, onMute, onDismiss, onRetry, now: override, onSpeaker, onAnswer, color, onInterrupt, micLevel, speech }: MissionControlProps) {
+export function MissionControl({ call, board, providers, onHangUp, onMute, onDismiss, onRetry, now: override, onSpeaker, onAnswer, color, onInterrupt, onType, micLevel, speech }: MissionControlProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
   const over = call.phase === "ended" || call.phase === "failed";
@@ -366,6 +371,22 @@ export function MissionControl({ call, board, providers, onHangUp, onMute, onDis
 
   const top = insets.top;
   const project = onProject(board, call);
+  // Typing instead of talking: the mic is muted while the box is open, so
+  // road noise or a passenger can't cut in, and comes back as it was after.
+  const [typing, setTyping] = useState(false);
+  const mutedBeforeTyping = useRef(false);
+  const openTyping = () => {
+    mutedBeforeTyping.current = call.muted;
+    if (!call.muted) onMute(true);
+    setTyping(true);
+  };
+  const closeTyping = () => {
+    setTyping(false);
+    if (!mutedBeforeTyping.current) onMute(false);
+  };
+  useEffect(() => {
+    if (!live) setTyping(false);
+  }, [live]);
   const { width, height } = useWindowDimensions();
   const voice = useMemo(() => voiceInk(color), [color]);
 
@@ -522,7 +543,17 @@ export function MissionControl({ call, board, providers, onHangUp, onMute, onDis
 
       {/* Which project the call is on, always in view: the lanes come and go,
           and a phone in a car mount is read at a glance. */}
-      {live && project ? (
+      {typing && live && onType ? (
+        <TypeBar
+          bottom={insets.bottom + 32 + CONTROLS_H + 10}
+          project={project?.folder}
+          onSend={(text) => {
+            haptics.sent(null);
+            onType(text);
+          }}
+          onClose={closeTyping}
+        />
+      ) : live && project ? (
         <View style={[styles.onProject, { bottom: insets.bottom + 32 + CONTROLS_H + 10 }]} pointerEvents="none" accessibilityLiveRegion="polite">
           <Led tone="dim" size={11} numberOfLines={1} maxFontSizeMultiplier={ROW_FONT_MAX}>
             {`On ${project.folder}${project.agentName ? ` · ${project.agentName}` : ""}`}
@@ -539,6 +570,17 @@ export function MissionControl({ call, board, providers, onHangUp, onMute, onDis
         >
           <DotGlyph name={call.muted ? "mic-off" : "mic"} size={22} />
         </CircleButton>
+        {onType ? (
+          <CircleButton
+            size={60}
+            label={typing ? "Stop typing" : "Type to Pew"}
+            tint={typing ? theme.color.accentSoft : undefined}
+            disabled={call.phase !== "live"}
+            onPress={() => (typing ? closeTyping() : openTyping())}
+          >
+            <DotGlyph name="compose" size={22} />
+          </CircleButton>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="End call"
@@ -1524,6 +1566,22 @@ const styles = StyleSheet.create({
     borderColor: theme.stage.dash,
   },
   foldFolder: { flexShrink: 1, color: theme.color.glyph, fontSize: theme.font.small, lineHeight: 18 },
+  typeBar: {
+    position: "absolute",
+    left: theme.gutter,
+    right: theme.gutter,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(2),
+    paddingLeft: theme.space(4),
+    paddingRight: theme.space(1),
+    paddingVertical: theme.space(1),
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    backgroundColor: theme.color.surface,
+  },
+  typeInput: { flex: 1, color: theme.color.text, fontSize: theme.font.body, paddingVertical: theme.space(2), maxHeight: 96 },
   onProject: { position: "absolute", left: theme.gutter * 2, right: theme.gutter * 2, alignItems: "center" },
   controls: { position: "absolute", left: 0, right: 0, height: CONTROLS_H, paddingHorizontal: 52, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   /** Holds the third control's place so End stays centred. */
@@ -1541,3 +1599,34 @@ const styles = StyleSheet.create({
   endActions: { flexDirection: "row", gap: theme.space(2) },
   endButton: { flex: 1 },
 });
+
+/** Typing to Pew mid-call: one line, sent with the button or the keyboard's send key. */
+function TypeBar({ bottom, project, onSend, onClose }: { bottom: number; project?: string; onSend: (text: string) => void; onClose: () => void }) {
+  const [text, setText] = useState("");
+  const send = () => {
+    const line = text.trim();
+    if (!line) return;
+    onSend(line);
+    setText("");
+  };
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[styles.typeBar, { bottom }]}>
+      <TextInput
+        style={styles.typeInput}
+        value={text}
+        onChangeText={setText}
+        placeholder={project ? `Type to Pew about ${project}…` : "Type to Pew…"}
+        placeholderTextColor={theme.color.textDim}
+        autoFocus
+        multiline
+        submitBehavior="submit"
+        returnKeyType="send"
+        onSubmitEditing={send}
+        accessibilityLabel="Message to Pew"
+      />
+      <CircleButton size={44} label={text.trim() ? "Send to Pew" : "Close typing"} onPress={text.trim() ? send : onClose}>
+        <DotGlyph name={text.trim() ? "send" : "close"} size={18} />
+      </CircleButton>
+    </KeyboardAvoidingView>
+  );
+}

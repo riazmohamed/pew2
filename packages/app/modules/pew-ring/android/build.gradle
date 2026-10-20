@@ -1,0 +1,26 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'io.github.kenkaiii.pew2'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.pewring"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+dependencies {
+  // The ring arrives as a push; this service sits in front of
+  // expo-notifications' own and hands it everything that is not a ring.
+  // expo-notifications ships prebuilt (its local-maven-repo, which autolinking
+  // already adds), so it is a Maven artifact here, not a project. Compile only:
+  // the app has it already, at the version it resolved.
+  compileOnly 'host.exp.exponent:expo.modules.notifications:+'
+  implementation 'com.google.firebase:firebase-messaging:24.0.1'
+  implementation 'androidx.core:core:1.13.1'
+}

@@ -1047,6 +1047,62 @@ export class Daemon extends DaemonConnectSession {
   }
 
   /** The mirror already showing this conversation, if any. */
+  /**
+   * Ids a conversation had before it moved into its own app's window (or was
+   * re-keyed there), pointing at the id it moved to. A phone that missed the
+   * announcement (a dropped connection) still sends the old one: followed
+   * here rather than answered "Unknown session".
+   */
+  private readonly retired = new Map<string, string>();
+
+  /** The live session an id now lives under: itself, or where it moved. Undefined if neither. */
+  forwardedSession(sessionId: string): string | undefined {
+    let id: string | undefined = sessionId;
+    for (let hops = 0; id && hops < 8; hops += 1) {
+      if (this.sessions.has(id)) return id === sessionId ? undefined : id;
+      id = this.retired.get(id);
+    }
+    return undefined;
+  }
+
+  /**
+   * The session already running this conversation in pew2's own agent, if
+   * any. A resume of it is answered with that session instead of a second
+   * agent: two agents on one conversation write one file, run every turn
+   * twice, and doubled the requests in flight until the model provider
+   * refused them (20-21 Oct: four OG Coder agents on one chat, after the app
+   * restarted and reopened it each time).
+   */
+  liveSessionFor(providerId: string, agentSessionId: string): string | undefined {
+    for (const [id, session] of this.sessions) {
+      if (!session.native && session.providerId === providerId && session.agentSessionId === agentSessionId) return id;
+    }
+    return undefined;
+  }
+
+  /** Re-introduce a running session to clients, whole: as a resume of it would, without a new agent. */
+  reannounce(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.native) return false;
+    session.lastUsedAt = Date.now();
+    this.send({
+      t: "session.started",
+      sessionId,
+      providerId: session.providerId,
+      configOptions: this.configOptions(sessionId),
+      resumed: true,
+      cwd: session.cwd,
+      agentSessionId: session.agentSessionId,
+    });
+    this.send({ t: "session.replay", sessionId, events: session.log.since(-1), complete: true });
+    this.send({ t: "session.config", sessionId, providerId: session.providerId, configOptions: this.configOptions(sessionId) });
+    // Where it stands now (a turn running, an approval open): the history
+    // replay alone reads as idle.
+    const latest = session.log.since(-1).at(-1)?.seq ?? 0;
+    for (const frame of this.catchUp({ [sessionId]: latest })) this.send(frame);
+    return true;
+  }
+
   nativeSessionFor(providerId: string, agentSessionId: string): string | undefined {
     for (const [id, session] of this.sessions) {
       if (session.native && session.providerId === providerId && session.agentSessionId === agentSessionId) return id;
@@ -1116,6 +1172,10 @@ export class Daemon extends DaemonConnectSession {
         const current = this.sessions.get(sessionId);
         if (current) this.closeSession(sessionId, current);
       },
+    }).then((result) => {
+      const moved = this.nativeSessionFor(providerId, agentSessionId);
+      if (result.ok && moved) this.retired.set(sessionId, moved);
+      return result;
     });
   }
 
@@ -1260,9 +1320,14 @@ export class Daemon extends DaemonConnectSession {
   reopenNative(sessionId: string): string | undefined {
     const session = this.sessions.get(sessionId);
     if (!session?.native) return undefined;
-    const log = new SessionLog(`${session.providerId}-${Date.now().toString(36)}`);
+    // Never the id it had, nor one in use: two re-keys in one millisecond
+    // would otherwise file it under itself and forward it in a loop.
+    let id = `${session.providerId}-${Date.now().toString(36)}`;
+    while (id === sessionId || this.sessions.has(id)) id = `${session.providerId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+    const log = new SessionLog(id);
     for (const event of session.log.since(-1)) log.append(event.payload);
     this.sessions.delete(sessionId);
+    this.retired.set(sessionId, log.sessionId);
     const draft = this.drafts.get(sessionId);
     this.drafts.delete(sessionId);
     if (draft) this.drafts.set(log.sessionId, draft);

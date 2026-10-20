@@ -521,3 +521,25 @@ test("a pew2 chat window opened from the phone is remembered, offered, and close
   expect(rig.replies.at(-1)).toMatchObject({ ok: false, message: expect.stringContaining("no terminal open") });
   daemon.closeAll();
 });
+
+test("the old id still reaches the window after the handover, and re-announces it (a phone that missed the move)", async () => {
+  const rig = await handoverRig();
+  const { sent, replies, scripts, send } = rig;
+  await send({ t: "desk.open", requestId: "r1", sessionId: "ggcoder-old", target: "native" });
+  expect(replies[0]).toMatchObject({ ok: true });
+  const moved: string = sent.find((m) => m.t === "session.started").sessionId;
+
+  // Tapped again with the old id: not "isn't open", but already open, and re-announced.
+  await send({ t: "desk.open", requestId: "r2", sessionId: "ggcoder-old", target: "native" });
+  expect(replies.at(-1)).toEqual({ t: "desk.opened", requestId: "r2", ok: true, app: "iTerm", message: "It's already open in OG Coder on the computer." });
+  const again = sent.filter((m) => m.t === "session.started").at(-1);
+  expect(again).toMatchObject({ resumed: true, agentSessionId: AGENT_ID });
+  expect(again.sessionId).not.toBe(moved);
+
+  // A prompt with the old id is typed into the window, not answered "Unknown session".
+  const before = scripts.length;
+  await send({ t: "session.prompt", sessionId: "ggcoder-old", text: "still here" });
+  await until(() => scripts.slice(before).some((s) => s.includes('"still here" newline NO')), "prompt typed");
+  expect(replies.some((m) => m.t === "error" && /Unknown session/.test(m.message ?? ""))).toBe(false);
+  rig.daemon.closeAll();
+});

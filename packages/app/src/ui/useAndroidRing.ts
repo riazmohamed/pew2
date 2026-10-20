@@ -9,15 +9,26 @@
  * like an iPhone's call push.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
+import { AppState, Linking } from "react-native";
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import type { wire } from "@pew2/protocol";
 import { canRing } from "../../modules/pew-call";
+import { answeredRing, claimRing, nativeRinger, ringClaimed, stopNativeRing, takeEndedRings } from "../../modules/pew-ring";
 import { RING_MS, readRing, ringAction, ringEnded, type IncomingRing } from "../androidRing";
 import { dismissRing, notifyRing } from "./notifier";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const RINGTONE = require("../../assets/ringtone.wav") as number;
+
+/**
+ * With the app in the background, how long the native ring (the daemon's
+ * data-only push, `modules/pew-ring`) gets to take a ring before the app
+ * rings it itself: the push and the socket carry the same ring.
+ */
+const NATIVE_GRACE_MS = 4_000;
+
+/** Ring answers already acted on: `getInitialURL` repeats the cold-start link on every mount. */
+const answeredRings = new Set<string>();
 
 interface Options {
   post: (message: unknown) => boolean;
@@ -65,19 +76,9 @@ export function useAndroidRing({ post, online, consented, callActive, onAnswer }
     [stop],
   );
 
-  /** Every opened daemon frame; only `voice.ring` matters here. */
-  const onFrame = useCallback(
-    (message: unknown) => {
-      const ring = readRing(message);
-      if (!ring) return;
-      const action = ringAction({ systemRings: canRing, consented: opts.current.consented, callActive: opts.current.callActive });
-      if (action === "ignore") return;
-      const inBackground = AppState.currentState !== "active";
-      if (action === "banner") {
-        // Not yet agreed to calls: the banner only, whose tap asks first.
-        if (inBackground) void notifyRing(ring);
-        return;
-      }
+  /** The tone, the card, and in the background the banner. */
+  const ringHere = useCallback(
+    (ring: IncomingRing, inBackground: boolean) => {
       stop();
       current.current = ring;
       setIncoming(ring);
@@ -95,6 +96,65 @@ export function useAndroidRing({ post, online, consented, callActive, onAnswer }
     [stop, end],
   );
 
+  /** Every opened daemon frame; only `voice.ring` matters here. */
+  const onFrame = useCallback(
+    (message: unknown) => {
+      const ring = readRing(message);
+      if (!ring) return;
+      const action = ringAction({ systemRings: canRing, consented: opts.current.consented, callActive: opts.current.callActive });
+      if (action === "ignore") return;
+      const inBackground = AppState.currentState !== "active";
+      if (action === "banner") {
+        // Not yet agreed to calls: the banner only, whose tap asks first.
+        if (inBackground) void notifyRing(ring);
+        return;
+      }
+      if (inBackground && nativeRinger) {
+        // The native ring has it unless it fails to arrive: ring here only then.
+        setTimeout(() => {
+          if (ringClaimed(ring.ringId) || !claimRing(ring.ringId)) return;
+          ringHere(ring, AppState.currentState !== "active");
+        }, NATIVE_GRACE_MS);
+        return;
+      }
+      if (!claimRing(ring.ringId)) return;
+      ringHere(ring, inBackground);
+    },
+    [ringHere],
+  );
+
+  // Answer on the native ring's notification: it opens `pew2://ring/answer`.
+  useEffect(() => {
+    if (!nativeRinger) return;
+    const handle = (url: string | null) => {
+      const answered = url ? answeredRing(url) : undefined;
+      if (!answered || answeredRings.has(answered.ringId)) return;
+      answeredRings.add(answered.ringId);
+      stopNativeRing();
+      stop();
+      opts.current.onAnswer(answered.focus);
+    };
+    void Linking.getInitialURL()
+      .then(handle)
+      .catch(() => {});
+    const subscription = Linking.addEventListener("url", ({ url }) => handle(url));
+    return () => subscription.remove();
+  }, [stop]);
+
+  // Declines and misses on the native ring, for the daemon: on start and on every return to the app.
+  useEffect(() => {
+    if (!nativeRinger) return;
+    const collect = () => {
+      const ended = takeEndedRings();
+      if (ended.length > 0) setUnsent((list) => [...list, ...ended.map((item) => ({ t: "voice.end" as const, callId: item.ringId, reason: item.reason }))]);
+    };
+    collect();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") collect();
+    });
+    return () => subscription.remove();
+  }, []);
+
   const answer = useCallback(() => {
     const ring = current.current;
     stop();
@@ -104,6 +164,7 @@ export function useAndroidRing({ post, online, consented, callActive, onAnswer }
 
   // A call started some other way (the banner tapped, Talk pressed): stop ringing.
   useEffect(() => {
+    if (callActive) stopNativeRing();
     if (callActive && current.current) stop();
   }, [callActive, stop]);
 

@@ -1,0 +1,34 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    Pew ringing an Android phone like a call, with the app closed and the
+    phone locked. A notification only ever plays a short alert sound, so the
+    ring arrives as a data-only push, and this service plays the phone's own
+    ringtone on repeat for up to 30 seconds with Answer and Decline, from a
+    short foreground service (Android 14+ `shortService`, no extra grant).
+    Merged into the app's manifest, so app.json needs nothing for it.
+  -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.VIBRATE" />
+
+  <application>
+    <!--
+      Priority 1: in front of expo-notifications' service (-1), which gets every
+      message that is not a ring, so alerts and push tokens work as before.
+    -->
+    <service
+      android:name="expo.modules.pewring.PewRingMessagingService"
+      android:exported="false">
+      <intent-filter android:priority="1">
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+      </intent-filter>
+    </service>
+    <service
+      android:name="expo.modules.pewring.PewRingService"
+      android:exported="false"
+      android:foregroundServiceType="shortService" />
+    <receiver
+      android:name="expo.modules.pewring.PewRingReceiver"
+      android:exported="false" />
+  </application>
+</manifest>

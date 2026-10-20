@@ -100,7 +100,12 @@
           "//": "For the connecting ringtone only: it records nothing, so it must not touch NSMicrophoneUsageDescription (expo-speech-recognition owns that key) and must not ask for background recording."
         }
       ],
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "sounds": ["./assets/pew_ring.wav"]
+        }
+      ],
       [
         "expo-image-picker",
         {

@@ -60,8 +60,17 @@ module.exports = ({ config }) => {
   const owner = process.env.EAS_OWNER ?? local.owner;
   const projectId = process.env.EAS_PROJECT_ID ?? local.projectId;
 
+  // Android push (the ring with the app closed) needs Firebase. The file is
+  // one person's Firebase project, so it is gitignored like eas-project.json
+  // and only used where it exists; without it the build is what it was.
+  const googleServices = path.join(__dirname, "google-services.json");
+  const android = fs.existsSync(googleServices)
+    ? { android: { ...expo.android, googleServicesFile: "./google-services.json" } }
+    : {};
+
   return {
     ...expo,
+    ...android,
     ...(owner ? { owner } : {}),
     ...(projectId
       ? { extra: { ...expo.extra, eas: { ...expo.extra?.eas, projectId } } }

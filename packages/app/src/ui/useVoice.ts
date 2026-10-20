@@ -299,6 +299,8 @@ export function useVoice({ post, online }: Options) {
   const dismiss = useCallback(() => dispatch({ type: "reset" }), [dispatch]);
   /** Tap Pew mid-sentence: stop it and listen (the mic is closed while it talks). */
   const interrupt = useCallback(() => dispatch({ type: "interrupt" }), [dispatch]);
+  /** A line typed on the call screen: Pew hears it as the user's turn. */
+  const type = useCallback((text: string) => dispatch({ type: "typed", text }), [dispatch]);
   /** The user answered the call screen's card by tapping: send it, and tell Pew. */
   const answerOnScreen = useCallback(
     (input: Omit<Extract<CallInput, { type: "answeredOnScreen" }>, "type">) => dispatch({ type: "answeredOnScreen", ...input }),
@@ -371,7 +373,7 @@ export function useVoice({ post, online }: Options) {
     };
   }, [live, micLevel]);
 
-  return { knowledge, inbox, call, board, micLevel, speech, startCall, hangUp, setMuted, dismiss, interrupt, answerOnScreen, login, setMode, setPrefs, arm, forgetHistory, onFrame };
+  return { knowledge, inbox, call, board, micLevel, speech, startCall, hangUp, setMuted, dismiss, interrupt, type, answerOnScreen, login, setMode, setPrefs, arm, forgetHistory, onFrame };
 }
 
 export type Voice = ReturnType<typeof useVoice>;

@@ -121,6 +121,23 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
     return;
   }
   const message = result.data;
+  // A conversation that moved into its own app's window under a new id, still
+  // addressed by its old one (the phone missed the move on a dropped
+  // connection). A prompt or an open re-announces it, so the phone takes the
+  // new id; anything else just follows it. See `Daemon.forwardedSession`.
+  if ("sessionId" in message && typeof message.sessionId === "string") {
+    const moved = daemon.forwardedSession(message.sessionId);
+    if (moved) {
+      const announce = message.t === "session.prompt" || message.t === "desk.open";
+      const now = announce ? (daemon.reopenNative(moved) ?? moved) : moved;
+      console.log(`[desk] ${message.t} for ${message.sessionId} followed to ${now}`);
+      (message as { sessionId: string }).sessionId = now;
+      if (message.t === "desk.open") {
+        reply({ t: "desk.opened", requestId: message.requestId, ok: true, app: "iTerm", message: "It's already open in OG Coder on the computer." });
+        return;
+      }
+    }
+  }
   // Any frame from a client is someone using this machine: keep-awake counts it.
   daemon.noteClientActivity();
 
@@ -217,6 +234,12 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         const mirrorId = daemon.nativeSessionFor(message.providerId, message.agentSessionId);
         // Re-keyed and replayed whole, announced to every client like a resume.
         if (mirrorId && daemon.reopenNative(mirrorId)) break;
+        // Already running here: the same session again, not a second agent.
+        const runningId = daemon.liveSessionFor(message.providerId, message.agentSessionId);
+        if (runningId && daemon.reannounce(runningId)) {
+          console.log(`[resume] ${message.agentSessionId} is already running as ${runningId}: reusing it`);
+          break;
+        }
         const recorded = await daemon.agentSessionCwd(
           message.providerId,
           message.agentSessionId,
@@ -297,7 +320,11 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           reply(errorMessage("push_unidentified", "Say hello before registering for push."));
           break;
         }
-        if (!daemon.pushTargets.register(deviceId, message.token, message.platform)) {
+        const fresh = !daemon.pushTargets.entries().some(([id, target]) => id === deviceId && target.token === message.token);
+        if (daemon.pushTargets.register(deviceId, message.token, message.platform, message.ringer)) {
+          // Once per phone and token, so "why didn't it ring" has an answer in the log.
+          if (fresh) console.log(`[push] '${deviceId}' registered for alerts (${message.platform}${message.ringer === "native" ? ", rings like a call" : ""})`);
+        } else {
           // Said out loud rather than ignored: a silently rejected token looks
           // exactly like a working one until someone waits for a notification
           // that never comes.

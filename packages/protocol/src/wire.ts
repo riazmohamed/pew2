@@ -987,6 +987,16 @@ export const PushRegister = z.object({
    */
   token: z.string().min(1),
   platform: z.enum(["ios", "android"]),
+  /**
+   * Android: `"native"` when this app rings like a call itself (the phone's
+   * ringtone on repeat, Answer and Decline, app closed or phone locked). The
+   * daemon then sends a ring as a data-only push the app turns into that
+   * call; a notification could only ever play a short alert sound. Optional
+   * both ways: absent, or a value this daemon does not know, a ring is the
+   * ordinary alert, as before. A string, not an enum, so a newer app's value
+   * never gets its whole registration refused.
+   */
+  ringer: z.string().max(32).optional(),
 });
 
 /**

@@ -25,6 +25,8 @@ export interface SessionStatus {
   lastLines: string[];
   /** While working: what it is doing right now (its current tool, or latest line). */
   activity?: string;
+  /** Its last turn stopped on a usage or rate limit: the words that said so. */
+  limit?: string;
 }
 
 const fn = (name: string, description: string, properties: Record<string, unknown> = {}, required: string[] = []) => ({
@@ -123,8 +125,26 @@ export function voiceTools() {
         project: { type: "string", description: "The project's folder name, as they said it." },
         agent: { type: "string", description: "Only if they named the agent." },
         text: { type: "string", description: "The first message for the agent, close to their own words." },
+        model: { type: "string", description: "Only if they named a model for it (\"on GPT\", \"use kimi\")." },
       },
       ["project"],
+    ),
+    fn(
+      "list_models",
+      "The models an open session can switch to, and the one it is on. For \"which models are there?\" or \"what else could it use?\": read three or four out. Changes nothing.",
+      {
+        session_id: { type: "string", description: "The session's id from the briefing (its folder name also works)." },
+      },
+      ["session_id"],
+    ),
+    fn(
+      "set_model",
+      "Switch an open session's model, as the model pill on the phone does. For \"switch billing to GPT\" or \"use sonnet\". With no model given, switches off Claude to the first GPT model.",
+      {
+        session_id: { type: "string", description: "The session's id from the briefing (its folder name also works)." },
+        model: { type: "string", description: "The model as they said it: a maker (\"GPT\", \"Claude\", \"Gemini\") or a name (\"sonnet\", \"sol\", \"kimi\")." },
+      },
+      ["session_id"],
     ),
     fn("end_call", "The user is done. Say a short goodbye; the call ends."),
   ];
@@ -152,7 +172,7 @@ Staying current:
 Talking to a coding agent (tell_agent):
 - Only the agent can look at the code; you can't. When they want something looked into or done in a project, pass it to that project's agent. When they only want to know how the agent is doing, use get_status. If you can't tell which they mean, ask.
 - Send it close to their own words, usually one sentence, as a developer would type it into the chat. Tidy up speech (fillers, "it" for the project) but never expand it: don't add steps, checks, requirements or details they didn't ask for. No greeting, names or small talk.
-- If it's unclear what they want done, ask them first.
+- If it's unclear what they want done, ask them first. "Pass this on" or "tell it that" with nothing said to pass on is unclear: ask "What should I tell it?". Never write the message yourself.
 - After sending, say just "Sent." (or "Queued." if it's busy). When it finishes you'll be told; give them the outcome in a sentence.
 - One request can need two tools: "tell billing to check the logs and call me back when it's done" is tell_agent ("Check the logs.") then call_me_back with when_done. Do every part they asked for. What's meant for you (calling them back, ringing) never goes in the agent's text.
 
@@ -179,7 +199,13 @@ Rules:
 - When they answer by voice, call the tool as usual: the card shows your pick before it goes.
 - A system message may say the user answered something on screen: don't ask it again or call a tool for it; confirm in a few words ("Got it, keep v1.") and move to the next item.
 - If the user says call me back in N minutes, call call_me_back. If they say bye or that's all, call end_call.
-- If they ask to be called (or not) about a session when it needs them, call set_ring.`;
+- If they ask to be called (or not) about a session when it needs them, call set_ring.
+
+Models and limits:
+- If they ask to change a session's model, call set_model. Say the project and the new model in one line.
+- If they ask which models there are, or what else it could use, call list_models and read a few out. Never switch until they name one.
+- If a session's last reply says it hit a usage or rate limit ("You've hit your session limit"), tell them in one line which project and when it resets if it says, then offer: "Want me to switch it to GPT?" For OG Coder, set_model does that. Claude Code only has Claude models, so for it offer to carry the request on in OG Coder on GPT: start_chat in that project with agent "OG Coder", model "GPT", and their last request as the text. Only after they say yes.
+- Every time you name a session, say its project (folder) name, never just "it", so they always know which project you're on.`;
 
 /** The instructions plus the briefing: the inbox and the last lines of each relevant session. */
 /** Sessions listed in the briefing at most; past that, get_status has them all. */
@@ -231,7 +257,7 @@ export function buildInstructions(
       const name = status.folder ?? status.agentName ?? "a session";
       const agent = status.agentName && status.agentName !== name ? ` (${status.agentName})` : "";
       const doing = status.working && status.activity ? `, ${status.activity}` : "";
-      lines.push(`- ${name}${agent}: ${status.working ? "working" : "idle"}${doing}. [tool id: ${status.sessionId}]`);
+      lines.push(`- ${name}${agent}: ${status.working ? "working" : "idle"}${doing}${status.limit ? `. HIT A USAGE LIMIT: ${status.limit}` : ""}. [tool id: ${status.sessionId}]`);
       const recent = rank(status) < 2 ? status.lastLines : status.lastLines.slice(-1);
       for (const line of recent) lines.push(`    ${line}`);
     }
@@ -256,7 +282,9 @@ export function buildSessionConfig(instructions: string) {
     output_modalities: ["audio"],
     audio: {
       input: {
-        transcription: { model: "gpt-4o-transcribe" },
+        // English: without it, road and engine noise came back as Japanese,
+        // Urdu or Swedish in the captions and the call history (20 Oct).
+        transcription: { model: "gpt-4o-transcribe", language: "en" },
         // Snappy turns: a short pause ends your turn. Measured with pew2's own
         // config (latency-probe.ts in the goal folder): Pew's first audio about
         // 1.06 s after you stop, against 1.30 s with semantic_vad "medium" and

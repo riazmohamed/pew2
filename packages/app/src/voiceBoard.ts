@@ -464,6 +464,22 @@ export function spotlightOf(state: BoardState, call: Pick<CallState, "tools" | "
   return focus && lanes.has(focus) ? focus : undefined;
 }
 
+/**
+ * The project the call is on right now, for the line at the top of the call
+ * screen: the spotlit lane's folder (and agent), else the one the call was
+ * placed from. Undefined before Pew has touched any chat and with no place.
+ */
+export function onProject(
+  state: BoardState,
+  call: Pick<CallState, "tools" | "inbox" | "focus">,
+  place?: { folder?: string; agentName?: string },
+): { folder: string; agentName?: string } | undefined {
+  const id = spotlightOf(state, call);
+  const session = id ? state.sessions.find((entry) => entry.sessionId === id) : undefined;
+  if (session?.folder) return { folder: session.folder, ...(session.agentName ? { agentName: session.agentName } : {}) };
+  return place?.folder ? { folder: place.folder, ...(place.agentName ? { agentName: place.agentName } : {}) } : undefined;
+}
+
 /** Everything the screen draws from the board, `now`. */
 export function boardView(
   state: BoardState,

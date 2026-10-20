@@ -62,6 +62,7 @@ import type { SessionStatus } from "./voice/session.js";
 import type { VoiceChat } from "./voice/chats.js";
 import { permissionOptionsFrom, type PermissionOption } from "./voice/tools.js";
 import { lastAgentLines, currentActivity } from "./voice/replies.js";
+import { hitLimit } from "./voice/models.js";
 import {
   GG_GOALS_ID,
   GG_PROVIDER_ID,
@@ -429,8 +430,26 @@ export class Daemon extends DaemonConnectSession {
           // "what did it find?". The whole list: a line or three each.
           lastLines: lastAgentLines(session.log.events, sessionId ? 8 : 3),
           ...(session.working ? { activity: currentActivity(session.log.events) } : {}),
+          ...this.limitOf(session.log.sessionId, session.working === true, session.log.events),
         };
       });
+  }
+
+  /** How each session's last turn failed, while it stays the last (`noteTurnEnd`). */
+  private readonly turnFailures = new Map<string, string>();
+
+  /** A turn ended: remember a failure's reason, forget it on a clean end. */
+  noteTurnEnd(sessionId: string, failure?: string): void {
+    if (failure) this.turnFailures.set(sessionId, failure.slice(0, 300));
+    else this.turnFailures.delete(sessionId);
+  }
+
+  /** `{ limit }` when an idle session's last turn stopped on a usage or rate limit. */
+  private limitOf(sessionId: string, working: boolean, events: readonly wire.SessionEvent[]): { limit?: string } {
+    if (working) return {};
+    const failure = this.turnFailures.get(sessionId);
+    const limit = hitLimit([...lastAgentLines(events, 4), ...(failure ? [failure] : [])]);
+    return limit ? { limit } : {};
   }
 
   /** The options of a still-open permission, or undefined once it is answered. */
@@ -442,6 +461,17 @@ export class Daemon extends DaemonConnectSession {
   /** An open `ask_user`'s questions, for the voice model to read the choices out. */
   voiceAskQuestions(sessionId: string, requestId: string): unknown[] | undefined {
     return this.sessions.get(sessionId)?.asks?.get(requestId);
+  }
+
+  /** A session's model menu and current model, for `set_model`. Undefined: none, or no such session. */
+  voiceModels(sessionId: string): { current?: string; options: { value: string; name?: string }[] } | undefined {
+    if (!this.sessions.has(sessionId)) return undefined;
+    const model = this.configOptions(sessionId).find((option) => option.id === "model" || option.category === "model");
+    if (!model?.options?.length) return undefined;
+    return {
+      ...(typeof model.currentValue === "string" ? { current: model.currentValue } : {}),
+      options: model.options.map((option) => ({ value: option.value, name: option.name })),
+    };
   }
 
   /** Whether a turn is running, so a voice message knows it will queue. */

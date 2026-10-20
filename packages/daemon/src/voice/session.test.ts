@@ -61,7 +61,9 @@ describe("session config", () => {
     expect(config.audio.output.voice).toBe("marin");
     expect(voiceTools().map((t) => t.name)).toEqual([
       "list_waiting", "answer_permission", "answer_question", "decide_plan",
-      "tell_agent", "get_status", "call_me_back", "set_ring", "open_chat", "start_chat", "end_call",
+      "tell_agent", "get_status", "call_me_back", "set_ring", "open_chat", "start_chat",
+      "list_models",
+      "set_model", "end_call",
     ]);
   });
 

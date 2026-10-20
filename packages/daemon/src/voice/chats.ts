@@ -37,6 +37,8 @@ export interface ChatPort {
   tellAgent(sessionId: string, text: string): { ok: boolean; queued?: boolean };
   statuses(sessionId?: string): SessionStatus[];
   mark?(sessionId: string, line?: { kind: "pew" | "note"; text: string }): void;
+  /** Switch the new chat's model before its first message. Undefined: unknown model (said once, then the default runs). */
+  setModel?(sessionId: string, said: string): Promise<string | undefined>;
 }
 
 const words = (text: string) =>
@@ -240,6 +242,9 @@ export async function runChatTool(name: string, rawArgs: string, port: ChatPort)
       const agent = pickAgent(chats, agents, cwd, str(args.agent), port.contextProvider());
       if ("say" in agent) return fail(agent.say, "agent");
       const sessionId = await port.start(agent.providerId, cwd);
+      // Before the first message, so that message already runs on it.
+      const wantModel = str(args.model);
+      const model = wantModel && port.setModel ? await port.setModel(sessionId, wantModel).catch(() => undefined) : undefined;
       const text = str(args.text);
       let queued = false;
       if (text) {
@@ -255,7 +260,9 @@ export async function runChatTool(name: string, rawArgs: string, port: ChatPort)
         project: projectName(cwd),
         agent: agent.agentName,
         sent: text !== undefined,
-        say: text ? `Started ${agent.agentName} in ${projectName(cwd)}${queued ? "; it's queued" : ""}.` : `${agent.agentName} is ready in ${projectName(cwd)}.`,
+        ...(model ? { model } : {}),
+        ...(wantModel && !model ? { model_not_found: wantModel } : {}),
+        say: `${text ? `Started ${agent.agentName} in ${projectName(cwd)}` : `${agent.agentName} is ready in ${projectName(cwd)}`}${model ? ` on ${model}` : ""}${queued ? "; it's queued" : ""}.${wantModel && !model ? ` It doesn't have ${wantModel}, so it's on its usual model.` : ""}`,
       });
     }
 

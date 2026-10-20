@@ -67,6 +67,7 @@ import {
   type LineView,
   type StatusTone,
   type StatusView,
+  onProject,
 } from "../voiceBoard";
 import { haptics } from "./haptics";
 import { DotGrid } from "./stage/DotGrid";
@@ -364,6 +365,7 @@ export function MissionControl({ call, board, providers, onHangUp, onMute, onDis
   const elapsed = call.phase === "connecting" ? 0 : (over ? endedAt : now) - liveAt;
 
   const top = insets.top;
+  const project = onProject(board, call);
   const { width, height } = useWindowDimensions();
   const voice = useMemo(() => voiceInk(color), [color]);
 
@@ -518,6 +520,15 @@ export function MissionControl({ call, board, providers, onHangUp, onMute, onDis
         <Caption width={width} top={top + PEW_TOP + 14} caption={caption} said={said} voiceLine={voiceLine} connecting={call.phase === "connecting"} listening={listening} speaking={call.userSpeaking} micLevel={micLevel} />
       </Animated.View>
 
+      {/* Which project the call is on, always in view: the lanes come and go,
+          and a phone in a car mount is read at a glance. */}
+      {live && project ? (
+        <View style={[styles.onProject, { bottom: insets.bottom + 32 + CONTROLS_H + 10 }]} pointerEvents="none" accessibilityLiveRegion="polite">
+          <Led tone="dim" size={11} numberOfLines={1} maxFontSizeMultiplier={ROW_FONT_MAX}>
+            {`On ${project.folder}${project.agentName ? ` · ${project.agentName}` : ""}`}
+          </Led>
+        </View>
+      ) : null}
       <View style={[styles.controls, { bottom: insets.bottom + 32 }]}>
         <CircleButton
           size={60}
@@ -1513,6 +1524,7 @@ const styles = StyleSheet.create({
     borderColor: theme.stage.dash,
   },
   foldFolder: { flexShrink: 1, color: theme.color.glyph, fontSize: theme.font.small, lineHeight: 18 },
+  onProject: { position: "absolute", left: theme.gutter * 2, right: theme.gutter * 2, alignItems: "center" },
   controls: { position: "absolute", left: 0, right: 0, height: CONTROLS_H, paddingHorizontal: 52, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   /** Holds the third control's place so End stays centred. */
   controlSpacer: { width: 60, height: 60 },

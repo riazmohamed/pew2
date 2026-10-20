@@ -15,6 +15,18 @@ Dates are the day the tag was cut.
 
 ### Added
 
+- **Change a chat's model by voice.** On a call, "switch billing to GPT"
+  or "use sonnet" switches it, and "which models are there?" reads a few
+  out without switching. If the chat is open in OG Coder on the computer,
+  the switch happens there too.
+- **Pew notices a usage limit.** When a chat stops on Anthropic's limit
+  (or any rate limit), Pew says which project and when it resets, and
+  offers to switch it to GPT. Claude Code only has Claude models, so for
+  it Pew offers to carry the request on in OG Coder on GPT instead.
+- **Pew rings you when work you handed over is done.** With *Ring me* on,
+  give a chat something to do on a call, hang up, and Pew rings when it
+  finishes or needs you. Its first words are the news, not a bare hello.
+- **The call screen says which project it is on,** above the call buttons.
 - **Merged the original repo up to 0.9.25.** Calls with Pew (ask about your
   agents, answer approvals and questions by voice, per-chat call history),
   *Ring me*, onboarding, the home dashboard, a new sound palette and a QR-only
@@ -96,6 +108,11 @@ Dates are the day the tag was cut.
 
 ### Fixed
 
+- **Call captions in the wrong language.** Speech sometimes came back as
+  Japanese, Urdu or Swedish in the captions and call history. Transcription
+  is now English.
+- **Pew made up a message to an agent** when told "pass this on" with
+  nothing to pass on. It now asks what to send.
 - **The project row in the drawer scrolls again.** A sideways swipe on it
   closed the drawer instead of moving through your projects. Now a swipe that
   starts on the row scrolls it, and a swipe anywhere else still closes the

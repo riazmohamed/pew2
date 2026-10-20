@@ -244,6 +244,15 @@ test("open_chat reopens a stored chat that wasn't open; start_chat starts one an
     await new Promise((r) => setTimeout(r, 600));
     const lines = daemon.voiceStatuses(started.session_id)[0]?.lastLines.join(" ") ?? "";
     expect(lines).toContain("hello there");
+
+    // "Carry it on in ... on <model>": the new chat is switched before its first message.
+    const onMax = await tool(opened.callId, "start_chat", { project, text: "again", model: "max" });
+    expect(onMax).toMatchObject({ ok: true, model: "Echo Max" });
+    expect(daemon.configOptions(onMax.session_id).find((option) => option.id === "model")?.currentValue).toBe("echo-max");
+    // A model it doesn't have still starts the chat, on its usual model, and says so.
+    const unknown = await tool(opened.callId, "start_chat", { project, model: "llama" });
+    expect(unknown).toMatchObject({ ok: true, model_not_found: "llama" });
+    expect(unknown.say).toContain("doesn't have llama");
   } finally {
     daemon.closeAll();
   }

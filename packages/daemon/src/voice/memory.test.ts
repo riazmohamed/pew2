@@ -6,6 +6,12 @@ const T = 1_800_000_000_000;
 test("a callback says so first", () => {
   expect(callbackLines(T + 60_000, { askedAt: T })[0]).toContain("THIS CALL: you rang them because 1 min ago they asked you to call them back");
   expect(callbackLines(T)).toEqual([]);
+  // A ring about a project: the first words carry its news, unasked.
+  const handed = callbackLines(T + 60_000, { askedAt: T, about: "viral-kid", handed: true })[0]!;
+  expect(handed).toContain("they gave viral-kid work on a call and it is done now");
+  expect(handed).toContain("straight away the news from viral-kid");
+  expect(handed).toContain("You called them");
+  expect(callbackLines(T + 60_000, { askedAt: T, about: "billing" })[0]).toContain("call them back when billing was done");
 });
 
 test("what Pew did on a call becomes one line, only when it worked", () => {

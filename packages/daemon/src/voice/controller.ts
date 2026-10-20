@@ -89,6 +89,8 @@ export class VoiceController {
   private waitingOn?: { sessionId: string; folder?: string; since: number; started: boolean };
   /** When "call me back" was asked, and when that callback last rang. */
   private callbackAskedAt?: number;
+  /** The project a when-done callback is about, and whether it was work handed over on a call. */
+  private callbackAbout?: { folder?: string; handed: boolean };
   private callbackRungAt?: number;
   private readonly calls = new Set<string>();
   private callCounter = 0;
@@ -262,7 +264,7 @@ export class VoiceController {
     const items = this.items;
     const known = context && statuses.some((status) => status.sessionId === context) ? context : undefined;
     const callback = this.callbackRungAt !== undefined && this.now() - this.callbackRungAt <= CALLBACK_ANSWER_MS && this.callbackAskedAt !== undefined
-      ? { askedAt: this.callbackAskedAt }
+      ? { askedAt: this.callbackAskedAt, ...(this.callbackAbout?.folder ? { about: this.callbackAbout.folder, handed: this.callbackAbout.handed } : {}) }
       : undefined;
     this.callbackRungAt = undefined;
     // The thread this call continues: the callback's, else the chat they
@@ -275,7 +277,10 @@ export class VoiceController {
         : place
           ? {}
           : { key: HOME_THREAD };
-    if (callback) this.callbackThread = undefined;
+    if (callback) {
+      this.callbackThread = undefined;
+      this.callbackAbout = undefined;
+    }
     const earlier = thread.key ? await this.options.threads?.get(thread.key) : undefined;
     const about = thread.key && thread.key !== HOME_THREAD ? `the ${earlier?.label ?? thread.label ?? "same"} chat` : undefined;
     const remembered = [...callbackLines(this.now(), callback), ...threadLines(earlier, this.now(), about)];
@@ -383,13 +388,39 @@ export class VoiceController {
     // Only a call this daemon minted adds to a thread: a declined ring has no transcript.
     const thread = this.callThreads.get(callId);
     if (this.calls.has(callId) && thread) void this.saveCall(thread, transcript, this.actions.get(callId) ?? []);
+    const handed = this.calls.has(callId) ? this.handedWork(callId) : undefined;
     this.callThreads.delete(callId);
     this.actions.delete(callId);
     for (const key of this.answered.keys()) if (key.startsWith(`${callId}\u0000`)) this.answered.delete(key);
     this.calls.delete(callId);
     if (this.board?.callId === callId) this.closeBoard();
     this.state = policy.callEnded(this.state, this.now(), reason);
+    // Work handed over on the call and still running: ring when it is done,
+    // as if they had said "call me when it's done". Only with Ring me on,
+    // and never over a callback they asked for themselves.
+    if (handed && !this.waitingOn && this.state.callbackAt === undefined) {
+      const prefs = this.currentPrefs;
+      if (prefs.mode === "onthego" && !policy.ringExpired(prefs, this.now())) {
+        this.log(`[voice] work handed to ${handed.folder ?? handed.sessionId} on the call: ring when it's done`);
+        this.callWhenDone(handed.sessionId, handed.folder);
+        this.callbackAbout = { ...(handed.folder ? { folder: handed.folder } : {}), handed: true };
+        return;
+      }
+    }
     this.schedule();
+  }
+
+  /**
+   * The newest chat this call gave work to (`tell_agent`, or `start_chat`
+   * with a first message) that is still working or has not started yet.
+   */
+  private handedWork(callId: string): { sessionId: string; folder?: string } | undefined {
+    const sent = (this.actions.get(callId) ?? []).filter((action) => action.sessionId && /^(Sent |Started a chat in [^:]+: )/.test(action.text));
+    for (const action of sent.reverse()) {
+      const source = this.host.boardSources?.().find((entry) => entry.sessionId === action.sessionId);
+      if (source) return { sessionId: source.sessionId, ...(source.folder ? { folder: source.folder } : {}) };
+    }
+    return undefined;
   }
 
   /**
@@ -401,6 +432,7 @@ export class VoiceController {
     this.waitingOn = { sessionId, folder, since: this.now(), started: false };
     this.callbackThread = { sessionId, ...this.host.threadFor?.(sessionId) };
     this.callbackAskedAt = this.now();
+    this.callbackAbout = { ...(folder ? { folder } : {}), handed: false };
     this.log(`[voice] call back when ${folder ?? sessionId} is done`);
     this.checkWaitedOn();
   }
@@ -436,6 +468,10 @@ export class VoiceController {
 
   callMeBack(minutes: number, callId?: string): void {
     this.callbackAskedAt = this.now();
+    // A clock callback asked on a call is about nothing in particular.
+    // `checkWaitedOn` calls this too (no call id), for a closed session: that
+    // keeps what `callWhenDone` set.
+    if (callId !== undefined) this.callbackAbout = undefined;
     // The callback continues the thread of the call it was asked on.
     const thread = callId ? this.callThreads.get(callId) : undefined;
     if (thread) this.callbackThread = thread;

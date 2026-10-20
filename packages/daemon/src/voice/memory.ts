@@ -49,6 +49,8 @@ export function actionLine(name: string, rawArgs: string, output: string, nameOf
       return `Started a chat in ${str(args.project) ?? "a project"}${str(args.text) ? `: "${clipText(str(args.text)!, 120)}"` : ""}`;
     case "call_me_back":
       return "Booked the callback they asked for";
+    case "set_model":
+      return `Switched ${session(args.session_id)} to ${str((result as { model?: unknown }).model) ?? str(args.model) ?? "another model"}`;
     case "set_ring":
       return `Set ${session(args.session_id)} to ${args.on === false ? "not ring" : "ring"} them`;
     default:
@@ -64,10 +66,20 @@ const ago = (ms: number) => {
 };
 
 /** Why this call is happening, when it is a callback: it leads the briefing (`THIS CALL:`). */
-export function callbackLines(now: number, callback?: { askedAt: number }): string[] {
+export function callbackLines(now: number, callback?: { askedAt: number; about?: string; handed?: boolean }): string[] {
   if (!callback) return [];
+  const why = callback.about
+    ? callback.handed
+      ? `${ago(now - callback.askedAt)} they gave ${callback.about} work on a call and it is done now`
+      : `${ago(now - callback.askedAt)} they asked you to call them back when ${callback.about} was done`
+    : `${ago(now - callback.askedAt)} they asked you to call them back`;
+  // They answered a ringing phone, maybe while driving: the reason comes
+  // first, unasked. A bare hello left them asking "what was it?" (20 Oct).
+  const news = callback.about
+    ? `then straight away the news from ${callback.about}: if it is waiting on them, read out what it asks; otherwise say in one sentence what it did, from its last reply in the briefing`
+    : "then straight away the first thing waiting, if anything is";
   return [
-    `THIS CALL: you rang them because ${ago(now - callback.askedAt)} they asked you to call them back, and they just picked up. Your first words: a short hello saying you're calling them back. Then wait for them.`,
+    `THIS CALL: you rang them because ${why}. They just picked up. Your first words: "It's Pew, calling you back", ${news}. Then wait for them. You called them, not the other way round: say so if they ask.`,
   ];
 }
 

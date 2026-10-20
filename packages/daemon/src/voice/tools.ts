@@ -8,6 +8,7 @@
  */
 import type { wire } from "@pew2/protocol";
 import type { SessionStatus } from "./session.js";
+import { fallbackModel, matchModel, type ModelChoice } from "./models.js";
 
 /** What the tools need from the daemon. The handler supplies it. */
 export interface VoicePort {
@@ -34,6 +35,10 @@ export interface VoicePort {
   setRing?(sessionId: string, on: boolean): { ringing: boolean };
   /** Pew acted on a session: touch its lane on the call board, optionally with a line. */
   mark?(sessionId: string, line?: { kind: "pew" | "note"; text: string }): void;
+  /** A session's model menu and current model. Absent: an older host, or no menu. */
+  models?(sessionId: string): { current?: string; options: ModelChoice[] } | undefined;
+  /** Switch a session's model, as the phone's model pill does. Resolves once the agent took it. */
+  setModel?(sessionId: string, value: string): Promise<void>;
 }
 
 export interface PermissionOption {
@@ -217,6 +222,65 @@ export function resolveSession(said: string, statuses: readonly SessionStatus[])
   return partial.length === 1 ? partial[0]!.sessionId : undefined;
 }
 
+/**
+ * `set_model`: switch a session's model by voice. Async (the agent confirms),
+ * so it is run apart from `runVoiceTool`. Never throws.
+ */
+export async function runModelTool(rawArgs: string, port: VoicePort, list = false): Promise<ToolOutcome> {
+  const args = parseArgs(rawArgs);
+  const said = typeof args.session_id === "string" ? args.session_id : "";
+  const sessionId = resolveSession(said, port.statuses()) ?? said;
+  const status = port.statuses(sessionId).find((entry) => entry.sessionId === sessionId);
+  if (!status) return fail("That session isn't open.", "unknown session");
+  const name = status.folder ?? status.agentName ?? "it";
+  const menu = port.models?.(sessionId);
+  if (!menu || !port.setModel || menu.options.length === 0) {
+    return fail(`${name} can't switch models from here.`, "no model menu");
+  }
+  if (list) {
+    const current = menu.options.find((option) => option.value === menu.current);
+    const names = menu.options.map((option) => option.name ?? option.value);
+    return out({
+      ok: true,
+      project: name,
+      ...(current ? { current: current.name ?? current.value } : {}),
+      models: names.slice(0, 12),
+      ...(names.length > 12 ? { more: names.length - 12 } : {}),
+      say: `${name} is on ${current?.name ?? current?.value ?? "its default"}. It could use ${names.filter((label) => label !== (current?.name ?? current?.value)).slice(0, 4).join(", ")}.`,
+    });
+  }
+  const wanted = typeof args.model === "string" && args.model.trim() ? args.model.trim() : undefined;
+  const pick = wanted ? matchModel(wanted, menu.options) : (() => {
+    const model = fallbackModel(menu.options);
+    return model ? { kind: "found" as const, model } : { kind: "none" as const };
+  })();
+  if (pick.kind === "ambiguous") {
+    return out({ ok: false, error: "ambiguous", options: pick.options.map((option) => option.name ?? option.value), say: `Which one: ${pick.options.map((option) => option.name ?? option.value).join(", ")}?` });
+  }
+  if (pick.kind === "none") {
+    // Claude Code's menu is Claude only: a Claude limit covers all of it.
+    const claudeOnly = menu.options.every((option) => /claude|opus|sonnet|haiku|fable|default/i.test(option.value));
+    return out({
+      ok: false,
+      error: "no such model",
+      ...(claudeOnly ? { claude_only: true } : {}),
+      say: claudeOnly
+        ? `${status.agentName ?? "This agent"} only has Claude models. I can carry it on in OG Coder on GPT instead.`
+        : `${name} doesn't have ${wanted ?? "another model"}.`,
+    });
+  }
+  const label = pick.model.name ?? pick.model.value;
+  if (pick.model.value === menu.current) return out({ ok: true, model: label, say: `${name} is already on ${label}.` });
+  try {
+    await port.setModel(sessionId, pick.model.value);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return fail(`${name} didn't take the switch.`, message.slice(0, 200));
+  }
+  port.mark?.(sessionId, { kind: "note", text: `Model: ${label}` });
+  return out({ ok: true, model: label, project: name, say: `${name} is on ${label} now.` });
+}
+
 export function runVoiceTool(name: string, rawArgs: string, port: VoicePort): ToolOutcome {
   const args = parseArgs(rawArgs);
   const gone = () => fail("That one's already been handled.", "unknown or already handled item");
@@ -357,6 +421,7 @@ export function runVoiceTool(name: string, rawArgs: string, port: VoicePort): To
             ...(status.agentName ? { agent: status.agentName } : {}),
             state: waits.length > 0 ? "waiting on you" : status.working ? "working" : "idle (its turn is done)",
             ...(status.working && status.activity ? { doing_now: status.activity } : {}),
+            ...(status.limit ? { hit_usage_limit: status.limit } : {}),
             last_reply: status.lastLines,
             ...(waits.length > 0 ? { waiting_on_you: waits } : {}),
           };

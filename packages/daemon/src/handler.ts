@@ -22,7 +22,8 @@ import { lanAddresses } from "./pairing.js";
 import { wire } from "@pew2/protocol";
 import { storeGoalFiles } from "./goalFiles";
 import { readKnownProjects } from "./known-projects.js";
-import { resolveSession, runVoiceTool, type VoicePort } from "./voice/tools.js";
+import { resolveSession, runModelTool, runVoiceTool, type VoicePort } from "./voice/tools.js";
+import { matchModel } from "./voice/models.js";
 import { CHAT_TOOLS, REACH_PROJECTS, recentProjects, runChatTool, withinReach, type ChatPort } from "./voice/chats.js";
 import { actionLine, actionTarget } from "./voice/memory.js";
 
@@ -735,7 +736,9 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
               first = true;
               return CHAT_TOOLS.has(message.name)
                 ? runChatTool(message.name, message.arguments, chatPort(ctx, message.callId))
-                : runVoiceTool(message.name, message.arguments, voicePort(ctx, message.callId));
+                : message.name === "set_model" || message.name === "list_models"
+                  ? runModelTool(message.arguments, voicePort(ctx, message.callId), message.name === "list_models")
+                  : runVoiceTool(message.name, message.arguments, voicePort(ctx, message.callId));
             });
         if (first) {
           const named = (sessionId: string) => daemon.voiceStatuses(sessionId)[0]?.folder;
@@ -807,11 +810,14 @@ function runTurn(ctx: HandlerContext, sessionId: string, turn: Promise<PromptOut
   // client is driven by streamed events rather than this reply.
   turn.then(
     (outcome) => {
+      if (outcome !== "queued") daemon.noteTurnEnd(sessionId);
       if (outcome === "cancelled") idle({ outcome: "cancelled" });
       else if (outcome !== "queued") idle();
     },
     (error) => {
       const failure = errorMessage("prompt_failed", error);
+      // Kept for Pew: a usage limit reads as a failed turn, not as words.
+      daemon.noteTurnEnd(sessionId, failure.message);
       reply(failure);
       idle({ outcome: "failed", reason: failure.message });
     },
@@ -852,6 +858,12 @@ function voicePort(ctx: HandlerContext, callId: string): VoicePort {
       return { ringing: daemon.voice.currentPrefs.mode === "onthego" };
     },
     mark: (sessionId, line) => daemon.voice.markBoard(callId, sessionId, line),
+    models: (sessionId) => daemon.voiceModels(sessionId),
+    setModel: async (sessionId, value) => {
+      const configOptions = await daemon.setConfigOption(sessionId, "model", value);
+      // The phone's pills follow, as they do for a tap on another phone.
+      ctx.broadcast({ t: "session.config", sessionId, configOptions });
+    },
   };
 }
 
@@ -886,6 +898,13 @@ function chatPort(ctx: HandlerContext, callId: string): ChatPort {
     tellAgent: (sessionId, text) => port.tellAgent(sessionId, text),
     statuses: (sessionId) => port.statuses(sessionId),
     mark: (sessionId, line) => port.mark?.(sessionId, line),
+    setModel: async (sessionId, said) => {
+      const menu = daemon.voiceModels(sessionId);
+      const pick = menu ? matchModel(said, menu.options) : undefined;
+      if (pick?.kind !== "found") return undefined;
+      await port.setModel!(sessionId, pick.model.value);
+      return pick.model.name ?? pick.model.value;
+    },
   };
 }
 

@@ -39,7 +39,6 @@ export const HELP_GROUPS: Group[] = [
       { command: "pew2 service install|restart", note: "Keep the daemon running across reboots" },
       { command: "pew2 serve", note: "Run the daemon in this terminal" },
       { command: "pew2 doctor [--json]", note: "What is wrong, and the command that fixes it" },
-      { command: "pew2 voice key|status|off", note: "OpenAI key for the voice assistant" },
       { command: "pew2 chat [--here]", note: "Open a window that types live with the phone" },
       { command: "pew2 awake [on|off|status]", note: "Keep this machine from idle-sleeping while in use" },
     ],

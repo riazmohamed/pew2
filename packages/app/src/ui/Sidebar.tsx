@@ -9,13 +9,15 @@
  * panel itself is static. App owns the motion.
  */
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Gesture, GestureDetector, type PanGesture } from "react-native-gesture-handler";
+import { Alert, Dimensions, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { theme } from "../theme";
 import { withAlpha } from "../motion";
 import { CircleButton, touchSlop } from "./controls";
 import { haptics } from "./haptics";
+import { agentSound } from "../soundsPolicy";
 import { HistorySkeleton } from "./Skeleton";
 import { orderProvidersByRecency } from "../providerRecency";
 import type { DrawerRow } from "../historyMetadata";
@@ -44,6 +46,11 @@ import { DotGlyph } from "./stage/DotGlyph";
 
 interface SidebarProps {
   open: boolean;
+  /**
+   * The drawer's own swipe-to-close. The project row is a sideways list, so
+   * a sideways swipe that starts on it scrolls the projects instead.
+   */
+  closeGesture?: PanGesture;
   providers: Provider[];
   sessions: DrawerRow[];
   activeProviderId?: string;
@@ -123,9 +130,14 @@ export interface SidebarGoals {
   onDelete: (goal: GoalSummary) => void;
 }
 
-/** Rows that stagger in on open; the rest just appear. */
-const STAGGERED_ROWS = 10;
-const ROW_STAGGER_MS = 40;
+/**
+ * Rows that cascade in on open: as many as a screen could ever show (a row
+ * is at least `touch` tall), and the lists render that many up front, so
+ * every row on the first screen is mounted in time for its slot. Rows below
+ * that (scrolled into view later) just appear.
+ */
+const STAGGERED_ROWS = Math.ceil(Dimensions.get("window").height / theme.size.touch);
+const ROW_STAGGER_MS = 28;
 const RAIL_WIDTH = 64;
 const RAIL_PEW = 48;
 const RAIL_BUTTON = 52;
@@ -162,6 +174,8 @@ interface SessionRowProps {
   paused: boolean;
   /** Takes the id, so one stable callback serves every row. */
   onOpen: (id: string) => void;
+  /** When the drawer last opened (epoch ms; 0 = not yet): the cascade's shared clock. */
+  cascadeAt: number;
   /**
    * This conversation is holding an agent process on the desktop right now.
    *
@@ -223,23 +237,31 @@ function CloseAgentButton({ title, busy, onPress }: { title: string; busy: boole
  */
 const RAIL_SLEEP = [0, 5, 8, 3, 7, 2, 9, 4, 6, 1] as const;
 
-const SessionRow = memo(function SessionRow({ session, index, active, reduceMotion, paused, onOpen, meta, onLongPress, live, onClose }: SessionRowProps) {
-  // Only rows that mount while the drawer is open cascade, captured at mount:
-  // the list remounts behind a shut drawer when the daemon answers late, and a
-  // cascade replayed on every open is the glitch this avoids.
-  const [revealing] = useState(() => !paused);
+const SessionRow = memo(function SessionRow({ session, index, active, reduceMotion, paused, onOpen, meta, onLongPress, cascadeAt, live, onClose }: SessionRowProps) {
+  // The cascade is keyed to the drawer opening, not to a row's mount: each row
+  // takes its slot (index × stagger) from that one moment, so a row the list
+  // mounts in a later batch still lands after the one above it, and a row that
+  // mounts long after (behind a shut drawer, a re-render) just appears.
   const agent = useAgentColor();
   const mark = rowMark(session);
   const when = shortWhen(session.startedAt);
   const status = mark === "live" ? "Working" : mark === "attention" ? "Waiting on you" : mark === "unread" ? "New reply" : undefined;
   return (
-    <Dissolve kind="row" delay={index * ROW_STAGGER_MS} enabled={!reduceMotion && revealing && index < STAGGERED_ROWS}>
+    <Dissolve
+      kind="row"
+      dissolveKey={cascadeAt}
+      startAt={cascadeAt + index * ROW_STAGGER_MS}
+      enabled={!reduceMotion && cascadeAt > 0 && index < STAGGERED_ROWS}
+    >
       {index > 0 && <DashedRule />}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={[session.title, status, meta ?? (when ? `${when} ago` : undefined)].filter(Boolean).join(", ")}
         accessibilityState={{ selected: active }}
-        onPress={() => onOpen(session.id)}
+        onPress={() => {
+          haptics.select();
+          onOpen(session.id);
+        }}
         onLongPress={onLongPress ? () => onLongPress(session.id) : undefined}
         style={({ pressed }) => [styles.row, active && { backgroundColor: withAlpha(agent, 0.1) }, pressed && styles.pressed]}
       >
@@ -291,7 +313,7 @@ function ListHead({ label, children }: { label: string; children?: ReactNode }) 
 }
 
 /** GG Goals' half of the drawer: its goals in the same row style as chats. */
-function GoalsSection({ goals, activeSessionId, reduceMotion, paused }: { goals: SidebarGoals; activeSessionId?: string; reduceMotion: boolean; paused: boolean }) {
+function GoalsSection({ goals, activeSessionId, reduceMotion, paused, cascadeAt }: { goals: SidebarGoals; activeSessionId?: string; reduceMotion: boolean; paused: boolean; cascadeAt: number }) {
   const sorted = useMemo(() => sortGoals([...(goals.list ?? [])]), [goals.list]);
   const byId = useMemo(() => new Map(sorted.map((goal) => [goal.id, goal])), [sorted]);
   // The system spinner only ever answers a pull the user made.
@@ -332,8 +354,10 @@ function GoalsSection({ goals, activeSessionId, reduceMotion, paused }: { goals:
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         data={sorted}
-        extraData={`${activeSessionId ?? ""}:${reduceMotion}:${paused}`}
+        extraData={`${activeSessionId ?? ""}:${reduceMotion}:${paused}:${cascadeAt}`}
         keyExtractor={(goal) => goal.id}
+        initialNumToRender={STAGGERED_ROWS}
+        maxToRenderPerBatch={STAGGERED_ROWS}
         refreshControl={
           <RefreshControl
             refreshing={pulled && goals.loading}
@@ -361,6 +385,7 @@ function GoalsSection({ goals, activeSessionId, reduceMotion, paused }: { goals:
               active={goal.sessionId !== undefined && goal.sessionId === activeSessionId}
               reduceMotion={reduceMotion}
               paused={paused}
+              cascadeAt={cascadeAt}
               onOpen={open}
               onLongPress={confirmDelete}
             />
@@ -388,7 +413,7 @@ const RailAgent = memo(function RailAgent({
         accessibilityState={{ selected, disabled: !enabled }}
         onPress={() => {
           if (selected) return;
-          haptics.select();
+          haptics.chosen(agentSound(provider.id));
           onPress(provider.id);
         }}
         style={({ pressed }) => [styles.railButton, selected && { backgroundColor: withAlpha(ink, 0.13) }, !enabled && styles.unavailable, pressed && styles.pressed]}
@@ -463,12 +488,24 @@ function SidebarView({
   historyLoading = false,
   reduceMotion = false,
   goals,
+  closeGesture,
 }: SidebarProps) {
   const insets = useSafeAreaInsets();
+  // The project row's scroll, claimed before the drawer's close swipe: a
+  // swipe that starts on the row scrolls it, anywhere else still closes.
+  const tabsGesture = useMemo(() => {
+    const native = Gesture.Native();
+    return closeGesture ? native.blocksExternalGesture(closeGesture) : native;
+  }, [closeGesture]);
   const width = useDrawerWidth();
   const appActive = useAppActive();
   // Nothing animates while the drawer is shut or the app is off screen.
   const rowsStill = !open || !appActive;
+  // Stamped each time the drawer opens: every visible row cascades from here.
+  const [cascadeAt, setCascadeAt] = useState(0);
+  useEffect(() => {
+    if (open) setCascadeAt(Date.now());
+  }, [open]);
 
   // GG Coder and GG Goals pinned first, then most recently used.
   const orderedProviders = useMemo(() => orderProvidersByRecency(providers, sessions), [providers, sessions]);
@@ -568,7 +605,7 @@ function SidebarView({
               {/* Full width now, so nothing of the conversation is left to tap:
                   the drawer closes itself. */}
               {onClose && (
-                <CircleButton label="Close menu" size={40} onPress={onClose}>
+                <CircleButton label="Close menu" onPress={onClose}>
                   <DotGlyph name="close" size={14} />
                 </CircleButton>
               )}
@@ -584,12 +621,13 @@ function SidebarView({
           </View>
 
           {goals ? (
-            <GoalsSection goals={goals} activeSessionId={activeSessionId} reduceMotion={reduceMotion} paused={rowsStill} />
+            <GoalsSection goals={goals} activeSessionId={activeSessionId} reduceMotion={reduceMotion} paused={rowsStill} cascadeAt={cascadeAt} />
           ) : (
             <>
               {/* Horizontal tabs instead of a dropdown: the row scrolls, so many
                   projects still fit, and the choice is visible without a tap. */}
               {(projects.length > 0 || onBrowseFolder) && (
+                <GestureDetector gesture={tabsGesture}>
                 <FlatList
                   // Windowed: GG Coder can hold hundreds of projects, and
                   // mounting every dashed pill at once made switching to it
@@ -618,6 +656,7 @@ function SidebarView({
                   // tabs only list projects it already knows.
                   ListFooterComponent={onBrowseFolder ? <BrowseTab onPress={onBrowseFolder} /> : null}
                 />
+                </GestureDetector>
               )}
 
               <ListHead label="Latest chats">
@@ -643,12 +682,11 @@ function SidebarView({
                 data={visible}
                 // The live set joins this, or a row would keep offering to close
                 // an agent the reaper has already taken.
-                extraData={`${activeSessionId ?? ""}:${reduceMotion}:${rowsStill}:${liveSessionIds?.join(",") ?? ""}`}
+                extraData={`${activeSessionId ?? ""}:${reduceMotion}:${rowsStill}:${cascadeAt}:${liveSessionIds?.join(",") ?? ""}`}
                 keyExtractor={(session) => session.id}
-                initialNumToRender={18}
-                maxToRenderPerBatch={18}
+                initialNumToRender={STAGGERED_ROWS}
+                maxToRenderPerBatch={STAGGERED_ROWS}
                 windowSize={9}
-                removeClippedSubviews
                 ListEmptyComponent={
                   historyLoading ? (
                     <HistorySkeleton />
@@ -665,6 +703,7 @@ function SidebarView({
                     active={session.id === activeSessionId}
                     reduceMotion={reduceMotion}
                     paused={rowsStill}
+                    cascadeAt={cascadeAt}
                     onOpen={openRow}
                     live={live.has(session.id)}
                     onClose={closeRow}
@@ -731,8 +770,10 @@ const styles = StyleSheet.create({
   },
   railBadge: { position: "absolute", top: theme.space(1), right: theme.space(1) },
 
-  main: { flex: 1, minWidth: 0 },
-  head: { paddingHorizontal: COLUMN_PAD, gap: theme.space(1), minHeight: theme.size.control, justifyContent: "center" },
+  main: { flex: 1, minWidth: 0, paddingBottom: theme.space(4) },
+  // The close button sits on the screen's own right rail (`theme.gutter`), the
+  // spot the main screen's right-hand button occupies, like every page header.
+  head: { paddingLeft: COLUMN_PAD, paddingRight: theme.gutter, gap: theme.space(1), minHeight: theme.size.control, justifyContent: "center" },
   headTop: { flexDirection: "row", alignItems: "center", gap: theme.space(2) },
   agentName: { flex: 1, minWidth: 0, fontFamily: theme.display.regular, fontSize: theme.font.title, letterSpacing: 0.5 },
 

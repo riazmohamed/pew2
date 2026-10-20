@@ -17,6 +17,7 @@ import { Led } from "./stage/Led";
 import { PressScale } from "./stage/PressScale";
 import { dashedOutline } from "./stage/DashedRule";
 import { AgentGlow } from "./AgentGlow";
+import { fatalNotice } from "../fatalNotice";
 
 export interface HomeChat {
   id: string;
@@ -49,6 +50,8 @@ export interface HomeGreetingProps {
    * settles into the middle of what is left.
    */
   typing?: SharedValue<number>;
+  /** The line under the greeting when Pew is tappable. */
+  hint?: string | undefined;
   /** Pew smiles (its tap is about to open the agent switcher, which carries the smile on). */
   smiling?: boolean;
 }
@@ -61,7 +64,7 @@ const HERO = 200;
 const GLOW = 340;
 const MAX_CHATS = 6;
 
-export function HomeGreeting({ color, busy, online = true, failed = false, text, status, onPressPew, chats, onOpenChat, typing, smiling = false }: HomeGreetingProps) {
+export function HomeGreeting({ color, busy, online = true, failed = false, text, status, onPressPew, chats, onOpenChat, typing, smiling = false, hint = "Tap Pew to switch agent" }: HomeGreetingProps) {
   const mood: PewMood = smiling ? "happy" : failed ? "oops" : homeMood(online, busy);
   const ink = pewInk(color);
   const shown = (chats ?? []).slice(0, MAX_CHATS);
@@ -125,17 +128,25 @@ export function HomeGreeting({ color, busy, online = true, failed = false, text,
       {/* The line's space is held whether or not there is a greeting yet, so
           it fades in where it will stay instead of nudging what is under it. */}
       <View style={styles.textHold}>
-        {text !== undefined && (
+        {text !== undefined && failed ? (
+          // A refusal is a paragraph, not a greeting: shrunk onto one line it
+          // was unreadable. Headline at the greeting's size (two lines at most),
+          // then the fix as a wrapped note with its command picked out.
+          <Dissolve kind="swap" dissolveKey={text} delay={40} style={styles.textWrap}>
+            <FatalText message={text} />
+          </Dissolve>
+        ) : text !== undefined ? (
           <Dissolve kind="swap" dissolveKey={text} delay={40} style={styles.textWrap}>
             <Text style={styles.text} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
               {text}
             </Text>
           </Dissolve>
-        )}
+        ) : null}
       </View>
-      {onPressPew && (
+      {/* Switching agent can't help while the machine refuses this phone. */}
+      {onPressPew && !failed && (
         <Text style={styles.hint} numberOfLines={1}>
-          Tap Pew to switch agent
+          {hint}
         </Text>
       )}
       {/* The row's height is held from the first frame, empty or not: the
@@ -182,6 +193,32 @@ const GREETING_LINE = theme.line.greeting;
 
 /** A recent-chat card's height, fixed so the row is the same before and after. */
 const CARD_HEIGHT = 76;
+function FatalText({ message }: { message: string }) {
+  const notice = fatalNotice(message);
+  return (
+    <View style={styles.fatal}>
+      {/* No shrink-to-fit: inside a centred column it measured against no
+          width and shrank the line to a speck. The wording is short instead. */}
+      <Text style={styles.text} numberOfLines={2} accessibilityRole="header">
+        {notice.headline}
+      </Text>
+      {notice.detail.length > 0 ? (
+        <Text style={styles.fatalDetail} numberOfLines={2}>
+          {notice.detail.map((run, i) =>
+            run.command ? (
+              <Text key={i} style={styles.fatalCommand} selectable>
+                {run.text}
+              </Text>
+            ) : (
+              run.text
+            ),
+          )}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 /** The card's height is fixed, so its text may grow only this far before it would clip. */
 const CARD_FONT_SCALE = 1.3;
 
@@ -199,7 +236,10 @@ const styles = StyleSheet.create({
     lineHeight: theme.line.greeting,
     textAlign: "center",
   },
-  hint: { color: theme.color.textDim, fontSize: 13, marginTop: theme.space(1) },
+  hint: { color: theme.color.textDim, fontSize: theme.font.small, marginTop: theme.space(1) },
+  fatal: { alignSelf: "stretch", gap: theme.space(2), paddingBottom: theme.space(2) },
+  fatalDetail: { color: theme.color.textDim, fontSize: theme.font.small, lineHeight: 19, textAlign: "center" },
+  fatalCommand: { color: theme.color.text, fontWeight: "600" },
   cards: { alignSelf: "stretch", marginTop: theme.space(6), flexGrow: 0 },
   cardsRow: { paddingHorizontal: theme.gutter, gap: theme.space(2) },
   card: { ...dashedOutline, width: 148, height: CARD_HEIGHT, borderRadius: 12, padding: theme.space(3), gap: theme.space(1.5) },

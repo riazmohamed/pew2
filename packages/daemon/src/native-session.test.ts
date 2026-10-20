@@ -266,7 +266,9 @@ test("handover, routing and teardown", async () => {
   expect(replies[0]).toEqual({ t: "desk.opened", requestId: "r1", ok: true, app: "iTerm" });
 
   // The iTerm window runs the real CLI, resumed, in the project.
-  expect(scripts[0]).toContain("cd '\\\\''/Users/test/my project'\\\\'' && exec ogcoder --resume " + AGENT_ID);
+  // `ogcoder` by its full path where this machine has it (see `commandPath`).
+  expect(scripts[0]).toContain("cd '\\\\''/Users/test/my project'\\\\'' && exec ");
+  expect(scripts[0]).toMatch(new RegExp(`exec (\\S*/)?ogcoder --resume ${AGENT_ID}`));
   expect(scripts[0]).toContain("OG Coder · my project");
   // pew2's own agent let go.
   expect(rig.closedCount()).toBe(1);
@@ -420,7 +422,7 @@ test("a new conversation opens the app plain in the project and mirrors what it 
   });
   expect(replies.at(-1)).toMatchObject({ t: "desk.opened", ok: true });
   const open = scripts.find((s) => s.includes("create window"))!;
-  expect(open).toContain("exec ogcoder");
+  expect(open).toMatch(/exec (\S*\/)?ogcoder'/);
   expect(open).not.toContain("--resume");
   const started = sent.findLast((m) => m.t === "session.started");
   // New, not a resume: the phone's empty screen takes it.

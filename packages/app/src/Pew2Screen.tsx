@@ -8,6 +8,7 @@ import {
   Animated,
   AppState,
   Keyboard,
+  Linking,
   Pressable,
   StyleSheet,
   View,
@@ -23,12 +24,14 @@ import { projectDrawerRows } from "./historyMetadata";
 import { restorePresentation } from "./restoreState";
 import { currentTool } from "./activity";
 import { dockHeightFor, recordDockHeight, type DockHeights } from "./dockHeight";
-import { clearConversationNotices, ensureNotificationPermission, setOpenConversation, setWaitingBadge } from "./ui/notifier";
+import { clearConversationNotices, setOpenConversation, setWaitingBadge } from "./ui/notifier";
 import { useTurnBanners } from "./ui/useTurnBanners";
 import { useAppActive } from "./ui/useAppActive";
 import { waitingCount } from "./notificationPolicy";
 import { onWidgetLink, useHomeWidget } from "./ui/useHomeWidget";
 import { widgetSnapshot } from "./widgetSnapshot";
+import { homeDashboard } from "./homeDashboard";
+import { HomeDashboard } from "./ui/HomeDashboard";
 import { pushAddress } from "./ui/push";
 import { ComposerDock, type ComposerDockHandle } from "./ui/ComposerDock";
 import { ChatThread, type ChatThreadRef } from "./ui/ChatThread";
@@ -47,6 +50,9 @@ import { DotGlyph } from "./ui/stage/DotGlyph";
 import { haptics } from "./ui/haptics";
 import { Sidebar } from "./ui/Sidebar";
 import { ConnectionSheet } from "./ui/ConnectionSheet";
+import { AlertsCard } from "./ui/AlertsCard";
+import { useAlerts } from "./ui/useAlerts";
+import { alertsRowValue } from "./notificationAsk";
 import { ContextDetailsSheet } from "./ui/ContextDetailsSheet";
 import { projectsForProvider, projectSourceKey } from "./projects";
 import { greetingFor, hashSeed } from "./greeting";
@@ -64,15 +70,23 @@ import { useAgentFeedback } from "./ui/useAgentFeedback";
 import { useGoalControls } from "./useGoalControls";
 import { useDevKeyboardLoop, useDevOpenSession, useDevSheetCycle } from "./devHarness";
 import { CanvasCover } from "./ui/CanvasCover";
+import { DotGrid } from "./ui/stage/DotGrid";
 import type { Pairing } from "./pairing";
 import { ScreenTopBar } from "./ui/ScreenTopBar";
 import { HomeView } from "./ui/HomeView";
 import { GoalSheets } from "./ui/GoalSheets";
+import { useVoice } from "./ui/useVoice";
+import { CallScreen } from "./ui/CallScreen";
+import { VoiceSettingsSheet } from "./ui/VoiceSettingsSheet";
+import { callActive, canTalk, talkVisible, voiceSettingsVisible } from "./voiceCall";
+import { armingSupported, callsLine, isArmed, ringing } from "./voiceRing";
+import { useCallKit } from "./ui/useCallKit";
+import { useAndroidRing } from "./ui/useAndroidRing";
+import { IncomingCallCard } from "./ui/IncomingCallCard";
+import { TOUCH_SOUNDS, agentSound } from "./soundsPolicy";
+import { loadVoiceConsent, saveVoiceConsent } from "./preferences";
 import type { ComposerAnchor, ComposerSelector } from "./ui/Composer";
 import { shouldReplaceDraft } from "./draftSync";
-import { useVoice } from "./ui/useVoice";
-import { VoiceScreen } from "./ui/VoiceScreen";
-import { VoiceBar, VoiceIncomingBar } from "./ui/VoiceBar";
 import { PreviewSheet } from "./ui/PreviewSheet";
 import { ToolSheet } from "./ui/ToolSheet";
 import { setDesktopLanHosts } from "./ui/links";
@@ -85,11 +99,19 @@ const NO_TURNS: never[] = [];
 /** Pew's smile on home before the agent switcher opens and carries it on. */
 const PEW_HANDOFF_MS = 320;
 
+const hiddenDock = { opacity: 0 } as const;
+
 /** For a prop that needs a function where there is nothing to do. */
 const NOOP = () => {};
 
+/** How long a fresh launch's home waits for the computer before saying it can't reach it. */
+const HOME_OFFLINE_WAIT_MS = 8000;
+
 export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void }) {
-  const { choice, setChoice, pushExpected, announceTurn, offerIncomingRef } = useTurnBanners();
+  const { choice, setChoice, voiceRequest, setVoiceRequest, pushExpected, announceTurn } = useTurnBanners();
+  // useVoice needs the daemon's `post`, and the daemon needs voice's frame
+  // listener; a ref breaks the cycle without re-creating either.
+  const voiceFrame = useRef<(message: unknown) => void>(() => {});
 
   // The relay identifies devices by this, and it must match the id baked into
   // the stored pairing URL or the two look like different clients.
@@ -107,7 +129,169 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     // The drawer's index from the last run, so it is never painted empty.
     restoreSessions: readSessionCache,
     persistSessions: writeSessionCache,
+    onFrame: (message) => voiceFrame.current(message),
   });
+  // Every touch sound loaded up front, and each agent's voice once the agents
+  // are known: a first tap must never wait on a file.
+  useEffect(() => {
+    sounds.preload(TOUCH_SOUNDS);
+  }, []);
+  const agentIds = daemon.providers.map((provider) => provider.id).join(",");
+  useEffect(() => {
+    if (agentIds) sounds.preload(agentIds.split(",").map((id) => agentSound(id)));
+  }, [agentIds]);
+  const voice = useVoice({ post: daemon.post, online: daemon.status === "online" });
+  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(() => __DEV__ && process.env.EXPO_PUBLIC_DEV_SHEET === "voice");
+  // Development only: `EXPO_PUBLIC_DEV_SHEET=voice-chat` opens the newest
+  // conversation, then the voice sheet over it (its per-chat row).
+  const devVoiceChat = useRef(false);
+  /** The voice sheet was opened by Talk: it is the sign-in step before a call. */
+  const [voiceForCall, setVoiceForCall] = useState(false);
+  const talkable = canTalk(voice.knowledge);
+  /** Agreed once that calls go to OpenAI; undefined while the store is read. */
+  const [voiceConsent, setVoiceConsent] = useState<boolean | undefined>(undefined);
+  useEffect(() => {
+    void loadVoiceConsent().then(setVoiceConsent);
+  }, []);
+  /** The item a call should lead with, held while the sheet asks for sign-in or consent. */
+  const [callFocus, setCallFocus] = useState<string | undefined>(undefined);
+  const placeCall = voice.startCall;
+  // The project and agent on screen: all Pew has to go on when the chat is
+  // new and nothing has been sent (no session exists to name).
+  const placeCwd = daemon.workspace?.cwd;
+  const placeProvider = daemon.effectiveProviderId;
+  const callPlace = useMemo(
+    () => (placeCwd || placeProvider ? { ...(placeCwd ? { cwd: placeCwd } : {}), ...(placeProvider ? { providerId: placeProvider } : {}) } : undefined),
+    [placeCwd, placeProvider],
+  );
+  // A login on the computer and consent given: straight into the call.
+  // Otherwise the sheet first, for the sign-in or the one-time consent.
+  const startCall = useCallback(
+    (focus?: string) => {
+      if (talkable && voiceConsent === true) {
+        placeCall(focus, false, daemon.sessionId, callPlace);
+        return;
+      }
+      setCallFocus(focus);
+      setVoiceForCall(true);
+      setVoiceSettingsOpen(true);
+    },
+    [talkable, voiceConsent, placeCall, daemon.sessionId, callPlace],
+  );
+  const talk = useCallback(() => startCall(), [startCall]);
+  const closeVoiceSheet = useCallback(() => {
+    setVoiceSettingsOpen(false);
+    setVoiceForCall(false);
+    setCallFocus(undefined);
+  }, []);
+  const callFromVoiceSheet = useCallback(() => {
+    const focus = callFocus;
+    if (voiceConsent !== true) {
+      setVoiceConsent(true);
+      void saveVoiceConsent();
+    }
+    closeVoiceSheet();
+    placeCall(focus, false, daemon.sessionId, callPlace);
+  }, [callFocus, voiceConsent, closeVoiceSheet, placeCall, daemon.sessionId, callPlace]);
+  /** Hold Talk: the voice sheet, with this conversation's "ring me" row. */
+  const talkSettings = useCallback(() => {
+    setVoiceForCall(false);
+    setVoiceSettingsOpen(true);
+  }, []);
+  /** Agreeing without a call: choosing to be rung counts (the line is shown beside the choice). */
+  const agreeToVoice = useCallback(() => {
+    if (voiceConsent === true) return;
+    setVoiceConsent(true);
+    void saveVoiceConsent();
+  }, [voiceConsent]);
+
+  // Answered on the system's call screen: start the call once the daemon is
+  // reachable (a lock-screen answer can launch the app cold, offline).
+  const [systemAnswer, setSystemAnswer] = useState<{ focus?: string } | undefined>(undefined);
+  useCallKit({
+    post: daemon.post,
+    online: daemon.status === "online",
+    consented: voiceConsent === true,
+    callActive: callActive(voice.call),
+    onAnswer: (focus) => setSystemAnswer({ focus }),
+    onHangUp: voice.hangUp,
+    onMute: voice.setMuted,
+  });
+  // A phone the system cannot ring (Android) rings itself on `voice.ring`,
+  // and an answer there starts the call the same way.
+  const androidRing = useAndroidRing({
+    post: daemon.post,
+    online: daemon.status === "online",
+    consented: voiceConsent === true,
+    callActive: callActive(voice.call),
+    onAnswer: (focus) => setSystemAnswer({ focus }),
+  });
+  const ringFrame = androidRing.onFrame;
+  const voiceOnFrame = voice.onFrame;
+  voiceFrame.current = (message) => {
+    voiceOnFrame(message);
+    ringFrame(message);
+  };
+  useEffect(() => {
+    if (!systemAnswer || daemon.status !== "online" || !talkable) return;
+    setSystemAnswer(undefined);
+    placeCall(systemAnswer.focus, true, daemon.sessionId, callPlace);
+  }, [systemAnswer, daemon.status, talkable, placeCall, daemon.sessionId, callPlace]);
+
+  const voiceStatus = voice.knowledge.kind === "known" ? voice.knowledge.status : undefined;
+  // The dot on Talk: this chat can ring you (every chat does when Ring me is
+  // set to any chat; otherwise only an armed one).
+  // The clock voice's time limits are read against: re-read whenever the
+  // status changes (the computer says so itself when Ring me runs out).
+  const [voiceNow, setVoiceNow] = useState(() => Date.now());
+  useEffect(() => {
+    setVoiceNow(Date.now());
+  }, [voiceStatus]);
+  const talkArmed =
+    voiceStatus?.prefs?.ringScope === "all"
+      ? ringing(voiceStatus.prefs, voiceNow) && daemon.sessionId !== undefined
+      : armingSupported(voiceStatus) && isArmed(voiceStatus, daemon.sessionId);
+  // Development only: `EXPO_PUBLIC_DEV_TALK=1` presses Talk once, as soon as the
+  // daemon has said what voice can do, so the sign-in and call flows can be
+  // driven on a simulator nobody is tapping. Stripped from release bundles.
+  const devTalked = useRef(false);
+  useEffect(() => {
+    if (!__DEV__ || process.env.EXPO_PUBLIC_DEV_TALK !== "1" || devTalked.current) return;
+    if (daemon.status !== "online" || !talkVisible(voice.knowledge)) return;
+    devTalked.current = true;
+    // Like a person: a few seconds after the screen settles (the launch
+    // itself is busy), with the button's own tap.
+    setTimeout(() => {
+      haptics.tap();
+      talk();
+    }, Number(process.env.EXPO_PUBLIC_DEV_TALK_DELAY_MS ?? 0));
+  }, [daemon.status, voice.knowledge, talk]);
+  // Development only: `EXPO_PUBLIC_DEV_REDIAL_MS` presses "Call again" on the
+  // end card that long after a call ends or fails (dismiss, then call at once,
+  // exactly as `onRetry` does), `EXPO_PUBLIC_DEV_REDIAL_COUNT` times (1).
+  const devRedials = useRef(0);
+  const devPhase = voice.call.phase;
+  const devDismiss = voice.dismiss;
+  useEffect(() => {
+    const ms = Number(process.env.EXPO_PUBLIC_DEV_REDIAL_MS ?? 0);
+    const count = Number(process.env.EXPO_PUBLIC_DEV_REDIAL_COUNT ?? 1);
+    if (!__DEV__ || !ms || (devPhase !== "ended" && devPhase !== "failed") || devRedials.current >= count) return;
+    const timer = setTimeout(() => {
+      devRedials.current += 1;
+      console.log(`[voice] dev redial ${devRedials.current}/${count} after ${devPhase}`);
+      haptics.tap();
+      devDismiss();
+      talk();
+    }, ms);
+    return () => clearTimeout(timer);
+  }, [devPhase, devDismiss, talk]);
+  const talkAbout = useCallback((focus: string) => startCall(focus), [startCall]);
+  // A tapped voice push opens straight into a call, once the daemon is up.
+  useEffect(() => {
+    if (!voiceRequest || daemon.status !== "online" || voice.knowledge.kind === "unknown" || voiceConsent === undefined) return;
+    setVoiceRequest(undefined);
+    if (talkable) startCall(voiceRequest.focus);
+  }, [voiceRequest, daemon.status, voice.knowledge.kind, voiceConsent, talkable, startCall, setVoiceRequest]);
 
   const [drawerProjection, setDrawerProjection] = useState(() => ({
     source: daemon.sessions, rows: projectDrawerRows([], daemon.sessions),
@@ -133,6 +317,8 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   const resumeDaemon = daemon.resumeNow;
   const registerDaemonPush = daemon.registerPush;
   const setDaemonForeground = daemon.setForeground;
+  const alerts = useAlerts(registerDaemonPush, pushExpected);
+  const askAlerts = alerts.ask;
   useEffect(() => {
     setDaemonForeground(AppState.currentState === "active");
     const subscription = AppState.addEventListener("change", (next) => {
@@ -192,6 +378,19 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     [drawerProjection.rows, daemon.gg.asks, daemon.providers, daemon.machineName],
   );
   useHomeWidget(widget);
+  // Development only: `EXPO_PUBLIC_DEV_HOME=empty` shows home with no sessions.
+  const devHome = __DEV__ && process.env.EXPO_PUBLIC_DEV_HOME === "empty" ? { cards: [], empty: true } : undefined;
+  const dashboard = useMemo(
+    () => homeDashboard({ sessions: drawerProjection.rows, asks: daemon.gg.asks, providers: daemon.providers }),
+    [drawerProjection.rows, daemon.gg.asks, daemon.providers],
+  );
+  /**
+   * A new conversation whose project and agent were chosen in the New
+   * conversation step: the empty conversation with its composer. Without it,
+   * and with nothing open, the screen is the home dashboard, which has no
+   * composer, so nothing typed can land in a project nobody picked.
+   */
+  const [composing, setComposing] = useState(false);
   /** The name of a goal just launched, until its conversation has something in it. */
   const [launchingGoal, setLaunchingGoal] = useState<string>();
   // `EXPO_PUBLIC_DEV_SHEET=<name>` (development only) starts with that sheet
@@ -231,6 +430,9 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   // open, so a simulator check can see it without a tap.
   const [menuOpen, setMenuOpen] = useState(() => __DEV__ && process.env.EXPO_PUBLIC_DEV_OPEN_DRAWER === "1");
   const [connectionOpen, setConnectionOpen] = useState(() => devSheet === "connection");
+  useEffect(() => {
+    if (connectionOpen) setVoiceNow(Date.now());
+  }, [connectionOpen]);
   const [contextOpen, setContextOpen] = useState(() => devSheet === "context");
   const openContext = useCallback(() => { Keyboard.dismiss(); setContextOpen(true); }, []);
   const closeContext = useCallback(() => setContextOpen(false), []);
@@ -241,6 +443,21 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     setConnectionOpen(true);
   }, []);
   const closeConnection = useCallback(() => setConnectionOpen(false), []);
+  const refreshAlerts = alerts.refresh;
+  useEffect(() => {
+    if (connectionOpen) refreshAlerts();
+  }, [connectionOpen, refreshAlerts]);
+  // The card is a sheet of its own: the asking sheet steps aside for it.
+  const alertsFromRow = useCallback(() => {
+    setConnectionOpen(false);
+    void askAlerts("row");
+  }, [askAlerts]);
+  const alertsForRing = useCallback(async () => {
+    setVoiceSettingsOpen(false);
+    const allowed = await askAlerts("ring");
+    setVoiceSettingsOpen(true);
+    return allowed;
+  }, [askAlerts]);
   // Which pill's menu is open, and where that pill sits, so the menu opens
   // under it instead of always at the gutter.
   const [picker, setPicker] = useState<"model" | "mode" | null>(() => (devSheet === "model" ? "model" : null));
@@ -334,6 +551,20 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     const t = setTimeout(() => setHomeWaited(true), 900);
     return () => clearTimeout(t);
   }, []);
+  // Whether this phone has heard from its computer since launch. Until it
+  // has, "offline" is only "not connected yet" (right after pairing the
+  // first answer takes a few seconds), so home waits for it, up to
+  // HOME_OFFLINE_WAIT_MS, instead of settling on a sleepy, empty Pew and
+  // then redrawing everything when the list lands.
+  const [everOnline, setEverOnline] = useState(false);
+  const [offlineWaited, setOfflineWaited] = useState(false);
+  useEffect(() => {
+    if (daemon.status === "online") setEverOnline(true);
+  }, [daemon.status]);
+  useEffect(() => {
+    const t = setTimeout(() => setOfflineWaited(true), HOME_OFFLINE_WAIT_MS);
+    return () => clearTimeout(t);
+  }, []);
 
   // Projects the selected agent has worked in, and which one the drawer is
   // narrowed to. Derived here rather than in the drawer so both the list and
@@ -374,10 +605,18 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   // opened some other conversation instead of the goal.
   const launching = launchingGoal !== undefined && daemon.turns.length === 0 && !daemon.restoreTarget;
   const inThread = daemon.turns.length > 0 || launching;
+  // Home vs conversation: a transcript (or one reopening) is a conversation; so
+  // is an open session with nothing in it yet, and a new one whose project and
+  // agent were just chosen. Anything else is home.
+  // Started: from here on leaving it is going home.
+  useEffect(() => {
+    if (inThread) setComposing(false);
+  }, [inThread]);
+  const onHome = !inThread && !daemon.restoreTarget && !daemon.loadingSession && daemon.sessionId === undefined && !composing;
   const sessionTitle = daemon.restoreTarget?.title
     ?? (launching ? launchingGoal : undefined)
     ?? daemonSessions.find((session) => session.id === (daemon.sessionId ?? threadKey))?.title
-    ?? "New conversation";
+    ?? (onHome ? "Home" : "New conversation");
 
   // Where the reading area begins and ends: under the nav, and above the
   // composer. Both fall back to the resting height of the thing they clear,
@@ -446,6 +685,7 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     }
     setPewSmiling(true);
     clearTimeout(smileTimer.current);
+    // Tapping Pew switches agent, everywhere (home and a new conversation).
     smileTimer.current = setTimeout(() => {
       setCarouselOpen(true);
       setPewSmiling(false);
@@ -457,17 +697,11 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     () => orderProvidersByRecency(daemon.providers, drawerProjection.rows).filter((p) => p.available !== false),
     [daemon.providers, drawerProjection.rows],
   );
-  const homeChats = useMemo(
-    () =>
-      drawerProjection.rows
-        .filter((row) => row.providerId === activeId && (!selectedProjectPath || row.cwd === selectedProjectPath))
-        .slice(0, 6)
-        .map((row) => ({ id: row.id, title: row.title || "Untitled", startedAt: row.startedAt })),
-    [drawerProjection.rows, activeId, selectedProjectPath],
-  );
+  const online = daemon.status === "online" && !daemon.unreachable;
   const homeStatus = [
-    daemon.busy ? "Working" : daemon.status === "online" && !daemon.unreachable ? "Ready" : "Offline",
+    daemon.busy ? "Working" : online ? "Ready" : "Offline",
     daemon.workspace?.folder,
+    active?.name,
     daemon.workspace?.repo && (daemon.workspace.uncommitted ?? 0) > 0 ? `${daemon.workspace.uncommitted} changed` : undefined,
   ]
     .filter(Boolean)
@@ -497,7 +731,7 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   // Never let one selector drive two pills.
   const mode = modeOption && modeOption.id !== model?.id ? modeOption : undefined;
 
-  useAgentFeedback(daemon.busy, daemon.turns, daemon.permission);
+  useAgentFeedback(daemon.busy, daemon.turns, daemon.permission, daemon.sessionId, daemon.loadingSession);
 
   const { paneSlide, edgeSwipeClosed, edgeSwipeOpen, drawerSwipe } = useDrawer({ menuOpen, setMenuOpen, reduceMotion });
 
@@ -531,6 +765,7 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
       // already travelling while the turns are built behind it.
       setMenuOpen(false);
       setLaunchingGoal(undefined);
+      setComposing(false);
       startTransition(() => {
         // Remounts the thread so it re-arms at this transcript's own bottom.
         // Deliberately not `daemon.sessionId`: a fresh conversation renders its
@@ -636,9 +871,9 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
       // prompt must go out whatever the system decides. A yes hands the daemon
       // this phone's push address straight away: the connect path never asks,
       // so until now it had nothing to send.
-      void ensureNotificationPermission().then((allowed) => {
-        if (allowed && !pushExpected.current) registerDaemonPush();
-      });
+      // The card (`useAlerts`) explains before iOS asks, and only after the
+      // message has gone; granted already, it just hands over the push address.
+      void askAlerts("send");
 
       // Offline the message is queued rather than sent, which still counts as
       // taken: it is on screen, marked as waiting, and goes out on reconnect.
@@ -657,7 +892,7 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     // Attachments are read through their ref, so staging a photo does not
     // rebuild this and re-render the memoised dock beneath it.
     // `attachmentsRef` and `setAttachments` come from `useAttachments`: stable.
-    [cancelDictation, daemon.sessionId, promptDaemon, startDaemon, active, attachmentsRef, setAttachments, registerDaemonPush, pushExpected],
+    [cancelDictation, daemon.sessionId, promptDaemon, startDaemon, active, attachmentsRef, setAttachments, askAlerts],
   );
 
   /**
@@ -713,23 +948,61 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
       startTransition(() => {
         if (cwd && activeId) selectDaemonProject(activeId, cwd);
         leaveDaemon();
+        setComposing(true);
       });
     },
     [activeId, selectDaemonProject, leaveDaemon],
   );
+
+  /**
+   * New conversation, from anywhere: home, the drawer, the top bar, a widget.
+   * Leaves what is open for home and asks for the project and the agent;
+   * the composer appears only once both are confirmed (`startNewChat`). A
+   * project handed in (the drawer's, beside a named project) is preselected.
+   */
+  const openNewConversation = useCallback(
+    (cwd?: string) => {
+      Keyboard.dismiss();
+      setMenuOpen(false);
+      setLaunchingGoal(undefined);
+      setComposing(false);
+      startTransition(() => {
+        if (cwd && activeId) selectDaemonProject(activeId, cwd);
+        leaveDaemon();
+      });
+      setNewChatOpen(true);
+    },
+    [activeId, selectDaemonProject, leaveDaemon],
+  );
+  const openNewFromBar = useCallback(() => openNewConversation(), [openNewConversation]);
+  const goHome = useCallback(() => {
+    Keyboard.dismiss();
+    composer.current?.setDraft("");
+    setComposing(false);
+    leaveDaemon();
+  }, [leaveDaemon]);
+  // Choosing an agent in the New conversation step: on home nothing is open,
+  // so selecting it ends nothing, and its projects take over the list.
+  const selectAgent = daemon.select;
+  // Unconfirmed until Start, so a dismissed step lands on home, never on a
+  // composer aimed at an agent nobody confirmed.
+  const pickAgent = useCallback((id: string) => {
+    setComposing(false);
+    selectAgent(id);
+  }, [selectAgent]);
   useDevOpenSession({ rows: drawerProjection.rows, activeId, openSession, startNewChat, setNewChatOpen });
 
   // Widget taps. A conversation goes through `setChoice`, exactly like a
   // banner tap, so a widget that launched the app cold waits for the session
   // list the same way. Subscribed once: the subscription re-reads the link the
   // app was launched with, so re-subscribing would act on it again.
-  const startNewChatRef = useRef(startNewChat);
-  startNewChatRef.current = startNewChat;
+  const openNewRef = useRef(openNewConversation);
+  openNewRef.current = openNewConversation;
   useEffect(
     () =>
       onWidgetLink((link) => {
         if (link.kind === "open") setChoice({ sessionId: link.sessionId });
-        else startNewChatRef.current();
+        else openNewRef.current();
       }),
     [setChoice],
   );
@@ -753,41 +1026,17 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   const pillChooses =
     projectPillAction({ sessionId: daemon.sessionId, loadingSession: daemon.loadingSession, goals: isGoalsProvider(activeId) }) === "choose";
 
-  // GPT-Live voice calls. The call lives here, the screen and banner draw it.
-  const providerList = daemon.providers;
-  const voiceProviderName = useCallback(
-    (id: string | undefined) => providerList.find((p) => p.id === id)?.name ?? "Your agent",
-    [providerList],
-  );
-  const knownSessions = useRef(daemonSessions);
-  knownSessions.current = daemonSessions;
-  const voice = useVoice({
-    status: daemon.status,
-    voice: daemon.voice,
-    sendVoice: daemon.sendVoice,
-    setVoiceListener: daemon.setVoiceListener,
-    sessionId: daemon.sessionId,
-    providerId: active?.id,
-    cwd: daemon.workspace?.cwd,
-    providerName: voiceProviderName,
-    onBeforeStart: cancelDictation,
-    onSessionShown: daemon.sessionId,
-    onOpenSession: useCallback((id: string) => {
-      if (knownSessions.current.some((session) => session.id === id)) openSession(id);
-    }, [openSession]),
-    onMessage: useCallback((message: string) => {
-      Alert.alert("Voice", message);
-    }, []),
-  });
-  useEffect(() => {
-    offerIncomingRef.current = voice.offerIncoming;
-    return () => {
-      offerIncomingRef.current = undefined;
-    };
-  }, [voice.offerIncoming, offerIncomingRef]);
   // The drawer only ever offers this beside a named project, so it always has
   // a path to hand — no undefined branch to fall back on here.
-  const newConversation = startNewChat;
+  // The drawer's New chat: with a project chosen in its pills, straight into
+  // that project with the agent already picked; on All, the step that asks.
+  const newConversation = useCallback(
+    (cwd?: string) => {
+      if (cwd && activeId) startNewChat(cwd);
+      else openNewConversation(cwd);
+    },
+    [activeId, startNewChat, openNewConversation],
+  );
 
   const pickCommand = useCallback((command: SlashCommand) => {
     // Placed in the composer rather than sent: a command may still want an
@@ -803,6 +1052,51 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   // Stable identities: `ContextBar` is memoized so it does not re-render on
   // every keystroke of the draft, which a fresh handler each render would undo.
   const openCommands = useCallback(() => setCommandsOpen(true), []);
+
+  useEffect(() => {
+    if (!__DEV__ || process.env.EXPO_PUBLIC_DEV_SHEET !== "voice-chat" || devVoiceChat.current) return;
+    if (daemon.status !== "online" || drawerProjection.rows.length === 0) return;
+    devVoiceChat.current = true;
+    openSession(drawerProjection.rows[0]!.id);
+    // Not cleared on re-run: the rows change as the list loads, and the
+    // guard above means this effect never schedules it again.
+    setTimeout(() => setVoiceSettingsOpen(true), 2500);
+  }, [daemon.status, drawerProjection.rows, openSession]);
+
+  // Development only: `EXPO_PUBLIC_DEV_TOUR=1` walks the main actions a few
+  // seconds apart with their haptics, logging when each was pressed, so the
+  // time from a tap to the screen changing can be measured from a recording.
+  const tourRef = useRef({ openSession, setMenuOpen, setCarouselOpen, setCommandsOpen, setNewChatOpen, setConnectionOpen, sessions: drawerProjection.rows, select: daemon.select, providers: daemon.providers, active: daemon.effectiveProviderId });
+  tourRef.current = { openSession, setMenuOpen, setCarouselOpen, setCommandsOpen, setNewChatOpen, setConnectionOpen, sessions: drawerProjection.rows, select: daemon.select, providers: daemon.providers, active: daemon.effectiveProviderId };
+  useEffect(() => {
+    if (!__DEV__ || process.env.EXPO_PUBLIC_DEV_TOUR !== "1" || daemon.status !== "online") return;
+    const t = tourRef;
+    const steps: [string, () => void][] = [
+      ["openMenu", () => t.current.setMenuOpen(true)],
+      ["openChat", () => { const s = t.current.sessions[0]; if (s) t.current.openSession(s.id); }],
+      ["openMenu2", () => t.current.setMenuOpen(true)],
+      ["openChat2", () => { const s = t.current.sessions[1] ?? t.current.sessions[0]; if (s) t.current.openSession(s.id); }],
+      ["openCarousel", () => t.current.setCarouselOpen(true)],
+      ["closeCarousel", () => t.current.setCarouselOpen(false)],
+      ["switchAgent", () => { const other = t.current.providers.find((p) => p.id !== t.current.active); if (other) t.current.select(other.id); }],
+      ["switchBack", () => { const other = t.current.providers.find((p) => p.id !== t.current.active); if (other) t.current.select(other.id); }],
+      ["openCommands", () => t.current.setCommandsOpen(true)],
+      ["closeCommands", () => t.current.setCommandsOpen(false)],
+      ["openNewChat", () => t.current.setNewChatOpen(true)],
+      ["closeNewChat", () => t.current.setNewChatOpen(false)],
+      ["openConnection", () => t.current.setConnectionOpen(true)],
+      ["closeConnection", () => t.current.setConnectionOpen(false)],
+    ];
+    const timers = steps.map(([name, run], i) =>
+      setTimeout(() => {
+        console.log(`PEWTOUR ${name} ${Date.now()}`);
+        haptics.tap();
+        run();
+      }, 6000 + i * 3500),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [daemon.status]);
+
   const closeCommands = useCallback(() => setCommandsOpen(false), []);
 
   // Stable across renders: the transcript's cells memo on this callback, and a
@@ -914,6 +1208,7 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <Sidebar
         open={menuOpen}
+        closeGesture={drawerSwipe}
         providers={daemon.providers}
         sessions={drawerProjection.rows}
         activeProviderId={active?.id}
@@ -921,7 +1216,7 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
         // Selecting an app refilters the history in place. The drawer stays
         // open so you can pick a conversation from that app straight after —
         // closing here would make choosing an app cost two trips.
-        onSelectProvider={daemon.select}
+        onSelectProvider={pickAgent}
         onOpenSession={openSession}
         liveSessionIds={daemon.liveSessionIds}
         onCloseSession={daemon.closeSession}
@@ -973,6 +1268,10 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
           itself. */}
       {/* Left and right are inset because the app rotates: held sideways one
           long edge is the notch, which hides text outright. */}
+      {/* The canvas's dot grid, behind home and every conversation, as on
+          onboarding, the agent switcher and calls. Drawn once (a static
+          picture), so it costs nothing per frame. */}
+      <DotGrid />
       <SafeAreaView style={styles.paneInner} edges={["left", "right"]}>
 
       <ScreenTopBar
@@ -982,7 +1281,12 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
         navHeight={navHeight}
         setNavHeight={setNavHeight}
         setMenuOpen={setMenuOpen}
-        setNewChatOpen={setNewChatOpen}
+        onNewChat={openNewFromBar}
+        onHome={!inThread && !daemon.restoreTarget && !onHome ? goHome : undefined}
+        // Calls are about a conversation: not offered on home.
+        onTalk={talkVisible(voice.knowledge) && !onHome ? talk : undefined}
+        onTalkHold={talkVisible(voice.knowledge) && !onHome ? talkSettings : undefined}
+        talkArmed={talkArmed}
         sessionTitle={sessionTitle}
         inThread={inThread}
         onOpenTools={openTools}
@@ -1024,7 +1328,22 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
             onRetry={retrySend}
             onOpenTools={openTools}
           />
-        ) : !daemon.loadingSession ? (
+        ) : daemon.loadingSession ? null : onHome ? (
+          <HomeDashboard
+            home={devHome ?? dashboard}
+            online={online}
+            fatal={daemon.fatal}
+            agents={daemon.providers.length > 0 ? daemon.providers.filter((p) => p.available).length : undefined}
+            color={active?.color}
+            settled={homeWaited && (online ? !daemon.loadingSessions : everOnline || offlineWaited || Boolean(daemon.fatal))}
+            top={threadTop}
+            bottom={insets.bottom + theme.space(2)}
+            onOpen={openSession}
+            onPressPew={openCarousel}
+          />
+        ) : (
+          // A new conversation, its project and agent chosen: Pew names both;
+          // tapping it switches agent, as everywhere.
           <HomeView
             daemon={daemon}
             keyboard={keyboard}
@@ -1034,14 +1353,21 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
             homeStatus={homeStatus}
             openCarousel={openCarousel}
             pewSmiling={pewSmiling}
-            homeChats={homeChats}
-            openSession={openSession}
             greeting={greeting}
             emptyReason={emptyReason}
+            hint="Tap Pew to switch agent"
           />
-        ) : null}
+        )}
 
-        <View style={[styles.dockOverlay, { bottom: 0 }]}>
+        {/* Home has no composer. Hidden rather than unmounted: the dock owns
+            the draft, and a banner reply that must reopen its conversation
+            first leaves its text there. */}
+        <View
+          style={[styles.dockOverlay, { bottom: 0 }, onHome && hiddenDock]}
+          pointerEvents={onHome ? "none" : "box-none"}
+          accessibilityElementsHidden={onHome}
+          importantForAccessibility={onHome ? "no-hide-descendants" : "auto"}
+        >
           {/* Only ever a way back down: there is no jump-to-top, because the top
               of a transcript is history and the end is where work happens. */}
           <Animated.View
@@ -1115,7 +1441,6 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
             onChooseProject={pillChooses ? chooseProject : undefined}
             plan={daemon.plan}
             onDraftChange={daemon.sendDraft}
-            onVoice={voice.offered ? (voice.active ? voice.expand : voice.start) : undefined}
             selectors={composerSelectors}
             onSend={send}
             busy={showsStop(daemon)}
@@ -1152,7 +1477,28 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
       {/* Outside the lifted pane: a sheet belongs to the screen's bottom edge,
           not to the composer, so it must not ride up with the keyboard. */}
       <ContextDetailsSheet visible={contextOpen} workspace={daemon.workspace} usage={daemon.usage} inConversation={daemon.sessionId !== undefined} onClose={closeContext} />
-      <ConnectionSheet visible={connectionOpen} machineLabel={daemon.machineName ?? "Your computer"} machineRemote={pairing.remote} status={daemon.status} update={daemon.update} keepAwake={daemon.keepAwake} onKeepAwake={daemon.setKeepAwake} catalog={daemon.catalog} onToggleAgent={daemon.setProviderEnabled} onClose={closeConnection} onUnpair={onUnpair} />
+      <ConnectionSheet visible={connectionOpen} machineLabel={daemon.machineName ?? "Your computer"} machineRemote={pairing.remote} status={daemon.status} update={daemon.update} keepAwake={daemon.keepAwake} onKeepAwake={daemon.setKeepAwake} catalog={daemon.catalog} onToggleAgent={daemon.setProviderEnabled} onClose={closeConnection} onUnpair={onUnpair}
+        alerts={{ value: alertsRowValue(alerts.status), onPress: alerts.status === "granted" ? () => void Linking.openSettings().catch(() => {}) : alertsFromRow }}
+        voice={voiceSettingsVisible(voice.knowledge) && voice.knowledge.kind === "known" ? { line: callsLine(voice.knowledge.status, voiceNow), onOpen: () => { setConnectionOpen(false); setVoiceSettingsOpen(true); } } : undefined} />
+      <VoiceSettingsSheet
+        visible={voiceSettingsOpen}
+        knowledge={voice.knowledge}
+        onClose={closeVoiceSheet}
+        onLogin={voice.login}
+        onPrefs={voice.setPrefs}
+        onArm={voice.arm}
+        onForget={voice.forgetHistory}
+        sessionId={daemon.sessionId}
+        forCall={voiceForCall}
+        onCall={callFromVoiceSheet}
+        consented={voiceConsent === true}
+        onAgree={agreeToVoice}
+        alertsGranted={alerts.status === "granted"}
+        onNeedAlerts={alertsForRing}
+      />
+      <AlertsCard card={alerts.card} onAllow={alerts.allow} onNotNow={alerts.notNow} />
+      <IncomingCallCard ring={androidRing.incoming} onAnswer={androidRing.answer} onDecline={androidRing.decline} />
+      <CallScreen call={voice.call} board={voice.board} providers={daemon.providers} onHangUp={voice.hangUp} onMute={voice.setMuted} onDismiss={voice.dismiss} onRetry={() => { const focus = voice.call.focus; voice.dismiss(); startCall(focus); }} onAnswer={voice.answerOnScreen} color={active?.color} onInterrupt={voice.interrupt} micLevel={voice.micLevel} speech={voice.speech} />
       <CommandSheet
         visible={commandsOpen}
         commands={daemon.commands}
@@ -1163,8 +1509,11 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
       <NewChatSheet
         visible={newChatOpen}
         currentFolder={daemon.workspace?.folder}
-        currentCwd={daemon.workspace?.cwd}
+        currentCwd={selectedProjectPath ?? daemon.workspace?.cwd}
         projects={projects}
+        agents={carouselAgents}
+        agentId={activeId}
+        onPickAgent={pickAgent}
         onStart={startNewChat}
         onClose={closeNewChat}
         browse={daemon.browse}
@@ -1213,6 +1562,7 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
       />
 
       <GoalSheets
+        onTalk={talkable ? talkAbout : undefined}
         daemon={daemon}
         goals={goals}
         newGoalOpen={newGoalOpen}
@@ -1245,10 +1595,6 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
 
       </SafeAreaView>
       </Reanimated.View>
-      <VoiceScreen voice={voice} color={active?.color} />
-      {/* The minimised call floats over the chat. */}
-      <VoiceBar voice={voice} color={active?.color} />
-      <VoiceIncomingBar voice={voice} />
     </View>
     </AgentColorProvider>
     </ImageResolverProvider>

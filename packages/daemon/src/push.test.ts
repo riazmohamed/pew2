@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon } from "./index.js";
-import { PushRegistry, applyTickets, pushMessages } from "./push.js";
+import { PushRegistry, applyTickets, pushMessages, pushVoiceRing, relayOrigin } from "./push.js";
 
 const TOKEN = "ExponentPushToken[abcdef123456]";
 
@@ -192,5 +192,72 @@ describe("notifyPhones", () => {
     await Promise.resolve();
     expect(sent.map((m) => m.body)).toEqual(["All done.", "Needs your OK to continue."]);
     expect(sent[0]?.badge).toBe(0);
+  });
+});
+
+describe("voice rings: CallKit through the relay, banners for the rest", () => {
+  const VOIP = "ab".repeat(32);
+  const ring = { body: "2 things waiting", focus: "s1:approval:p1" };
+
+  function setup(relayStatus: number) {
+    const registry = new PushRegistry();
+    registry.register("callkit-phone", "ExponentPushToken[a]", "ios");
+    registry.register("banner-phone", "ExponentPushToken[b]", "ios");
+    registry.registerVoip("callkit-phone", VOIP, "sandbox");
+    const calls: { url: string; body: any }[] = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      calls.push({ url, body: JSON.parse(init.body as string) });
+      return new Response("{}", { status: relayStatus });
+    }) as unknown as typeof fetch;
+    return { registry, calls, fetchImpl };
+  }
+
+  it("the VoIP phone is rung through the relay and skipped for the banner", async () => {
+    const { registry, calls, fetchImpl } = setup(200);
+    const realFetch = globalThis.fetch;
+    const banners: any[] = [];
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      banners.push(...JSON.parse(init.body as string));
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    try {
+      const rung = await pushVoiceRing(registry, ring, { relay: "https://relay.example", fetchImpl, ringId: "r1" });
+      expect(rung).toEqual(["callkit-phone"]);
+      expect(calls[0]?.url).toBe("https://relay.example/voip");
+      expect(calls[0]?.body).toEqual({
+        token: VOIP,
+        env: "sandbox",
+        payload: { pew: { title: "Pew", body: "2 things waiting", focus: "s1:approval:p1", ring: "r1" } },
+      });
+      expect(banners.map((m) => m.to)).toEqual(["ExponentPushToken[b]"]);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("a relay that can't ring falls back to the banner; a dead token is dropped", async () => {
+    for (const status of [503, 410]) {
+      const { registry, fetchImpl } = setup(status);
+      const realFetch = globalThis.fetch;
+      const banners: any[] = [];
+      globalThis.fetch = (async (_url: string, init: RequestInit) => {
+        banners.push(...JSON.parse(init.body as string));
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }) as unknown as typeof fetch;
+      try {
+        expect(await pushVoiceRing(registry, ring, { relay: "https://relay.example", fetchImpl })).toEqual([]);
+        expect(banners.map((m) => m.to).sort()).toEqual(["ExponentPushToken[a]", "ExponentPushToken[b]"]);
+        expect(registry.voipList().length).toBe(status === 410 ? 0 : 1);
+      } finally {
+        globalThis.fetch = realFetch;
+      }
+    }
+  });
+
+  it("relay origin from the pairing URL", () => {
+    expect(relayOrigin("wss://pew2-relay.example.workers.dev")).toBe("https://pew2-relay.example.workers.dev");
+    expect(relayOrigin("ws://localhost:8799/x")).toBe("http://localhost:8799");
+    expect(relayOrigin(undefined)).toBeUndefined();
+    expect(relayOrigin("nonsense")).toBeUndefined();
   });
 });

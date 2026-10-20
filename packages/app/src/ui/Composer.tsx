@@ -15,7 +15,6 @@ import { Pixel } from "./stage/Pixel";
 import { StageChip } from "./StageChip";
 import { theme } from "../theme";
 import { haptics } from "./haptics";
-import { sounds } from "./sounds";
 import { CommandToken } from "./CommandToken";
 import { splitCommand } from "../slashCommands";
 import { AttachmentChips } from "./AttachmentChips";
@@ -50,8 +49,6 @@ interface ComposerProps {
   onAttach?: () => void;
   onRemoveAttachment?: (id: string) => void;
   dictation?: Dictation;
-  /** Start a live voice conversation. Absent hides the button (a daemon older than voice). */
-  onVoice?: () => void;
   selectors?: readonly ComposerSelector[];
   /**
    * Uncommitted files in the project, as a number after the pills (after
@@ -97,7 +94,7 @@ function ComposerView({
   value, onChangeText, onSend, busy = false, onStop,
   placeholder = "Build anything...", editable = true,
   attachments = EMPTY_ATTACHMENTS, onAttach, onRemoveAttachment,
-  dictation, onVoice, selectors = EMPTY_SELECTORS, changes,
+  dictation, selectors = EMPTY_SELECTORS, changes,
 }: ComposerProps, ref: React.Ref<ComposerHandle>) {
   const input = useRef<TextInput>(null);
   const agent = useAgentColor();
@@ -152,7 +149,7 @@ function ComposerView({
             <Pressable
               style={({ pressed }) => [styles.commandTarget, pressed && styles.pressed]}
               accessibilityRole="button" accessibilityLabel={`Remove ${split.command}`}
-              onPress={() => { onChangeText(split.rest.replace(/^ /, "")); input.current?.focus(); }}
+              onPress={() => { haptics.tap(); onChangeText(split.rest.replace(/^ /, "")); input.current?.focus(); }}
             >
               <View style={styles.tag}>
                 <CommandToken text={split.command} size={theme.font.small} lineHeight={18} />
@@ -208,15 +205,6 @@ function ComposerView({
               </View>
             ) : null}
           </View>
-          {onVoice && !busy && !dictation?.listening && (
-            <Pressable
-              style={({ pressed }) => [styles.iconTarget, pressed && styles.pressed]}
-              accessibilityRole="button" accessibilityLabel="Start a voice conversation"
-              onPress={onVoice}
-            >
-              <Ionicons name="headset-outline" size={18} color={theme.composer.ink} />
-            </Pressable>
-          )}
           <Pressable
             style={({ pressed }) => [styles.iconTarget, pressed && styles.pressed]}
             accessibilityRole="button" accessibilityLabel={actionLabel}
@@ -229,7 +217,7 @@ function ComposerView({
                 // mic stays open after the message is gone. The words are
                 // already in the draft, so cancel, not stop.
                 if (dictation?.listening) dictation.cancel();
-                haptics.sent(); sounds.play("send"); onSend();
+                haptics.sent(); onSend();
               }
             }}
           >

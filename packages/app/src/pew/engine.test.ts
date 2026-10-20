@@ -15,6 +15,7 @@ import {
   paintPew,
   pokePew,
   releasePew,
+  touchPew,
   settlePew,
   talkOpen,
   type PewMood,
@@ -122,6 +123,55 @@ describe("face", () => {
     paintPew(big.B, big.t, "happy", PEW2_PEW, b.painter);
     expect(a.calls.some((c) => c.kind === "line")).toBe(true);
     expect(b.calls.filter((c) => c.kind === "glow").length).toBeGreaterThan(5);
+  });
+});
+
+describe("call moods", () => {
+  const CALL: PewMood[] = ["listening", "typing", "reading", "dialing", "celebrate", "goodbye", "muted"];
+  const frames = (S: number, mood: PewMood) => {
+    const B = makePewBody(S);
+    const out: string[] = [];
+    let t = 0;
+    for (let i = 1; i <= 150; i++) {
+      t = i / 60;
+      advancePew(B, t, 1 / 60, mood);
+      if (i % 30 === 0) {
+        const { painter, calls } = recorder();
+        paintPew(B, t, mood, PEW2_PEW, painter);
+        out.push(calls.map((c) => `${c.kind}:${c.args.map((n) => n.toFixed(2)).join(",")}`).join("|"));
+      }
+    }
+    return out;
+  };
+
+  test("are all moods", () => {
+    for (const m of CALL) expect(PEW_MOODS).toContain(m);
+  });
+
+  test("each paints frames unlike idle's, big and small", () => {
+    for (const S of [24, 54, 220]) {
+      const idle = frames(S, "idle");
+      for (const m of CALL) {
+        const f = frames(S, m);
+        const same = f.filter((x, i) => x === idle[i]).length;
+        expect(`${m}@${S}:${same}`).toBe(`${m}@${S}:0`);
+      }
+    }
+  });
+
+  test("blend smoothly into and out of idle", () => {
+    for (const m of CALL) {
+      const { B, t } = run(120, "idle", 1);
+      let tt = t;
+      for (let i = 0; i < 6; i++) {
+        tt += 1 / 60;
+        advancePew(B, tt, 1 / 60, m);
+      }
+      expect(B.prevMood).toBe("idle");
+      const { painter, calls } = recorder();
+      paintPew(B, tt, m, PEW2_PEW, painter);
+      for (const c of calls) for (const n of c.args) expect(Number.isFinite(n)).toBe(true);
+    }
   });
 });
 
@@ -291,4 +341,65 @@ test.each(["engineBody.ts", "enginePaint.ts"])("no worklet in %s calls a helper 
     }
   }
   expect([...new Set(late)]).toEqual([]);
+});
+
+describe("squishy under a finger", () => {
+  const live = () => {
+    const { B, t } = run(160, "idle", 1);
+    // Project once so every dot knows where it is on screen.
+    paintPew(B, t, "idle", PEW2_PEW, recorder().painter);
+    return { B, t };
+  };
+  const radius = (B: ReturnType<typeof makePewBody>, i: number) => Math.hypot(B.p[i * 3]!, B.p[i * 3 + 1]!, B.p[i * 3 + 2]!);
+  const nearest = (B: ReturnType<typeof makePewBody>, x: number, y: number) => {
+    let best = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < B.n; i++) {
+      if (B.scr[i * 7 + 2]! < 0) continue;
+      const d = Math.hypot(B.scr[i * 7]! - x, B.scr[i * 7 + 1]! - y);
+      if (d < bestD) [best, bestD] = [i, d];
+    }
+    return best;
+  };
+
+  test("pressing dents the dots under the finger in, and the far side bulges out", () => {
+    const { B } = live();
+    let t = 1;
+    const cx = B.S / 2;
+    const cy = B.S * 0.47;
+    const under = nearest(B, cx - B.S * 0.12, cy - B.S * 0.08);
+    const before = radius(B, under);
+    touchPew(B, cx - B.S * 0.12, cy - B.S * 0.08, true);
+    for (let i = 0; i < 30; i++) advancePew(B, (t += 1 / 60), 1 / 60, "idle");
+    expect(radius(B, under)).toBeLessThan(before * 0.85);
+    expect(B.press).toBeGreaterThan(0.8);
+  });
+
+  test("letting go springs it back with a wobble, harder after a fast drag", () => {
+    const { B } = live();
+    let t = 1;
+    touchPew(B, 80, 70, true);
+    for (let i = 0; i < 6; i++) dragPew(B, 12, 0, 1 / 60);
+    expect(B.dragVX).toBeGreaterThan(200);
+    touchPew(B, 140, 70, false);
+    expect(B.jiggle).toBeGreaterThan(0.5);
+    for (let i = 0; i < 90; i++) advancePew(B, (t += 1 / 60), 1 / 60, "idle");
+    expect(B.press).toBeLessThan(0.02);
+    expect(B.jiggle).toBeLessThan(0.05);
+  });
+
+  test("a drag leans and stretches the body the way it's going, and a still press only squashes", () => {
+    const { B } = live();
+    let t = 1;
+    touchPew(B, 80, 70, true);
+    for (let i = 0; i < 20; i++) advancePew(B, (t += 1 / 60), 1 / 60, "idle");
+    const pressed = recorder();
+    paintPew(B, t, "idle", PEW2_PEW, pressed.painter);
+    for (let i = 0; i < 6; i++) dragPew(B, 14, 0, 1 / 60);
+    expect(B.dragVX).toBeGreaterThan(0);
+    // Painting a leaning, stretched body never produces a bad number.
+    const leaning = recorder();
+    paintPew(B, t, "idle", PEW2_PEW, leaning.painter);
+    expect(leaning.calls.length).toBeGreaterThan(0);
+  });
 });

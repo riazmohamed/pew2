@@ -7,6 +7,8 @@
  * a frame — which is the moment someone scans a pairing code.
  */
 import "./src/cryptoPolyfill";
+// After the polyfill (the agreement check draws random bytes), before any frame.
+import "./src/ui/nativeCrypto";
 
 import { registerRootComponent } from 'expo';
 import { LogBox } from 'react-native';

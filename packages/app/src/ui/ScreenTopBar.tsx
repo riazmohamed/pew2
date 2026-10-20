@@ -14,8 +14,10 @@ import type { useGoalControls } from "../useGoalControls";
 import { CircleButton } from "./controls";
 import { DotGlyph } from "./stage/DotGlyph";
 import { Ticker } from "./Ticker";
+import { Dissolve } from "./motion/Dissolve";
 import { CrewRow } from "./CrewRow";
 import { CanvasCover } from "./CanvasCover";
+import { PEW_VOICE_COLOR } from "../pew/palette";
 
 export function ScreenTopBar({
   daemon,
@@ -24,12 +26,16 @@ export function ScreenTopBar({
   navHeight,
   setNavHeight,
   setMenuOpen,
-  setNewChatOpen,
+  onNewChat,
+  onHome,
   sessionTitle,
   inThread,
   holdingRestore,
   active,
   onOpenTools,
+  onTalk,
+  onTalkHold,
+  talkArmed = false,
 }: {
   daemon: ReturnType<typeof useDaemon>;
   goals: ReturnType<typeof useGoalControls>;
@@ -37,18 +43,28 @@ export function ScreenTopBar({
   navHeight: number;
   setNavHeight: Dispatch<SetStateAction<number>>;
   setMenuOpen: Dispatch<SetStateAction<boolean>>;
-  setNewChatOpen: Dispatch<SetStateAction<boolean>>;
+  onNewChat: () => void;
+  /** Back to the home dashboard, from a conversation not yet started. Absent hides it. */
+  onHome?: () => void;
   sessionTitle: string;
   inThread: boolean;
   holdingRestore: boolean;
   active: Provider | undefined;
   /** Opens the tool sheet: each step's own output and diff. */
   onOpenTools?: () => void;
+  /** Start a call with Pew; absent hides the button (no voice on this daemon). */
+  onTalk?: () => void;
+  /** Hold Talk: the voice settings, where this conversation can be armed to ring. */
+  onTalkHold?: () => void;
+  /** This conversation may ring the phone: a dot in Pew's colour on Talk. */
+  talkArmed?: boolean;
 }) {
   const { inGoal, goalPaused, goalId, resumeGoal, pauseGoal, openGoalSettings, askHere, kenSays, goalState } = goals;
   // The ticker's step list drops over the crew row, which is drawn after it
   // and so on top: the row fades out while the list is open.
   const [stepsOpen, setStepsOpen] = useState(false);
+  // How many controls sit right of the title: a goal's two, or Talk beside compose.
+  const twoRight = inGoal || (onTalk !== undefined && (inThread || onHome !== undefined));
   return (
     <>
       {/* Absolute over the thread: messages scroll beneath the nav and fade
@@ -59,7 +75,14 @@ export function ScreenTopBar({
         onLayout={(e) => setNavHeight(e.nativeEvent.layout.height)}
       >
       <View style={styles.topBar}>
-        <View style={inGoal && [styles.navActionsGoal, styles.navLeadGoal]}>
+        {/* Both sides the same fixed width, sized for the wider one, so the
+            title is centred on the screen and is what gives way: it truncates
+            instead of pushing a button off the edge. Two controls on the right
+            in a goal, and in a thread when voice adds Talk beside compose. */}
+        <View style={twoRight ? [styles.navActionsGoal, styles.navLeadGoal] : styles.navAction}>
+          {/* The dot below is pinned to this box, so it stays on the menu
+              button however wide the side it sits in is. */}
+          <View>
           <CircleButton
             label={`Open menu. Daemon ${daemon.status}.`}
             onPress={() => setMenuOpen(true)}
@@ -81,10 +104,15 @@ export function ScreenTopBar({
               ]}
             />
           )}
+          </View>
         </View>
 
+        {/* Re-keyed per title: opening a chat swaps the name in rather than cutting. */}
+        <Dissolve kind="swap" dissolveKey={sessionTitle} style={titleBox}>
         <Text
-          style={styles.sessionTitle}
+          // The wrapper takes the row's `flex: 1`; inside its column the title's
+          // own `flex: 1` would size it from zero height and pin it to the top.
+          style={[styles.sessionTitle, titleText]}
           numberOfLines={1}
           ellipsizeMode="tail"
           accessibilityRole="header"
@@ -92,9 +120,10 @@ export function ScreenTopBar({
         >
           {sessionTitle}
         </Text>
+        </Dissolve>
 
         <DeskButton daemon={daemon} inThread={inThread} active={active} />
-        <View style={[styles.navAction, inGoal && styles.navActionsGoal]}>
+        <View style={twoRight ? styles.navActionsGoal : styles.navAction}>
         {inGoal ? (
           // A goal is one long conversation, so there is no "new conversation"
           // here: its two controls take the spot instead of a card over the thread.
@@ -110,19 +139,42 @@ export function ScreenTopBar({
               <DotGlyph name="gear" size={16} />
             </CircleButton>
           </>
-        ) : inThread && (
+        ) : (
+          <>
+          {onTalk && (
+            <View>
+              <CircleButton
+                label={talkArmed ? "Talk to Pew. This conversation rings you when it needs you." : "Talk to Pew"}
+                onPress={onTalk}
+                onLongPress={onTalkHold}
+              >
+                <DotGlyph name="call" size={16} />
+              </CircleButton>
+              {talkArmed && <View pointerEvents="none" style={[styles.statusDot, { backgroundColor: PEW_VOICE_COLOR }]} />}
+            </View>
+          )}
+          {inThread && (
           // Asks where, rather than starting one immediately: the old behaviour
           // always landed wherever the agent happened to be, which is the wrong
           // project as often as the right one and was unfixable from the phone.
-          <CircleButton label="New conversation" onPress={() => setNewChatOpen(true)}>
+          <CircleButton label="New conversation" onPress={onNewChat}>
             <DotGlyph name="compose" size={16} />
           </CircleButton>
+          )}
+          {!inThread && onHome && (
+          <CircleButton label="Back to home" onPress={onHome}>
+            <DotGlyph name="close" size={14} />
+          </CircleButton>
+          )}
+          </>
         )}
         </View>
       </View>
       {/* Not while a chat is reopening: that screen is Pew alone, centred,
           and the ticker fades in with the messages once they've loaded. */}
       {(inThread || daemon.restoreTarget) && !(daemon.restoreTarget && daemon.loadingSession && (daemon.turns.length === 0 || holdingRestore)) && (
+        // Mounts with the transcript, so it dissolves in on the same beat.
+        <Dissolve>
         <Ticker
           color={active?.color}
           working={daemon.busy && !daemon.loadingSession}
@@ -135,6 +187,7 @@ export function ScreenTopBar({
           onOpenChange={setStepsOpen}
           onOpenTools={onOpenTools}
         />
+        </Dissolve>
       )}
       {/* A goal's crew: one slidable row of its workers under the ticker, each
           its own Pew in its role colour. Inside the measured overlay, so the
@@ -206,3 +259,5 @@ function DeskButton({ daemon, inThread, active }: { daemon: ReturnType<typeof us
     </Pressable>
   );
 }
+const titleBox = { flex: 1, minWidth: 0, justifyContent: "center" } as const;
+const titleText = { flex: 0, alignSelf: "stretch" } as const;

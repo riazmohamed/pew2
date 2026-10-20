@@ -16,6 +16,7 @@ import {
 import { theme } from "../theme";
 import { haptics } from "./haptics";
 import { useDrawerWidth } from "./useDrawerWidth";
+import { sounds } from "./sounds";
 
 /**
  * How the drawer finishes a movement it was handed.
@@ -106,6 +107,16 @@ export function useDrawer({
     // `setMenuOpen` is a state setter handed in from the screen: stable.
     [settleDrawer, setMenuOpen],
   );
+
+  // The drawer sliding: the same breath of air as a sheet. Not on mount.
+  const wasOpen = useRef(menuOpen);
+  useEffect(() => {
+    if (wasOpen.current === menuOpen) return;
+    wasOpen.current = menuOpen;
+    // Only on the way in: closing follows a choice that already made its own
+    // sound (a row, a button), and a second one on top was noise.
+    if (menuOpen) sounds.play("swish-up");
+  }, [menuOpen]);
 
   useEffect(() => {
     // The drawer is the full height of the screen and its conversations run to

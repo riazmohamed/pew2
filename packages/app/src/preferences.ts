@@ -7,10 +7,17 @@
  * testable.
  */
 import * as SecureStore from "expo-secure-store";
+import { parseHomeCards } from "./homeDashboard";
+import { parseDismissedAt } from "./notificationAsk";
+import { parseProgress, type Progress } from "./onboarding";
 import { fromCachedProviders, toCachedProviders } from "./providerCache";
 import type { Provider } from "./useDaemon";
 
 const LAST_PROVIDER_KEY = "pew2.lastProviderId";
+const VOICE_CONSENT_KEY = "pew2.voiceConsent.v1";
+const HOME_CARDS_KEY = "pew2.homeCards.v1";
+const ALERTS_DISMISSED_KEY = "pew2.alertsDismissedAt";
+const ONBOARDING_KEY = "pew2.onboarding";
 const PROVIDERS_KEY = "pew2.providers";
 
 /** The agent last targeted on this device, or null if never chosen. */
@@ -76,5 +83,77 @@ export async function clearCachedProviders(): Promise<void> {
     await SecureStore.deleteItemAsync(PROVIDERS_KEY);
   } catch {
     // Nothing to do — the next machine to answer overwrites it anyway.
+  }
+}
+
+/**
+ * Whether the user agreed, once, that calls send their voice to OpenAI (App
+ * Review 5.1.2(i): name the third-party AI and ask before the first call).
+ * A store that can't be read means "not yet": asking again is the safe side.
+ */
+export async function loadVoiceConsent(): Promise<boolean> {
+  try {
+    return (await SecureStore.getItemAsync(VOICE_CONSENT_KEY)) === "yes";
+  } catch {
+    return false;
+  }
+}
+
+export async function saveVoiceConsent(): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(VOICE_CONSENT_KEY, "yes");
+  } catch {
+    // Asked again next time, which is harmless.
+  }
+}
+
+/** When the alerts card was last answered "Not now" (see `notificationAsk.ts`). */
+export async function loadAlertsDismissedAt(): Promise<number | undefined> {
+  try {
+    return parseDismissedAt(await SecureStore.getItemAsync(ALERTS_DISMISSED_KEY));
+  } catch {
+    return undefined;
+  }
+}
+
+/** Onboarding progress (`onboarding.ts`); unreadable reads as never started. */
+export async function loadOnboarding(): Promise<Progress | undefined> {
+  try {
+    return parseProgress(await SecureStore.getItemAsync(ONBOARDING_KEY));
+  } catch {
+    return undefined;
+  }
+}
+
+export async function saveOnboarding(progress: Progress): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(ONBOARDING_KEY, progress);
+  } catch {
+    // Resumes one step early next launch at worst.
+  }
+}
+
+export async function saveAlertsDismissedAt(at: number): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(ALERTS_DISMISSED_KEY, String(at));
+  } catch {
+    // Worst case the card returns sooner than a week.
+  }
+}
+
+/** How many cards home showed last time (`parseHomeCards`), for laying it out before the list arrives. */
+export async function loadHomeCards(): Promise<number | undefined> {
+  try {
+    return parseHomeCards(await SecureStore.getItemAsync(HOME_CARDS_KEY));
+  } catch {
+    return undefined;
+  }
+}
+
+export async function saveHomeCards(count: number): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(HOME_CARDS_KEY, String(count));
+  } catch {
+    // Laid out for the old count next launch, then corrected.
   }
 }

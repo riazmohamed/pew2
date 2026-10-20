@@ -22,14 +22,18 @@
       "appleTeamId": "396M7LY29W",
       "//entitlements": "The App Group the home/Lock Screen widget reads from: the app writes `pew2.snapshot` there (src/ui/useHomeWidget.ts), and so does the notification service extension when a push lands while the app is asleep (targets/notifications). Both targets mirror this value from here.",
       "entitlements": {
-        "com.apple.security.application-groups": ["group.io.github.kenkaiii.pew2"]
+        "com.apple.security.application-groups": [
+          "group.io.github.kenkaiii.pew2"
+        ],
+        "com.apple.developer.usernotifications.time-sensitive": true
       },
       "//infoPlist": "Ships verbatim into Info.plist, so no comment keys inside it — Apple reads what is written there. `ITSAppUsesNonExemptEncryption: false` answers the export-compliance question at build time instead of halting every upload to ask it. The answer is honest: this app's own cryptography is the pairing seal in @pew2/protocol (XChaCha20-Poly1305 and HKDF-SHA256 from @noble) over TLS, both exempt under the standard 'uses only encryption exempt from EAR' category. Adding a non-exempt algorithm of our own means revisiting this line, not merely the answer in the console. `UIBackgroundModes: [audio]` keeps a live voice conversation running with the screen locked or the phone in a pocket; expo-notifications merges its own `remote-notification` into the same array at prebuild.",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocalNetworkUsageDescription": "Used to connect to the pew2 daemon running on your computer when both are on the same network.",
         "UIBackgroundModes": [
-          "audio"
+          "audio",
+          "voip"
         ]
       }
     },
@@ -106,15 +110,14 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Used to dictate a message while the mic button is on, and to talk with your voice assistant during a live voice conversation you start.",
-          "speechRecognitionPermission": "Used only to turn what you dictate into the text of a message.",
-          "//": "The one owner of NSMicrophoneUsageDescription. The WebRTC plugin below is given no microphonePermission and only fills the key when it is empty, so this string covers dictation and live voice."
+          "microphonePermission": "Used to dictate a message while the mic button is on, and to talk to Pew during a voice call.",
+          "speechRecognitionPermission": "Used only to turn what you dictate into the text of a message."
         }
       ],
       [
         "@config-plugins/react-native-webrtc",
         {
-          "//": "No microphonePermission or cameraPermission: expo-speech-recognition and expo-camera own those keys, and this plugin keeps an existing value."
+          "//": "No permission strings here on purpose: it would write NSMicrophoneUsageDescription and NSCameraUsageDescription, which expo-speech-recognition and expo-camera own. It keeps an existing value, so with both set it adds nothing to Info.plist."
         }
       ],
       [

@@ -6,6 +6,7 @@ import {
   NativeTyper,
   appleText,
   nativeAlive,
+  openNativeWindow,
   nativeCommand,
   nativeOpenScript,
   nativeProviders,
@@ -188,4 +189,32 @@ test("the status row above the input says whether OG Coder is working", () => {
   expect(parseOgCoderScreen(screen(" ● Working…")).status).toBe("busy");
   // Anything else (a panel, a queued message) is not evidence either way.
   expect(parseOgCoderScreen(screen(" Queued: fix the tests")).status).toBeUndefined();
+});
+
+test("a window whose app quits at once says so plainly, and the command goes in as given", async () => {
+  const scripts: string[] = [];
+  const deps = {
+    osa: async (script: string) => {
+      scripts.push(script);
+      return {
+        code: 1,
+        stdout: "",
+        stderr: "254:269: execution error: Can’t get current session of missing value. (-1728)",
+        timedOut: false,
+      };
+    },
+    ttyCommands: async () => undefined,
+    hasITerm: () => true,
+  };
+  const opened = await openNativeWindow(deps, {
+    command: "/Users/me/Library/pnpm/ogcoder",
+    providerId: "ggcoder",
+    agentSessionId: "abc",
+    cwd: "/p",
+  });
+  expect(opened).toEqual({
+    ok: false,
+    message: "OG Coder closed as soon as it opened. Check it starts from a new iTerm window on your Mac.",
+  });
+  expect(scripts[0]).toContain("exec /Users/me/Library/pnpm/ogcoder --resume abc");
 });

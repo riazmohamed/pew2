@@ -11,12 +11,8 @@ import type { KenMeta } from "./chunks";
 import type { ContextUsage } from "./contextUsage";
 import type { ChatImage } from "./images";
 import type { PreviewServer } from "./preview";
-import type { wire } from "@pew2/protocol";
 
 export type Status = "connecting" | "online" | "offline";
-
-/** Voice frames from the daemon, handed to `useVoice` untouched. */
-export type VoiceFrame = wire.VoiceAnswer | wire.VoiceStatus;
 
 /** The computer's answer to "screenshot the computer". */
 export interface CaptureResult {

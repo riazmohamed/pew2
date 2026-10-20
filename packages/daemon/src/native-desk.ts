@@ -403,6 +403,14 @@ export async function openNativeWindow(
       message: "pew2 isn't allowed to control iTerm. Allow it in System Settings › Privacy & Security › Automation › bun › iTerm.",
     };
   }
+  // iTerm hands back no window when the command quit before it could be
+  // read: the app itself would not start (most often, not found).
+  if (/missing value/.test(why.detail)) {
+    return {
+      ok: false,
+      message: `${app?.name ?? "The app"} closed as soon as it opened. Check it starts from a new iTerm window on your Mac.`,
+    };
+  }
   return { ok: false, message: `Couldn't open ${app?.name ?? "the app"}: ${why.detail}` };
 }
 

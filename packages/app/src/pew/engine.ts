@@ -22,6 +22,7 @@
 // public face the app and the tests import, so neither has to know.
 export {
   PEW_AMBER,
+  PEW_BODY_CY,
   PEW_MOODS,
   PEW_SLEEP_STYLES,
   advancePew,
@@ -35,7 +36,11 @@ export {
   pewSleepSeed,
   pewSleepStyle,
   pokePew,
+  feedPew,
   releasePew,
+  touchPew,
+  SPIN_BURST,
+  spinFeel,
   settlePew,
   talkOpen,
   type PewBody,

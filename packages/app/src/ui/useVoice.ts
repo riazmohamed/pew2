@@ -1,518 +1,377 @@
 /**
- * A live voice conversation with GPT-Live, over WebRTC.
+ * Voice on this daemon: whether it can call, the machine-wide inbox, the
+ * sign-in and prefs actions, and the call itself.
  *
- * The phone is only microphone, speaker, captions and controls: the daemon
- * holds the OpenAI key, exchanges this phone's SDP offer for an answer, and
- * runs every coding job the assistant hands over. What lives here is what the
- * pure reducer cannot own: the peer connection, the mic stream, the data
- * channel, audio routing and timers.
- *
- * Every path out tears all of that down: hanging up, an error, the daemon
- * saying the call closed, and unmount. A mic left open shows the orange
- * indicator with nothing on screen to explain it, which reads as spying.
+ * The decisions are `voiceCall.ts`'s; this hook only runs the effects it
+ * returns — daemon messages, the WebRTC transport, timers — outside any state
+ * updater, so a twice-run updater can never send a frame twice.
  */
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { mediaDevices, RTCPeerConnection, type MediaStream } from "react-native-webrtc";
-
-type RTCDataChannel = ReturnType<RTCPeerConnection["createDataChannel"]>;
-import InCallManager from "react-native-incall-manager";
-import { createAudioPlayer, type AudioPlayer } from "expo-audio";
-import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
-import { startVoiceCallService, stopVoiceCallService } from "../../modules/voice-call-service";
-import { PermissionsAndroid, Platform } from "react-native";
-import {
-  initialVoiceState,
-  readDataChannelEvent,
-  shouldRingForTurn,
-  voiceOrb,
-  voiceReducer,
-  voiceSessionToOpen,
-  voiceStatusLine,
-  voiceUsageLine,
-  type VoiceOrb,
-  type VoiceState,
-} from "../voiceSession";
-import type { Status, VoiceFrame } from "../useDaemon";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { wire } from "@pew2/protocol";
-import { haptics } from "./haptics";
+import {
+  CALL_ERRORS,
+  IDLE_CALL,
+  VOICE_UNKNOWN,
+  callActive,
+  foldVoiceStatus,
+  readInboxItems,
+  stepCall,
+  type CallEffect,
+  type CallInput,
+  type CallPlace,
+  type CallState,
+  type VoiceInboxItem,
+  type VoiceKnowledge,
+  type VoiceMode,
+} from "../voiceCall";
+import { IDLE_BOARD, boardFromInbox, foldBoard, type BoardState } from "../voiceBoard";
+import { openTransport, type VoiceTransport } from "./voiceTransport";
+import { cancelsEcho, onRouteChange, setProximity, setVoiceChatMode } from "../../modules/pew-audio-route";
+import { setOnCall } from "./notifier";
+import { androidCallLive, beginAndroidCall, endAndroidCall } from "./androidCall";
+import { sounds } from "./sounds";
+import { setAudioModeAsync } from "expo-audio";
+import { useSharedValue } from "react-native-reanimated";
+import { NEW_CLOCK, tickClock, type SpeechClock } from "../speechSync";
 
-const ICE_TIMEOUT_MS = 10_000;
-/** Ring this long before going quiet; the offer itself stays until acted on. */
-const RING_MS = 30_000;
-/** An unanswered incoming offer gives up after this. */
-const INCOMING_EXPIRE_MS = 120_000;
-/** From tapping to `session.started`; past this the call is abandoned. */
-const CONNECT_TIMEOUT_MS = 30_000;
-const CLOSE_TIMEOUT_MS = 5_000;
-const KEEP_AWAKE_TAG = "pew2-voice";
 /**
- * A UK double ring: the incoming ring when an agent finishes, and on iOS
- * also the connecting tone. Android connects to InCallManager's ringback
- * instead (the "waiting on the line" tone), so the two sounds differ there
- * and the connecting one is audible over an open microphone.
+ * The call's audio session, set before the mic opens: expo-audio maps this to
+ * AVAudioSession playAndRecord with allowBluetooth (HFP, so AirPods carry both
+ * directions), no defaultToSpeaker, background audio so a locked screen keeps
+ * the call. expo-audio cannot set a session *mode*; voiceChat (hardware echo
+ * cancellation) is applied by the WebRTC framework's audio unit when it starts.
  */
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const RINGTONE = require("../../assets/ringtone.wav") as number;
-const UNREACHABLE = "Your computer isn't reachable right now, so a voice conversation can't start.";
+/** After a call, app sounds stay quiet this long while WebRTC releases the audio session. */
+const AUDIO_SETTLE_MS = 1500;
+/** The hang-up tone's length: the call's audio stays up (silent) until it is over. */
+const END_TONE_MS = 1200;
 
-export interface UseVoiceOptions {
-  status: Status;
-  voice?: { available: boolean; reason?: string };
-  sendVoice: (message: wire.VoiceStart | wire.VoiceStop) => boolean;
-  setVoiceListener: (listener: ((message: VoiceFrame) => void) | undefined) => void;
-  /** Context handed to the daemon so the assistant's work lands somewhere sensible. */
-  sessionId?: string;
-  providerId?: string;
-  cwd?: string;
-  providerName: (id: string | undefined) => string;
-  /** Stop dictation: two things must never hold the mic at once. */
-  onBeforeStart: () => void;
-  /** The assistant's work is in another conversation: show it. */
-  onOpenSession: (sessionId: string) => void;
-  onSessionShown?: string;
-  onMessage: (message: string) => void;
+function enterCallAudio(): Promise<void> {
+  return setAudioModeAsync({
+    playsInSilentMode: true,
+    allowsRecording: true,
+    interruptionMode: "doNotMix",
+    shouldPlayInBackground: true,
+    shouldRouteThroughEarpiece: false,
+  })
+    // Voice chat mode (system echo cancellation), still before the mic opens.
+    .then(() => void setVoiceChatMode())
+    .catch(() => {});
 }
 
-export interface Voice {
-  /** Undefined when the daemon is too old for voice: show no button at all. */
-  offered: boolean;
-  state: VoiceState;
-  /** Whether the voice screen should be up. */
-  open: boolean;
+interface Options {
+  post: (message: unknown) => boolean;
+  online: boolean;
+}
+
+export function useVoice({ post, online }: Options) {
+  const [knowledge, setKnowledge] = useState<VoiceKnowledge>(VOICE_UNKNOWN);
+  const knowledgeRef = useRef<VoiceKnowledge>(VOICE_UNKNOWN);
+  const [inbox, setInbox] = useState<VoiceInboxItem[]>([]);
+  const [call, setCall] = useState<CallState>(IDLE_CALL);
+  /** Mission control's lanes: `voice.board`, or `voice.inbox` from an older daemon. */
+  const [board, setBoardState] = useState<BoardState>(IDLE_BOARD);
+  const boardRef = useRef<BoardState>(IDLE_BOARD);
+  const setBoard = useCallback((next: BoardState) => {
+    if (next === boardRef.current) return;
+    boardRef.current = next;
+    setBoardState(next);
+  }, []);
+  const callRef = useRef<CallState>(IDLE_CALL);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const transport = useRef<VoiceTransport | undefined>(undefined);
+  /** The call's audio session being applied; the transport waits for it. */
+  const audioReady = useRef<Promise<unknown>>(Promise.resolve());
   /**
-   * A finished agent turn offering itself as a call, while the ring sounds.
-   * Accepting starts a voice call briefed on that conversation.
+   * The previous call's teardown (`VoiceTransport.released`). A new call sets
+   * its audio session only after it: configured while WebRTC was still
+   * stopping the last call's audio unit and releasing the session ("Call
+   * again" straight from the end card), the new call's audio raced the old
+   * one's shutdown.
    */
-  incoming?: IncomingCall;
-  /** The quiet "4:12 · about 21p" line for the call screen. */
-  usageLine: string;
-  /** Offer a finished turn as an incoming call. Ignored while a call is live. */
-  offerIncoming: (turn: IncomingCall) => void;
-  acceptIncoming: () => void;
-  declineIncoming: () => void;
-  /** A call is running, even minimized: the banner shows on this. */
-  active: boolean;
-  minimized: boolean;
-  orb: VoiceOrb;
-  statusLine: string;
-  start: () => void;
-  end: () => void;
-  toggleMute: () => void;
-  /** Shrink the call to the banner so the chat underneath can be watched. */
-  minimize: () => void;
-  /** Bring the full voice screen back up. */
-  expand: () => void;
-  /** Close the screen after an error. */
-  dismiss: () => void;
-}
-
-/** A finished turn ringing the phone, before it becomes a call. */
-export interface IncomingCall {
-  sessionId: string;
-  agentName?: string;
-  folder?: string;
-  /** Whether the app was in front when the turn finished; see shouldRingForTurn. */
-  appActive?: boolean;
-}
-
-interface Call {
-  stream?: MediaStream;
-  pc?: RTCPeerConnection;
-  channel?: RTCDataChannel;
-  requestId: string;
-  liveSessionId?: string;
-  timers: ReturnType<typeof setTimeout>[];
-  audioStarted: boolean;
-  ringer?: AudioPlayer;
-  /** Resolves the wait for `session.closed` when hanging up. */
-  onClosed?: () => void;
-  done: boolean;
-  /** The conversation already switched to, so a stream of statuses does not re-open it. */
-  opened?: string;
-}
-
-export function useVoice(options: UseVoiceOptions): Voice {
-  const [state, dispatch] = useReducer(voiceReducer, initialVoiceState);
-  const [now, setNow] = useState(() => Date.now());
-  const [incoming, setIncoming] = useState<IncomingCall | undefined>(undefined);
-  const incomingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const incomingRinger = useRef<AudioPlayer | undefined>(undefined);
-  const call = useRef<Call | undefined>(undefined);
+  const lastReleased = useRef<Promise<void>>(Promise.resolve());
+  /** The mic's loudness, 0..1, for the listening animation; -1 when unknown. */
+  const micLevel = useSharedValue(-1);
+  /** Pew's speaking clock (ms its voice has sounded), read by the call screen's captions. */
+  const speech = useRef<SpeechClock>(NEW_CLOCK);
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const counter = useRef(0);
-  const opts = useRef(options);
-  opts.current = options;
+  const postRef = useRef(post);
+  postRef.current = post;
 
-  /** Release everything this call holds. Safe to call twice. */
-  const teardown = useCallback((target: Call | undefined) => {
-    if (!target || target.done) return;
-    target.done = true;
-    for (const timer of target.timers) clearTimeout(timer);
-    target.timers = [];
-    target.stream?.getTracks().forEach((track) => track.stop());
-    try { target.channel?.close(); } catch { /* already closed */ }
-    try { target.pc?.close(); } catch { /* already closed */ }
-    stopRinger(target);
-    if (target.audioStarted) InCallManager.stop();
-    stopVoiceCallService();
-    void deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => undefined);
-    if (call.current === target) call.current = undefined;
+  const nextId = useCallback(() => `voice-${Date.now().toString(36)}-${++counter.current}`, []);
+
+  const dispatchRef = useRef<(input: CallInput) => void>(() => {});
+  const run = useCallback((effects: CallEffect[]) => {
+    const dispatch = (input: CallInput) => dispatchRef.current(input);
+    for (const effect of effects) {
+      switch (effect.kind) {
+        case "daemon":
+          if (!postRef.current(effect.message) && effect.message.t === "voice.session") {
+            dispatch({ type: "failed", error: CALL_ERRORS.offline });
+          }
+          break;
+        case "connect":
+          transport.current?.close();
+          transport.current = openTransport(
+            effect.secret,
+            effect.expiresAt,
+            {
+              onOpen: () => dispatch({ type: "open" }),
+              onEvent: (event) => dispatch({ type: "server", event }),
+              onFailed: (error) => dispatch({ type: "failed", error }),
+            },
+            audioReady.current,
+          );
+          break;
+        case "realtime":
+          transport.current?.send(effect.event);
+          break;
+        case "mute":
+          transport.current?.setMuted(effect.muted);
+          break;
+        case "timer": {
+          const existing = timers.current.get(effect.key);
+          if (existing) clearTimeout(existing);
+          timers.current.set(
+            effect.key,
+            setTimeout(() => {
+              timers.current.delete(effect.key);
+              dispatch(effect.input);
+            }, effect.ms),
+          );
+          break;
+        }
+        case "cancelTimer": {
+          const existing = timers.current.get(effect.key);
+          if (existing) clearTimeout(existing);
+          timers.current.delete(effect.key);
+          break;
+        }
+        case "close":
+          // The hang-up tone is already playing (see `dispatch`); the call
+          // goes silent now and its audio shuts down once the tone is over.
+          if (transport.current) {
+            transport.current.close(END_TONE_MS);
+            lastReleased.current = transport.current.released;
+          }
+          transport.current = undefined;
+          // Restore: the next chime re-applies the app's ambient, mixing mode.
+          // Not at once: WebRTC is still shutting its audio down, and an app
+          // sound played now (the end card's swish, a tap) waits on the audio
+          // session synchronously, which froze the screen for seconds. The
+          // call's own end cue plays natively and is unaffected.
+          clearTimeout(settleTimer.current);
+          settleTimer.current = setTimeout(() => {
+            if (!callActive(callRef.current)) sounds.setListening(false);
+          }, AUDIO_SETTLE_MS);
+          break;
+      }
+    }
   }, []);
 
-  const fail = useCallback((target: Call | undefined, message: string) => {
-    if (!target || target.done) return;
-    if (target.liveSessionId) opts.current.sendVoice({ t: "voice.stop", liveSessionId: target.liveSessionId });
-    teardown(target);
-    dispatch({ type: "fail", message });
-    haptics.failed();
-  }, [teardown]);
+  const dispatch = useCallback(
+    (input: CallInput) => {
+      const before = callRef.current.phase;
+      const step = stepCall(callRef.current, input);
+      // The hang-up tone first, while the call's audio is still up: played
+      // after the connection closes, it waited seconds for WebRTC to let go.
+      const after = step.state.phase;
+      if ((after === "ended" && (before === "live" || before === "ending")) || (after === "failed" && before !== "failed")) {
+        sounds.callCue("call-end");
+      }
+      callRef.current = step.state;
+      setCall(step.state);
+      run(step.effects);
+    },
+    [run],
+  );
+  dispatchRef.current = dispatch;
 
-  // One listener for the daemon's voice frames, matched to this phone's call.
+  const setKnown = useCallback((next: VoiceKnowledge) => {
+    if (next === knowledgeRef.current) return;
+    knowledgeRef.current = next;
+    setKnowledge(next);
+  }, []);
+
+  /** Every opened daemon frame; wired through `useDaemon`'s `onFrame`. */
+  const onFrame = useCallback(
+    (message: unknown) => {
+      if (typeof message !== "object" || message === null) return;
+      const t = (message as { t?: unknown }).t;
+      if (t !== "error" && (typeof t !== "string" || !t.startsWith("voice."))) return;
+      setKnown(foldVoiceStatus(knowledgeRef.current, message));
+      if (t === "voice.inbox") {
+        const items = readInboxItems((message as { items?: unknown }).items);
+        if (items) setInbox(items);
+      }
+      if (t === "voice.board" || t === "voice.inbox") setBoard(foldBoard(boardRef.current, message, Date.now()));
+      dispatch({ type: "daemon", message });
+    },
+    [dispatch, setKnown, setBoard],
+  );
+
+  // The call's real output route, from iOS: the state machine closes the mic
+  // while Pew talks on the loudspeaker, and the speaker button shows it.
+  const inCall = call.phase === "connecting" || call.phase === "live" || call.phase === "ending";
   useEffect(() => {
-    const { setVoiceListener } = opts.current;
-    setVoiceListener((message) => {
-      const current = call.current;
-      if (!current) return;
-      if (message.t === "voice.answer") {
-        if (message.requestId !== current.requestId) return;
-        dispatch({ type: "answer", requestId: message.requestId, liveSessionId: message.liveSessionId, voiceRatePerMinuteUsd: message.voiceRatePerMinuteUsd, error: message.error });
-        if (message.error || !message.liveSessionId || !message.sdp) {
-          teardown(current);
-          haptics.failed();
-          return;
-        }
-        current.liveSessionId = message.liveSessionId;
-        current.pc?.setRemoteDescription({ type: "answer", sdp: message.sdp }).catch(() => {
-          fail(current, "The voice service sent an answer this phone could not use.");
-        });
-        return;
-      }
-      if (!current.liveSessionId || message.liveSessionId !== current.liveSessionId) return;
-      dispatch({ type: "status", status: message });
-      const target = voiceSessionToOpen(message, current.liveSessionId, opts.current.onSessionShown);
-      if (target && target !== current.opened) {
-        current.opened = target;
-        opts.current.onOpenSession(target);
-      }
-      if (message.state === "agent_waiting") haptics.attention();
-      if (message.state === "closed" || message.state === "error") {
-        current.onClosed?.();
-        teardown(current);
-      }
-    });
+    if (!inCall) return;
+    const subscription = onRouteChange((speaker) => dispatch({ type: "route", speaker }));
+    // Screen off at the ear for the whole call, back on when it ends.
+    setProximity(true);
     return () => {
-      setVoiceListener(undefined);
-      teardown(call.current);
-      for (const timer of incomingTimers.current) clearTimeout(timer);
-      const ringer = incomingRinger.current;
-      if (ringer) {
-        try { ringer.pause(); } catch { /* gone */ }
-        try { ringer.remove(); } catch { /* gone */ }
-      }
+      subscription?.remove();
+      setProximity(false);
     };
-  }, [teardown, fail]);
+  }, [inCall, dispatch]);
 
-  const live = state.phase === "live";
-  // Re-render while live so "speaking" fades when the assistant's words stop.
+  // Android: the call's route and its locked-screen mic (`androidCall.ts`).
+  // No-ops elsewhere.
   useEffect(() => {
-    if (!live) return;
-    const timer = setInterval(() => setNow(Date.now()), 400);
-    return () => clearInterval(timer);
-  }, [live]);
+    if (!inCall) return;
+    beginAndroidCall();
+    return endAndroidCall;
+  }, [inCall]);
+  const callLive = call.phase === "live";
+  useEffect(() => {
+    if (callLive) androidCallLive();
+  }, [callLive]);
 
-  // Internal: `start` below is the public, argument-free form. The composer
-  // wires `onPress={onVoice}`, and a Pressable passes its press event as the
-  // first argument; when this took an optional id directly, that event was
-  // sent to the daemon as the session id, failed its schema, and the call
-  // hung on "Connecting" until the timeout. Zero arguments makes that
-  // impossible rather than something to remember.
-  const startCall = useCallback((targetSessionId: string | undefined) => {
-    const o = opts.current;
-    if (call.current) return;
-    if (o.voice && !o.voice.available) {
-      o.onMessage(o.voice.reason ?? "Voice isn't set up on your computer yet.");
-      haptics.warned();
+  // Back online mid-call: resend tool requests the drop may have lost.
+  useEffect(() => {
+    if (online) dispatch({ type: "reconnected" });
+  }, [online, dispatch]);
+
+  // Ask on every (re)connect: the login may have changed while away. A daemon
+  // that never answers leaves this "unknown", and voice stays hidden.
+  useEffect(() => {
+    if (!online) return;
+    const requestId = nextId();
+    if (!postRef.current({ t: "voice.status", requestId })) return;
+    if (knowledgeRef.current.kind === "unknown") setKnown({ kind: "unknown", asked: requestId });
+  }, [online, nextId, setKnown]);
+
+  // Leaving the screen ends the call and every timer with it.
+  useEffect(
+    () => () => {
+      transport.current?.close();
+      transport.current = undefined;
+      for (const timer of timers.current.values()) clearTimeout(timer);
+      timers.current.clear();
+    },
+    [],
+  );
+
+  /**
+   * `system`: answered on the system's call screen (CallKit). CallKit already
+   * rang and owns the audio session, so no dial tone and no session change
+   * here (the native side set voice chat before it activated the session).
+   */
+  const startCall = useCallback(
+    (focus?: string, system = false, sessionId?: string, place?: CallPlace) => {
+      if (callActive(callRef.current)) return;
+      clearTimeout(settleTimer.current);
+      sounds.setListening(true);
+      const previous = lastReleased.current;
+      audioReady.current = system ? previous : previous.then(enterCallAudio);
+      // The dialing ring, once the call's audio session is in place (it is
+      // played inside that session, never switching it).
+      if (!system) {
+        void audioReady.current.then(() => {
+          if (callRef.current.phase === "connecting") sounds.callCue("call-dial");
+        });
+      }
+      // A new call starts from the inbox in hand; the daemon's board replaces it within a frame.
+      setBoard(boardFromInbox(callRef.current.inbox ?? []));
+      dispatch({ type: "start", requestId: nextId(), focus, sessionId, ...(place ? { place } : {}), echoGuard: !cancelsEcho() });
+    },
+    [dispatch, nextId, setBoard],
+  );
+  const hangUp = useCallback(() => dispatch({ type: "hangup" }), [dispatch]);
+  // DEV: hang up by itself N ms after going live, to time the end of a call.
+  const devHangup = __DEV__ ? Number(process.env.EXPO_PUBLIC_DEV_HANGUP_MS ?? 0) : 0;
+  useEffect(() => {
+    if (!devHangup || call.phase !== "live") return;
+    const timer = setTimeout(() => hangUp(), devHangup);
+    return () => clearTimeout(timer);
+  }, [devHangup, call.phase, hangUp]);
+  const setMuted = useCallback((muted: boolean) => dispatch({ type: "mute", muted }), [dispatch]);
+  const dismiss = useCallback(() => dispatch({ type: "reset" }), [dispatch]);
+  /** Tap Pew mid-sentence: stop it and listen (the mic is closed while it talks). */
+  const interrupt = useCallback(() => dispatch({ type: "interrupt" }), [dispatch]);
+  /** The user answered the call screen's card by tapping: send it, and tell Pew. */
+  const answerOnScreen = useCallback(
+    (input: Omit<Extract<CallInput, { type: "answeredOnScreen" }>, "type">) => dispatch({ type: "answeredOnScreen", ...input }),
+    [dispatch],
+  );
+  const login = useCallback(
+    (action: "start" | "cancel" | "logout") => postRef.current({ t: "voice.login", requestId: nextId(), action }),
+    [nextId],
+  );
+  const setMode = useCallback((mode: VoiceMode) => postRef.current({ t: "voice.prefs", prefs: { mode } }), []);
+  /** Forget what was said on earlier calls (the threads kept per chat on the computer). */
+  const forgetHistory = useCallback(() => postRef.current({ t: "voice.forget" } satisfies wire.VoiceForget), []);
+  /** Change any of the call policy's settings; the `voice.status` broadcast confirms. */
+  const setPrefs = useCallback(
+    (prefs: Partial<wire.VoicePrefsValues>) => postRef.current({ t: "voice.prefs", prefs } satisfies wire.VoicePrefs),
+    [],
+  );
+  /** Let a conversation ring (or stop it). Answered by a `voice.status` with `armed`. */
+  const arm = useCallback(
+    (sessionId: string, on: boolean) => postRef.current({ t: "voice.arm", sessionId, on } satisfies wire.VoiceArm),
+    [],
+  );
+
+  // The call's cues, on its moments: connected, ended (the dial is started
+  // with the call). The dial is cut as soon as the call picks up or fails.
+  const phase = call.phase;
+  const lastPhase = useRef(phase);
+  useEffect(() => {
+    const from = lastPhase.current;
+    lastPhase.current = phase;
+    if (from === phase) return;
+    if (from === "connecting") sounds.stopCue("call-dial");
+    if (phase === "live") sounds.callCue("call-connect");
+  }, [phase]);
+
+  // Loaded while nothing is playing (off a call), so the first ring isn't late.
+  const voiceAvailable = knowledge.kind === "known" && knowledge.status.available;
+  useEffect(() => {
+    if (voiceAvailable && !callActive(callRef.current)) sounds.prepareCues(["call-dial", "call-connect", "call-end"]);
+  }, [voiceAvailable]);
+
+  // No banners over the call (they still reach Notification Center).
+  const onCallNow = callActive(call);
+  useEffect(() => {
+    setOnCall(onCallNow);
+    return () => setOnCall(false);
+  }, [onCallNow]);
+
+  // Read the mic's level about 12 times a second while the call is live, for
+  // the listening waves. Stats calls are cheap but not free: only while live.
+  const live = call.phase === "live";
+  useEffect(() => {
+    if (!live) {
+      micLevel.value = -1;
       return;
     }
-    if (o.status !== "online") {
-      o.onMessage(UNREACHABLE);
-      haptics.warned();
-      return;
-    }
-    o.onBeforeStart();
-    const requestId = `voice:${Date.now()}:${++counter.current}`;
-    const current: Call = { requestId, timers: [], audioStarted: false, done: false };
-    call.current = current;
-    dispatch({ type: "start", requestId });
-    haptics.sent();
-    if (Platform.OS === "android") {
-      // The "waiting on the line" ringback, played by InCallManager on the
-      // call's own audio stream with the loudspeaker (or headset) already
-      // routed. A media-stream player was inaudible here: the moment WebRTC
-      // opens the microphone for voice communication, Android moves playback
-      // to the earpiece. Starting the routing now is safe on Android, where
-      // WebRTC does not reset the audio mode as it starts (iOS does, hence
-      // the branch below).
-      try {
-        InCallManager.start({ media: "video", auto: true, ringback: "_DTMF_" });
-        current.audioStarted = true;
-      } catch {
-        // No ring, but the call itself still goes ahead.
-      }
-    } else {
-      try {
-        const ringer = createAudioPlayer(RINGTONE);
-        ringer.loop = true;
-        ringer.play();
-        current.ringer = ringer;
-      } catch {
-        // A build without the audio module still makes the call, silently.
-      }
-    }
-    current.timers.push(setTimeout(() => {
-      fail(current, "The voice conversation took too long to start.");
-    }, CONNECT_TIMEOUT_MS));
-
-    // Keeps the screen from dimming mid-sentence while the phone is in hand.
-    // Locking it is fine: on Android the foreground service started below
-    // keeps the microphone, and iOS keeps going via UIBackgroundModes audio.
-    void activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => undefined);
-
-    void (async () => {
-      // Android 12+ will not route to a Bluetooth headset without this
-      // runtime grant. Refusing it only means the loudspeaker is used.
-      if (Platform.OS === "android" && Number(Platform.Version) >= 31) {
-        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT).catch(() => undefined);
-      }
-      let stream: MediaStream;
-      try {
-        stream = await mediaDevices.getUserMedia({ audio: true, video: false });
-      } catch {
-        fail(current, "Microphone access is off. Turn it on for pew2 in Settings to talk.");
-        return;
-      }
-      if (current.done) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-      current.stream = stream;
-      // Now, while the app is certainly on screen and the microphone is
-      // granted: Android 14 refuses a microphone service started any later,
-      // and without it a locked screen silences the call.
-      startVoiceCallService("Voice conversation", "pew2 is listening. Tap to return.");
-      const pc = new RTCPeerConnection({});
-      current.pc = pc;
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-      // Created before the offer, or the offer carries no data channel.
-      const channel = pc.createDataChannel("oai-events");
-      current.channel = channel;
-      channel.onmessage = (event: { data?: unknown }) => {
-        if (current.done || typeof event.data !== "string") return;
-        const parsed = readDataChannelEvent(event.data);
-        if (!parsed) return;
-        if (parsed.kind === "started") {
-          for (const timer of current.timers) clearTimeout(timer);
-          current.timers = [];
-          stopRinger(current);
-          if (Platform.OS === "android") {
-            try { InCallManager.stopRingback(); } catch { /* not ringing */ }
-          }
-          // On iOS, routed only once audio is flowing: WebRTC sets its own
-          // voice-chat mode as the audio unit starts, which would put the
-          // reply in the earpiece. Video-chat mode defaults to the loudspeaker
-          // and still yields to AirPods or a wired headset when connected.
-          // Android started it at the tap, for the ringback.
-          if (!current.audioStarted) {
-            InCallManager.start({ media: "video", auto: true });
-            current.audioStarted = true;
-          }
-          dispatch({ type: "started", now: Date.now() });
-          haptics.finished();
-        } else if (parsed.kind === "transcript") {
-          dispatch({ type: "transcript", speaker: parsed.speaker, delta: parsed.delta, now: Date.now() });
-        } else if (parsed.kind === "closed") {
-          current.onClosed?.();
-        } else {
-          fail(current, parsed.message);
-        }
-      };
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "failed") fail(current, "The voice connection dropped.");
-      };
-
-      try {
-        const offer = await pc.createOffer({});
-        await pc.setLocalDescription(offer);
-        await iceGathered(pc, ICE_TIMEOUT_MS);
-      } catch {
-        fail(current, "This phone could not set up the voice connection.");
-        return;
-      }
-      if (current.done) return;
-      const sdp = pc.localDescription?.sdp;
-      if (!sdp) {
-        fail(current, "This phone could not set up the voice connection.");
-        return;
-      }
-      const latest = opts.current;
-      const sent = latest.sendVoice({
-        t: "voice.start",
-        requestId,
-        sdp,
-        sessionId: typeof targetSessionId === "string" ? targetSessionId : latest.sessionId,
-        providerId: latest.providerId,
-        cwd: latest.cwd,
+    let stopped = false;
+    // 20 times a second: the speaking clock decides when a caption word
+    // appears, so its resolution is the captions' sync.
+    const timer = setInterval(() => {
+      void transport.current?.levels().then((levels) => {
+        if (stopped) return;
+        micLevel.value = levels.mic ?? -1;
+        speech.current = tickClock(speech.current, levels.outEnergy, levels.outDuration);
       });
-      if (!sent) fail(current, UNREACHABLE);
-    })();
-  }, [fail]);
-
-  /** Start a call about whatever is on screen. Takes nothing, on purpose. */
-  const start = useCallback(() => startCall(undefined), [startCall]);
-
-  const end = useCallback(() => {
-    const current = call.current;
-    if (!current) {
-      dispatch({ type: "reset" });
-      return;
-    }
-    dispatch({ type: "end" });
-    haptics.tap();
-    const finish = () => {
-      if (current.liveSessionId) opts.current.sendVoice({ t: "voice.stop", liveSessionId: current.liveSessionId });
-      teardown(current);
-      dispatch({ type: "closed" });
+    }, 50);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
     };
-    const channel = current.channel;
-    if (channel?.readyState === "open") {
-      current.onClosed = finish;
-      // Muting first, so nothing said while it closes is sent.
-      current.stream?.getAudioTracks().forEach((track) => { track.enabled = false; });
-      try { channel.send(JSON.stringify({ type: "session.close" })); } catch { finish(); return; }
-      current.timers.push(setTimeout(finish, CLOSE_TIMEOUT_MS));
-    } else {
-      finish();
-    }
-  }, [teardown]);
+  }, [live, micLevel]);
 
-  const toggleMute = useCallback(() => {
-    const current = call.current;
-    if (!current?.stream) return;
-    const muted = !state.muted;
-    current.stream.getAudioTracks().forEach((track) => { track.enabled = !muted; });
-    if (current.channel?.readyState === "open") {
-      try {
-        current.channel.send(JSON.stringify({ type: muted ? "session.input_audio.mute" : "session.input_audio.unmute" }));
-      } catch { /* the track is already disabled, which is what matters */ }
-    }
-    dispatch({ type: "mute", muted });
-    haptics.select();
-  }, [state.muted]);
-
-  const dismiss = useCallback(() => {
-    teardown(call.current);
-    dispatch({ type: "reset" });
-  }, [teardown]);
-
-  const minimize = useCallback(() => {
-    dispatch({ type: "minimize" });
-    haptics.tap();
-  }, []);
-
-  const expand = useCallback(() => {
-    dispatch({ type: "expand" });
-    haptics.tap();
-  }, []);
-
-  const declineIncoming = useCallback(() => {
-    for (const timer of incomingTimers.current) clearTimeout(timer);
-    incomingTimers.current = [];
-    const ringer = incomingRinger.current;
-    incomingRinger.current = undefined;
-    if (ringer) {
-      try { ringer.pause(); } catch { /* gone */ }
-      try { ringer.remove(); } catch { /* gone */ }
-    }
-    setIncoming(undefined);
-  }, []);
-
-  const offerIncoming = useCallback((turn: IncomingCall) => {
-    // A call already running wins: the assistant says what finished instead.
-    if (call.current) return;
-    if (!shouldRingForTurn(turn, { onScreen: opts.current.onSessionShown, callActive: false })) return;
-    declineIncoming();
-    haptics.attention();
-    try {
-      const ringer = createAudioPlayer(RINGTONE);
-      ringer.loop = true;
-      ringer.play();
-      incomingRinger.current = ringer;
-    } catch {
-      // No sound module in this build: the banner alone carries the offer.
-    }
-    incomingTimers.current.push(setTimeout(() => {
-      const ringer = incomingRinger.current;
-      incomingRinger.current = undefined;
-      if (ringer) {
-        try { ringer.pause(); } catch { /* gone */ }
-        try { ringer.remove(); } catch { /* gone */ }
-      }
-    }, RING_MS));
-    incomingTimers.current.push(setTimeout(() => setIncoming(undefined), INCOMING_EXPIRE_MS));
-    setIncoming(turn);
-  }, [declineIncoming]);
-
-  const acceptIncoming = useCallback(() => {
-    const turn = incoming;
-    declineIncoming();
-    if (turn) startCall(turn.sessionId);
-  }, [incoming, declineIncoming, startCall]);
-
-  const providerName = options.providerName;
-  return useMemo(() => ({
-    offered: options.voice !== undefined,
-    state,
-    open: state.phase !== "idle" && !state.minimized,
-    active: state.phase !== "idle",
-    minimized: state.minimized,
-    incoming,
-    usageLine: voiceUsageLine(state, now),
-    orb: voiceOrb(state, now),
-    statusLine: voiceStatusLine(state, providerName),
-    start,
-    end,
-    toggleMute,
-    minimize,
-    expand,
-    offerIncoming,
-    acceptIncoming,
-    declineIncoming,
-    dismiss,
-  }), [options.voice, state, now, incoming, providerName, start, end, toggleMute, minimize, expand, offerIncoming, acceptIncoming, declineIncoming, dismiss]);
+  return { knowledge, inbox, call, board, micLevel, speech, startCall, hangUp, setMuted, dismiss, interrupt, answerOnScreen, login, setMode, setPrefs, arm, forgetHistory, onFrame };
 }
 
-/** Stop and release a call's ringtone. Safe to call twice. */
-function stopRinger(target: Call) {
-  const ringer = target.ringer;
-  if (!ringer) return;
-  target.ringer = undefined;
-  try { ringer.pause(); } catch { /* already gone */ }
-  try { ringer.remove(); } catch { /* already gone */ }
-}
-
-/** Resolve once ICE gathering completes, or after `timeoutMs` with what was gathered. */
-function iceGathered(pc: RTCPeerConnection, timeoutMs: number): Promise<void> {
-  if (pc.iceGatheringState === "complete") return Promise.resolve();
-  return new Promise((resolve) => {
-    const timer = setTimeout(done, timeoutMs);
-    function check() {
-      if (pc.iceGatheringState === "complete") done();
-    }
-    function done() {
-      clearTimeout(timer);
-      pc.onicegatheringstatechange = null;
-      resolve();
-    }
-    pc.onicegatheringstatechange = check;
-  });
-}
+export type Voice = ReturnType<typeof useVoice>;

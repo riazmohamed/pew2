@@ -14,7 +14,7 @@ import type { Cursors } from "./cursors";
 import type { PendingAttachment } from "./attachments";
 import type { SlashCommand } from "./slashCommands";
 import type { GgState } from "./ggState";
-import type { CaptureResult, ConfigOption, DeskResult, ImageEntry, Provider, Session, VoiceFrame } from "./daemonTypes";
+import type { CaptureResult, ConfigOption, DeskResult, ImageEntry, Provider, Session } from "./daemonTypes";
 import type { DaemonOptions, State } from "./daemonState";
 
 export interface DaemonRefs {
@@ -60,7 +60,6 @@ export interface DaemonRefs {
   pushRegistered: RefObject<boolean>;
   targetProviderRef: RefObject<string | undefined>;
   /** The voice screen's listener for `voice.*` frames. One at a time. */
-  voiceListener: RefObject<((message: VoiceFrame) => void) | undefined>;
   /** Pending "screenshot the computer" taps, by request id. */
   captureReplies: RefObject<Map<string, (result: CaptureResult) => void>>;
   /** Pending "open/close on computer" taps, by request id. */

@@ -23,6 +23,7 @@ export function HomeView({
   openSession,
   greeting,
   emptyReason,
+  hint,
 }: {
   daemon: ReturnType<typeof useDaemon>;
   keyboard: ReturnType<typeof useKeyboardLift>;
@@ -30,10 +31,12 @@ export function HomeView({
   homeWaited: boolean;
   reduceMotion: boolean;
   homeStatus: string;
-  openCarousel: () => void;
+  openCarousel?: () => void;
   pewSmiling: boolean;
-  homeChats: ComponentProps<typeof HomeGreeting>["chats"];
-  openSession: (id: string) => void;
+  homeChats?: ComponentProps<typeof HomeGreeting>["chats"];
+  openSession?: (id: string) => void;
+  /** The line under the greeting when Pew is tappable. */
+  hint?: string;
   greeting: string;
   emptyReason: (providerCount: number) => string;
 }) {
@@ -70,6 +73,7 @@ export function HomeView({
                   failed={Boolean(daemon.fatal)}
                   status={homeStatus}
                   onPressPew={active ? openCarousel : undefined}
+                  hint={hint}
                   smiling={pewSmiling}
                   chats={homeChats}
                   onOpenChat={openSession}

@@ -59,6 +59,7 @@ import { CircleButton } from "./controls";
 import { DotGlyph, type DotGlyphName } from "./stage/DotGlyph";
 import { haptics } from "./haptics";
 import { SHEET_MAX_ROWS, sheetContentHeight, sheetVisibleRows } from "./sheetRows";
+import { sounds } from "./sounds";
 import { useReducedMotion } from "./useReducedMotion";
 import { Pew } from "../pew/Pew";
 import type { PewMood } from "../pew/engine";
@@ -152,6 +153,8 @@ interface SheetProps {
    * rides above the keyboard instead of opening behind it.
    */
   keepKeyboard?: boolean;
+  /** Beside the title, at its end: a small status pill. */
+  titleAccessory?: ReactNode;
   children: ReactNode;
 }
 
@@ -225,7 +228,7 @@ const SHEET_PAD = theme.space(5);
 /** The strip's Pew: chip-sized, with room in its box to bounce. */
 const STRIP_PEW = 40;
 
-function SheetView({ visible, title, onClose, onBack, dismissLabel, label, labelTone, pewMood, keepKeyboard = false, children }: SheetProps) {
+function SheetView({ visible, title, onClose, onBack, dismissLabel, label, labelTone, pewMood, keepKeyboard = false, titleAccessory, children }: SheetProps) {
   const insets = useSafeAreaInsets();
   const agentColor = useAgentColor();
   const reduceMotion = useReducedMotion();
@@ -287,6 +290,17 @@ function SheetView({ visible, title, onClose, onBack, dismissLabel, label, label
   // unmounting on it would delete a card that is on its way back in.
   const finishExit = useCallback(() => {
     setPresent((wasPresent) => (visible ? wasPresent : false));
+  }, [visible]);
+
+  // A breath of air as the card rises (soft: a chime that opened it,
+  // like "needs you", is heard alone). Not on mount: only a change slides.
+  const wasVisible = useRef(visible);
+  useEffect(() => {
+    if (wasVisible.current === visible) return;
+    wasVisible.current = visible;
+    // Only on the way in: closing follows a choice that already made its own
+    // sound (a row, a button), and a second one on top was noise.
+    if (visible) sounds.play("swish-up");
   }, [visible]);
 
   useEffect(() => {
@@ -390,7 +404,10 @@ function SheetView({ visible, title, onClose, onBack, dismissLabel, label, label
           style={StyleSheet.absoluteFill}
           accessibilityRole="button"
           accessibilityLabel={dismissLabel ?? `Dismiss ${title}`}
-          onPress={onClose}
+          onPress={() => {
+            haptics.tap();
+            onClose?.();
+          }}
         >
           <Animated.View style={[styles.scrim, scrimStyle]} />
         </Pressable>
@@ -462,6 +479,7 @@ function SheetView({ visible, title, onClose, onBack, dismissLabel, label, label
             {label !== undefined ? (
               <View style={styles.header}>
                 <CrossfadeTitle title={title} />
+                {titleAccessory}
               </View>
             ) : (
               <View style={styles.headerGap} />

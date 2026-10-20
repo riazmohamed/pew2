@@ -50,12 +50,11 @@ export type {
   Workspace,
   WorkspaceEntry,
   WorkspaceBrowse,
-  VoiceFrame,
   CaptureResult,
   DeskResult,
   PreviewState,
 } from "./daemonTypes";
-import type { Provider, ConfigOption, Session, VoiceFrame, CaptureResult, DeskResult } from "./daemonTypes";
+import type { Provider, ConfigOption, Session, CaptureResult, DeskResult } from "./daemonTypes";
 
 import {
   LOADING_SESSION_TIMEOUT,
@@ -214,7 +213,6 @@ export function useDaemon(
   const browseCounter = useRef(0);
   // Voice frames, desk/capture replies and remote drafts: one-tap answers and
   // keystroke-rate frames, never state.
-  const voiceListener = useRef<((message: VoiceFrame) => void) | undefined>(undefined);
   const captureReplies = useRef(new Map<string, (result: CaptureResult) => void>());
   const deskReplies = useRef(new Map<string, (result: DeskResult) => void>());
   const draftListener = useRef<((text: string) => void) | undefined>(undefined);
@@ -420,7 +418,6 @@ export function useDaemon(
           streamGeneration,
           turnText,
           viewingRef,
-          voiceListener,
           captureReplies,
           deskReplies,
           draftListener,
@@ -609,12 +606,6 @@ export function useDaemon(
       });
     const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     return {
-      /** Send `voice.start` / `voice.stop`. False when the computer is not reachable. */
-      sendVoice: (message: wire.VoiceStart | wire.VoiceStop): boolean => post(message),
-      /** One listener at a time: there is one voice screen. */
-      setVoiceListener: (listener: ((message: VoiceFrame) => void) | undefined) => {
-        voiceListener.current = listener;
-      },
       /** Mirror the composer's text to other clients. Never queued (offline = dropped). */
       sendDraft: (text: string) => {
         // A pending trailing draft belongs to the conversation it was typed in.
@@ -852,6 +843,8 @@ export function useDaemon(
     ...extras,
     resumeNow,
     registerPush,
+    /** Send one sealed message (false when not connected). Voice uses it directly. */
+    post,
     setForeground,
     // Exported so the UI names the same agent the composer targets: the drawer
     // and top bar must not show Claude Code while a prompt would go elsewhere.

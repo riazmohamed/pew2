@@ -76,7 +76,6 @@ export type FrameRefs = Pick<
   | "optionsRef"
   | "turnText"
   | "pushRegistered"
-  | "voiceListener"
   | "captureReplies"
   | "deskReplies"
   | "draftListener"
@@ -112,13 +111,14 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
     pushRegistered,
   } = refs;
   const { ws, secure, resetStream, batch, flushOutbox } = connection;
-  const { voiceListener, captureReplies, deskReplies, draftListener, draftsEnabled } = refs;
+  const { captureReplies, deskReplies, draftListener, draftsEnabled } = refs;
 
   const message: any = secure.open(frame);
   // Undecryptable: a stray frame, a replay, or traffic from a pairing this
   // phone no longer holds the key for. Silently ignored — there is nothing
   // useful to show and nothing safe to act on.
   if (message === undefined) return;
+  optionsRef.current.onFrame?.(message);
 
   // Live drafts: ephemeral, keystroke-rate, and not a stream boundary, so
   // handled before the batch is flushed and never through state.
@@ -737,12 +737,6 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
     const done = deskReplies.current.get(message.requestId);
     deskReplies.current.delete(message.requestId);
     done?.({ ok: message.ok === true, app: message.app, message: message.message });
-    return;
-  }
-
-  // A live voice call is owned by `useVoice`. Nothing here is state.
-  if (message.t === "voice.answer" || message.t === "voice.status") {
-    voiceListener.current?.(message);
     return;
   }
 

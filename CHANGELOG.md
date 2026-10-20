@@ -15,6 +15,15 @@ Dates are the day the tag was cut.
 
 ### Added
 
+- **Merged the original repo up to 0.9.25.** Calls with Pew (ask about your
+  agents, answer approvals and questions by voice, per-chat call history),
+  *Ring me*, onboarding, the home dashboard, a new sound palette and a QR-only
+  pairing screen. Everything on this branch is kept.
+- **Pew's calls work on Android.** The call plays through the earpiece or a
+  Bluetooth headset with a speaker button, keeps the microphone with the screen
+  locked, and when *Ring me* is on Pew rings the phone itself: a ringtone, an
+  incoming-call card to answer or decline, and a banner if the app is in the
+  background. On iPhone the ring stays the system call screen.
 - **Type on your phone, watch it appear on your computer — and the other way
   round.** `pew2 chat` is a terminal window onto the same conversation the
   phone is in (the same agent, not a second one). What you type in either place
@@ -87,6 +96,14 @@ Dates are the day the tag was cut.
 
 ### Fixed
 
+- **The project row in the drawer scrolls again.** A sideways swipe on it
+  closed the drawer instead of moving through your projects. Now a swipe that
+  starts on the row scrolls it, and a swipe anywhere else still closes the
+  drawer.
+- **"Open in OG Coder" failed with "Can't get current session of missing
+  value".** OG Coder now lives in `~/Library/pnpm`, which a new iTerm window
+  does not have on its PATH, so it closed at once. pew2 now starts it by its
+  full path. If it ever does close at once, the phone says so in plain words.
 - **Preview opened pew2's own page.** pew2 listens on port 8787, which is also
   a common dev-server port, so it came first in the Preview list and *Open*
   showed "pairing token required" instead of your site. pew2's own port is no
@@ -103,12 +120,60 @@ Dates are the day the tag was cut.
   beside a conversation, now show on the phone instead of "outside this
   session's project directory".
 
+### Removed
+
+- **The old voice conversation (GPT-Live) and `pew2 voice key`.** Replaced by
+  the original repo's calls with Pew, which use the OpenAI login OG Coder
+  already has, so there is no key to set. The headset button in the message
+  box is gone; call from the phone button at the top instead.
+
 ### Compatibility
 
 - Every new message is optional both ways. An older app on this pew2 works as
   before; this app on an older pew2 shows no live typing, no switch and no
   computer icon, and on a pew2 without *Open in OG Coder* the icon just opens
   `pew2 chat`. The relay is unchanged.
+## 0.9.25 — 2026-10-20
+
+### Changed
+
+- **`pew2 pair` shows the QR code and nothing secret.** The pairing link (which
+  holds the token and the encryption key) is no longer printed under the code,
+  the token row and its fingerprint are gone, and so is the *copy link* key. The
+  screen is now the code, one line saying to scan it with pew2, and one status
+  line. A screenshot of it gives nothing away. `pew2 pair --json` still returns
+  the link for agents that drive setup.
+- **`pew2 setup` no longer lists the built-in test agent** as "not starting" on
+  every run. It is hidden exactly as the daemon hides it, unless
+  `PEW2_EXPERIMENTAL=1`.
+
+## 0.9.24 — 2026-10-20
+
+### Added
+
+- **Call Pew.** The phone app can now call a voice assistant, Pew, about the
+  agents on this computer: ask what's going on, pass an agent a message, answer
+  its approval or question, or open a past chat and start a new one, all by
+  voice. Pew runs on the OpenAI login an agent already has (GG Coder or Codex),
+  so there's nothing to set up. Approving by voice is always read back first.
+- **Pew can ring you.** Turn on *Ring me* in the app and, while it's on, a chat
+  stuck waiting on you rings your phone like a call (CallKit), paced so it
+  never rings non-stop. "Call me back in ten minutes" and "call me when billing
+  is done" ring once, when asked.
+- **Calls carry on.** The last 20 back-and-forths of your calls about each chat
+  are kept on this computer (`voice-threads.json`, owner-only, deleted after 30
+  days or with *Forget call history*), so calling again picks up where you left
+  off. Nothing in it is ever treated as an instruction.
+
+### Fixed
+
+- **Back online at once after a restart.** After a network blip or a restart,
+  the relay still held the old connection and turned this computer away for up
+  to 90 seconds; it now proves it is the same machine and is let straight back
+  in, and a phone reconnects within about two seconds.
+- **GG Goals no longer stops with "stopped by SIGTERM".** Loading goals while
+  the phone reconnected could close the GG Coder process the list was running
+  on.
 
 ## 0.9.23 — 2026-10-17
 

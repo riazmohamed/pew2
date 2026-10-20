@@ -118,11 +118,6 @@ export interface State {
    */
   update?: { latest: string; automatic: boolean };
   /**
-   * Whether the computer can host a live voice conversation. Absent means a
-   * daemon older than voice, and the app then shows no voice button at all.
-   */
-  voice?: { available: boolean; reason?: string };
-  /**
    * The daemon relays live drafts. Absent = older daemon: never send one, since
    * it would answer `unknown_message` (read here as a refused push token).
    */
@@ -410,4 +405,10 @@ export interface DaemonOptions {
   restoreSessions?: () => Session[];
   /** Persist the index, called once it has settled rather than on every change. */
   persistSessions?: (sessions: CachedSession[]) => void;
+  /**
+   * Every opened daemon frame, before this hook acts on it. Voice calls
+   * (`ui/useVoice.ts`) listen here rather than adding their state to this
+   * hook: a call lives beside the conversations, not inside them.
+   */
+  onFrame?: (message: unknown) => void;
 }

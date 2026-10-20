@@ -41,7 +41,6 @@ export function reduceMessage(prev: State, message: any, scope: MessageScope): S
         // banner the daemon can no longer take back would outlive the
         // update it describes.
         update: message.update,
-        voice: message.voice,
         drafts: message.drafts,
         keepAwake: message.keepAwake,
         desk: message.desk,

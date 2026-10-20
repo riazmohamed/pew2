@@ -1,620 +1,335 @@
 /**
- * One live voice conversation, seen from the sideband.
+ * Minting one realtime call: the instructions, the briefing, the tools, and
+ * the client secret the phone opens its WebRTC call with.
  *
- * The phone holds the audio; this holds the tools. It reads the backend's
- * function calls off the sideband, runs them against the daemon, returns the
- * results, and tells the voice model what the coding agent did when that
- * happens — minutes later, long after the tool call returned.
+ * Instructions and tools are bound to the secret here, on the daemon, so what
+ * Pew says and may do ships on the daemon's rail rather than the App Store's.
  */
-import { basename } from "node:path";
-import type { VoiceHost, VoiceObservation } from "./host.js";
-import { clampAppend, speakable, tail } from "./prompts.js";
+import type { wire } from "@pew2/protocol";
+import { sessionName } from "./notes.js";
+import type { FetchLike } from "./credentials.js";
+import { describeItem } from "./inbox.js";
 
-/** The subset of a WebSocket this needs, so tests can hand in a fake. */
-export interface SocketLike {
-  readyState: number;
-  send(data: string): void;
-  close(code?: number, reason?: string): void;
-  onopen: ((event: unknown) => void) | null;
-  onmessage: ((event: { data: unknown }) => void) | null;
-  onclose: ((event: unknown) => void) | null;
-  onerror: ((event: unknown) => void) | null;
+export const REALTIME_MODEL = "gpt-realtime-2.1-mini";
+export const REALTIME_VOICE = "marin";
+export const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
+export const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
+
+/** What a session is doing, for the briefing and `get_status`. */
+export interface SessionStatus {
+  sessionId: string;
+  folder?: string;
+  agentName?: string;
+  working: boolean;
+  /** The last few lines the agent said (plain text). */
+  lastLines: string[];
+  /** While working: what it is doing right now (its current tool, or latest line). */
+  activity?: string;
 }
 
-export type CreateSocket = (url: string, headers: Record<string, string>) => SocketLike;
+const fn = (name: string, description: string, properties: Record<string, unknown> = {}, required: string[] = []) => ({
+  type: "function",
+  name,
+  description,
+  parameters: { type: "object", properties, required, additionalProperties: false },
+});
 
-export const defaultCreateSocket: CreateSocket = (url, headers) =>
-  // Bun's WebSocket takes headers as a second-argument option; the DOM type
-  // does not know that.
-  new WebSocket(url, { headers } as unknown as string[]) as unknown as SocketLike;
-
-export interface Target {
-  sessionId?: string;
-  providerId?: string;
-  cwd?: string;
-  agentSessionId?: string;
+export function voiceTools() {
+  return [
+    fn("list_waiting", "List everything the user's agents are waiting on, oldest first."),
+    fn(
+      "answer_permission",
+      "Allow once or deny one approval. Never grants 'always'. Destructive actions need confirmed:true after you read the action back and the user said yes.",
+      {
+        item_id: { type: "string", description: "The inbox item id." },
+        decision: { type: "string", enum: ["allow", "deny"] },
+        confirmed: { type: "boolean", description: "The user confirmed a read-back of a destructive action." },
+      },
+      ["item_id", "decision"],
+    ),
+    fn(
+      "answer_question",
+      "Answer an agent's question, or cancel it.",
+      {
+        item_id: { type: "string" },
+        answers: {
+          type: "object",
+          description: "Question id to the chosen option value or typed text (array for multi-select).",
+          additionalProperties: { anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] },
+        },
+        cancel: { type: "boolean" },
+      },
+      ["item_id"],
+    ),
+    fn(
+      "decide_plan",
+      "Accept a plan, send feedback to revise it, or reject it.",
+      {
+        item_id: { type: "string" },
+        action: { type: "string", enum: ["accept", "feedback", "reject"] },
+        feedback: { type: "string" },
+      },
+      ["item_id", "action"],
+    ),
+    fn(
+      "tell_agent",
+      "Send a message to a coding agent's session, as if the user typed it into that chat. Write it as a clear task instruction to a coding agent (no greeting, no names). Queued if the agent is busy.",
+      {
+        session_id: { type: "string", description: "The session's id from the briefing (its folder name also works)." },
+        text: {
+          type: "string",
+          description:
+            "The instruction for the coding agent, as a developer would type it. Only the agent's own work: anything about calling or ringing the user is yours (call_me_back), never part of this text.",
+        },
+      },
+      ["session_id", "text"],
+    ),
+    fn(
+      "get_status",
+      "How a session is doing now: working or idle, what it is doing, its last reply, and what it waits on. Call it whenever they ask about a session after the call began (the briefing is from the start of the call). Without session_id: every session.",
+      { session_id: { type: "string" } },
+    ),
+    fn(
+      "call_me_back",
+      "The user wants a call later: you'll ring them then, even if nothing is waiting. For \"call me when it's done\", pass when_done (no time) and you'll ring when that session finishes. Then say goodbye; the call ends.",
+      {
+        when_done: { type: "string", description: "The session to wait for (tool id or project name): ring when its turn ends or it needs them." },
+        minutes: { type: "number", minimum: 0.5, maximum: 240, description: "When to call back, in minutes." },
+        seconds: { type: "integer", minimum: 30, maximum: 600, description: "Use instead of minutes for under a few minutes (\"in 30 seconds\")." },
+      },
+    ),
+    fn(
+      "set_ring",
+      "Let a session ring the user's phone when it next needs them (on), or stop it (off). For \"call me if billing-api needs anything\" or \"don't call me about docs\". Ringing also needs Ring me switched on in the app; say so if the result says it's off.",
+      {
+        session_id: { type: "string", description: "The session's id from the briefing (its folder name also works)." },
+        on: { type: "boolean" },
+      },
+      ["session_id", "on"],
+    ),
+    fn(
+      "open_chat",
+      "Reopen a past chat that isn't open now (the newest in that project, or the one whose title fits `about`), so you can work with it. If it is already open you get it straight back.",
+      {
+        project: { type: "string", description: "The project's folder name, as they said it." },
+        agent: { type: "string", description: "Only if they named the agent." },
+        about: { type: "string", description: "A few words of what the chat was about, if they said." },
+      },
+    ),
+    fn(
+      "start_chat",
+      "Start a new chat with a coding agent in one of their projects, optionally sending the first message. Uses the agent they name, else the one they last used there.",
+      {
+        project: { type: "string", description: "The project's folder name, as they said it." },
+        agent: { type: "string", description: "Only if they named the agent." },
+        text: { type: "string", description: "The first message for the agent, close to their own words." },
+      },
+      ["project"],
+    ),
+    fn("end_call", "The user is done. Say a short goodbye; the call ends."),
+  ];
 }
 
-interface Watched {
-  providerId: string;
-  folder: string;
-  /** The current turn's reply, end kept. */
-  reply: string;
-  lastReply?: string;
-  voiceTurn: boolean;
-}
+const INSTRUCTIONS = `You are Pew, the pew2 mascot: a short-spoken AI voice assistant for the user's coding agents running on their computer.
+If asked who you are, you're Pew, an AI voice assistant. If asked whether you're a person or an AI, say plainly that you're an AI; never claim or imply to be human. Never call the person "user"; just talk to them.
+Each session is a coding agent (Claude Code, Codex, Gemini CLI and so on) working in a project folder on their computer. The folder name is the project's name, never a person: a folder is a project, not someone to greet.
+Never say a session id aloud (ids are for your tool calls). Call a session by its folder, adding the agent if needed; if several share a name, say how many.
+The user is probably out walking or jogging, phone in a pocket and earbuds in. Keep every turn to one or two short sentences. No lists read aloud, no markdown, no code.
+The user can't talk while you're talking, so stop after one or two short sentences and let them answer.
+Call any tool straight away, with no preamble ("let me check", "I'll send that"): just call it, then answer or confirm in a few words.
 
-interface FunctionCall {
-  call_id: string;
-  name: string;
-  arguments: string;
-}
+Never act on your own:
+- Only do what they asked for in this call, in their words. Until they ask for something, you may look (get_status, list_waiting) but never send, start, open, answer or decide anything.
+- Never make up a message to an agent, and never "check in" with one on their behalf.
+- Never pick an answer to an agent's question or approval yourself, not even the recommended one. Read it out and wait for their choice; if they don't give one, leave it.
+- When you speak on your own (the greeting, or news at a pause) you have no tools: say it and wait.
 
-const REPLY_BUFFER = 8000;
-const READ_REPLY_MAX = 6000;
-const CLOSE_WAIT_MS = 5000;
+Staying current:
+- The briefing below is a snapshot from when the call started. If they ask what's going on right away, answer from it in one short sentence.
+- After that, things change: the system tells you when a session you're working with starts or finishes a turn, and what it said. If they ask how a session is doing, whether it's done, or what it found, and you haven't just been told, call get_status first, then answer from what it returns. Never guess and never repeat an old status.
+- get_status gives working or idle, what it is doing right now, its last reply, and anything it waits on.
 
-const norm = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+Talking to a coding agent (tell_agent):
+- Only the agent can look at the code; you can't. When they want something looked into or done in a project, pass it to that project's agent. When they only want to know how the agent is doing, use get_status. If you can't tell which they mean, ask.
+- Send it close to their own words, usually one sentence, as a developer would type it into the chat. Tidy up speech (fillers, "it" for the project) but never expand it: don't add steps, checks, requirements or details they didn't ask for. No greeting, names or small talk.
+- If it's unclear what they want done, ask them first.
+- After sending, say just "Sent." (or "Queued." if it's busy). When it finishes you'll be told; give them the outcome in a sentence.
+- One request can need two tools: "tell billing to check the logs and call me back when it's done" is tell_agent ("Check the logs.") then call_me_back with when_done. Do every part they asked for. What's meant for you (calling them back, ringing) never goes in the agent's text.
 
-function chunkText(payload: unknown): string | undefined {
-  const update = (payload as { update?: { sessionUpdate?: unknown; content?: unknown } } | null)
-    ?.update;
-  if (update?.sessionUpdate !== "agent_message_chunk") return undefined;
-  const content = update.content;
-  if (Array.isArray(content)) {
-    return content
-      .map((b: { type?: unknown; text?: unknown }) =>
-        b?.type === "text" && typeof b.text === "string" ? b.text : "",
-      )
-      .join("");
+Which chat:
+- The sessions listed below are the chats open right now; tell_agent and get_status work on those. Other chats exist in their history.
+- If they ask about a project or chat that isn't open, call open_chat. If they ask for new work in a project with no chat, call start_chat with their request as the text. Never start or open one they didn't ask for. Never ask them to open it on the phone.
+- Whenever the chat you're working with changes, say its project name once so they know where you are.
+
+How a call goes:
+- If something is waiting, open with it: the count and the focused one (or the oldest), e.g. "Two things. pew2 wants to run npm test. Okay?"
+- If nothing is waiting, never say so. Greet in one short line and stop, naming the project they called from if the briefing says where they called from ("Hey. What's up with <that project>?"). If it doesn't say, name no project: just "Hey, what's up?". Never pick one from the session list to greet with. When the briefing says why you're calling (a callback), your greeting says that instead.
+- Handle one item at a time, project by project, oldest first. Wait for the answer before moving on.
+- After acting, confirm in a few words that match what you did ("Sent.", "Approved.") and go to the next item.
+- When everything is handled, ask if there's anything else rather than announcing that nothing is left.
+
+Rules:
+- Only act through your tools. Use the item ids from the briefing or list_waiting.
+- For a question item, read the question and its options out briefly (say which one is recommended); if you weren't given the options, call list_waiting for them. Then wait. Only after they choose, call answer_question with the question ids and option values (or their own words when no option fits).
+- Approvals are allow once or deny. Never grant "always", even if asked.
+- Before you allow an approval or accept a plan, read back what it is in one short line ("billing wants to run npm test. Approve?") and wait. Only after they say yes, call the tool (confirmed true for destructive ones: publish, delete, rm, force push, drop, deploy, reset). If a tool tells you to read back first, do exactly that.
+- If the user's answer is unclear, ask again briefly rather than guess.
+- A system message may say a new item arrived or that one was handled elsewhere: mention new ones at the next pause, and skip handled ones.
+- Questions and approvals also show on the user's phone during the call, as a card with the options. When you bring one up, say once that it's on their screen ("It's on your screen too."), then read it out as usual. They can answer by voice or by tapping.
+- When they answer by voice, call the tool as usual: the card shows your pick before it goes.
+- A system message may say the user answered something on screen: don't ask it again or call a tool for it; confirm in a few words ("Got it, keep v1.") and move to the next item.
+- If the user says call me back in N minutes, call call_me_back. If they say bye or that's all, call end_call.
+- If they ask to be called (or not) about a session when it needs them, call set_ring.`;
+
+/** The instructions plus the briefing: the inbox and the last lines of each relevant session. */
+/** Sessions listed in the briefing at most; past that, get_status has them all. */
+const BRIEFING_SESSIONS = 12;
+
+export function buildInstructions(
+  items: readonly wire.VoiceInboxItem[],
+  statuses: readonly SessionStatus[],
+  focus?: string,
+  now: number = Date.now(),
+  context?: string,
+  projects?: readonly string[],
+  place?: { folder: string; agentName?: string },
+  remembered: readonly string[] = [],
+): string {
+  const ordered = focus ? [...items].sort((a, b) => Number(b.id === focus) - Number(a.id === focus)) : [...items];
+  // Nothing waiting is not news: a "0 items" line got read out at every call.
+  // Why this call is happening (a callback) leads the briefing: the greeting reads it first.
+  const lead = remembered.filter((line) => line.startsWith("THIS CALL:"));
+  const rest = remembered.filter((line) => !line.startsWith("THIS CALL:"));
+  const lines = [INSTRUCTIONS, "", ...(lead.length > 0 ? [...lead, ""] : [])];
+  if (items.length > 0) lines.push(`Briefing: ${items.length} item${items.length === 1 ? "" : "s"} waiting.`);
+  const from = context ? statuses.find((status) => status.sessionId === context) : undefined;
+  if (from) {
+    lines.push(
+      `They called from the ${sessionName(from)} chat: assume that's the project they mean unless they name another. [tool id: ${from.sessionId}]`,
+    );
+  } else if (place) {
+    lines.push(
+      `They called from a new, empty ${sessionName(place)} chat: assume ${place.folder} is the project they mean unless they name another. Nothing has been sent there yet. Only when they ask for work in it, call start_chat with project ${place.folder}${place.agentName ? ` and agent ${place.agentName}` : ""} and their request as the text.`,
+    );
   }
-  const single = (content as { text?: unknown } | null)?.text;
-  return typeof single === "string" ? single : undefined;
+  if (focus && ordered[0]?.id === focus) lines.push(`Lead with item ${focus}.`);
+  for (const item of ordered) {
+    const mins = Math.max(0, Math.round((now - item.since) / 60_000));
+    lines.push(`- [${item.id}] (${item.kind}, session ${item.sessionId}, waiting ${mins} min) ${describeItem(item)}`);
+  }
+  // Every open session, so Pew can answer "what are my agents doing?" from
+  // here and address any of them by id. Waiting and working first; their
+  // recent lines in full, an idle one's last line only.
+  const relevant = new Set(items.map((item) => item.sessionId));
+  const rank = (status: SessionStatus) => (relevant.has(status.sessionId) ? 0 : status.working ? 1 : 2);
+  const listed = [...statuses].sort((a, b) => rank(a) - rank(b)).slice(0, BRIEFING_SESSIONS);
+  if (listed.length > 0) {
+    lines.push("", `Sessions (${statuses.length} open):`);
+    for (const status of listed) {
+      // Spoken name first; the id is last and marked as the tools' handle, so
+      // it never reads as part of the name (Pew said "pew2 in folder echo-…").
+      const name = status.folder ?? status.agentName ?? "a session";
+      const agent = status.agentName && status.agentName !== name ? ` (${status.agentName})` : "";
+      const doing = status.working && status.activity ? `, ${status.activity}` : "";
+      lines.push(`- ${name}${agent}: ${status.working ? "working" : "idle"}${doing}. [tool id: ${status.sessionId}]`);
+      const recent = rank(status) < 2 ? status.lastLines : status.lastLines.slice(-1);
+      for (const line of recent) lines.push(`    ${line}`);
+    }
+  } else {
+    lines.push("", "Sessions: none open.");
+  }
+  if (projects && projects.length > 0) {
+    lines.push(
+      "",
+      `Projects you can reach (worked in over the last two weeks; open_chat and start_chat reach only these and the open sessions): ${projects.join(", ")}. If asked, name at most three, newest first, and say how many more.`,
+    );
+  }
+  if (rest.length > 0) lines.push("", ...rest);
+  return lines.join("\n");
 }
 
-/** What an approval asks, in words, with its options. */
-export function describePermission(params: unknown): {
-  title: string;
-  options: { optionId: string; name: string }[];
-} {
-  const p = params as {
-    toolCall?: { title?: unknown; kind?: unknown };
-    options?: { optionId?: unknown; name?: unknown }[];
-  } | null;
-  const title =
-    typeof p?.toolCall?.title === "string"
-      ? speakable(p.toolCall.title)
-      : typeof p?.toolCall?.kind === "string"
-        ? `run a ${p.toolCall.kind} action`
-        : "do something";
-  const options = (Array.isArray(p?.options) ? p.options : []).flatMap((o) =>
-    typeof o?.optionId === "string"
-      ? [{ optionId: o.optionId, name: typeof o.name === "string" ? o.name : o.optionId }]
-      : [],
-  );
-  return { title, options };
-}
-
-export class LiveVoiceSession {
-  private socket?: SocketLike;
-  private outbox: string[] = [];
-  private readonly watched = new Map<string, Watched>();
-  /** Function calls collected per delegation, run when its response completes. */
-  private readonly pending = new Map<string, FunctionCall[]>();
-  /**
-   * Fallback per delegation: run collected calls if the backend's completion
-   * event never arrives. The docs say lifecycle events are forwarded, but a
-   * tool loop that waits on one event the service might not send leaves the
-   * assistant promising work that never starts, which is the worst failure a
-   * voice user can meet: silence. With `parallel_tool_calls: false` a
-   * finished function item is already the whole set.
-   */
-  private readonly pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  static PENDING_FALLBACK_MS = 1500;
-  /**
-   * Delay between the hang_up tool and the actual close, so the goodbye the
-   * backend returns is spoken before the line goes dead. Without it the call
-   * ends mid-sentence, which reads as being cut off, not hung up.
-   */
-  static HANGUP_DELAY_MS = 4000;
-  private hangupTimer?: ReturnType<typeof setTimeout>;
-  private timer?: ReturnType<typeof setTimeout>;
-  private closing?: Promise<void>;
-  private finished = false;
-  private sequence = 0;
-  usageSeconds = 0;
-
-  constructor(
-    readonly liveSessionId: string,
-    private readonly host: VoiceHost,
-    public target: Target,
-    private readonly options: {
-      maxMs: number;
-      onFinished: (session: LiveVoiceSession) => void;
+export function buildSessionConfig(instructions: string) {
+  return {
+    type: "realtime",
+    model: REALTIME_MODEL,
+    instructions,
+    output_modalities: ["audio"],
+    audio: {
+      input: {
+        transcription: { model: "gpt-4o-transcribe" },
+        // Snappy turns: a short pause ends your turn. Measured with pew2's own
+        // config (latency-probe.ts in the goal folder): Pew's first audio about
+        // 1.06 s after you stop, against 1.30 s with semantic_vad "medium" and
+        // "high". Background noise is handled by near_field noise reduction.
+        turn_detection: {
+          type: "server_vad",
+          // 0.6, not the default 0.5: room noise after Pew stopped was being
+          // taken for speech (a phantom one-word turn Pew then answered).
+          threshold: 0.6,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 400,
+          create_response: true,
+          interrupt_response: true,
+        },
+        noise_reduction: { type: "near_field" },
+      },
+      output: { voice: REALTIME_VOICE },
     },
-  ) {}
-
-  /** Attach the sideband and start the clock. */
-  attach(createSocket: CreateSocket, url: string, headers: Record<string, string>) {
-    let socket: SocketLike;
-    try {
-      socket = createSocket(url, headers);
-    } catch {
-      this.status("error", { detail: "Could not connect to the voice session's control channel." });
-      this.finish();
-      return;
-    }
-    this.socket = socket;
-    socket.onopen = () => {
-      for (const frame of this.outbox.splice(0)) socket.send(frame);
-      this.status("ready");
-    };
-    socket.onmessage = (event) => {
-      const data = typeof event.data === "string" ? event.data : String(event.data);
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(data);
-      } catch {
-        return;
-      }
-      void this.onEvent(parsed as Record<string, unknown>);
-    };
-    socket.onerror = () => {};
-    socket.onclose = () => this.finish();
-    this.timer = setTimeout(() => void this.close(), this.options.maxMs);
-    this.timer.unref?.();
-  }
-
-  private eventId(prefix: string) {
-    return `pew2_${prefix}_${++this.sequence}`;
-  }
-
-  private sendFrame(frame: Record<string, unknown>) {
-    const text = JSON.stringify(frame);
-    if (this.socket && this.socket.readyState === 1) this.socket.send(text);
-    else if (!this.finished) this.outbox.push(text);
-  }
-
-  commentary(content: string) {
-    this.sendFrame({
-      type: "session.commentary.append",
-      event_id: this.eventId("commentary"),
-      delegation_id: null,
-      content: clampAppend(content),
-    });
-  }
-
-  private status(
-    state: "ready" | "agent_working" | "agent_waiting" | "agent_done" | "closed" | "error",
-    extra: { sessionId?: string; providerId?: string; folder?: string; detail?: string } = {},
-  ) {
-    this.host.broadcast({ t: "voice.status", liveSessionId: this.liveSessionId, state, ...extra });
-  }
-
-  private agentName(providerId: string) {
-    return this.host.agents().find((a) => a.id === providerId)?.name ?? providerId;
-  }
-
-  private async onEvent(event: Record<string, unknown>) {
-    switch (event.type) {
-      case "response.event": {
-        const inner = event.event as
-          | { type?: unknown; item?: { type?: unknown; call_id?: unknown; name?: unknown; arguments?: unknown } }
-          | undefined;
-        const key = typeof event.delegation_id === "string" ? event.delegation_id : "";
-        if (inner?.type === "response.output_item.done" && inner.item?.type === "function_call") {
-          const { call_id, name } = inner.item;
-          if (typeof call_id !== "string" || typeof name !== "string") return;
-          const args = typeof inner.item.arguments === "string" ? inner.item.arguments : "{}";
-          const list = this.pending.get(key) ?? [];
-          list.push({ call_id, name, arguments: args });
-          this.pending.set(key, list);
-          clearTimeout(this.pendingTimers.get(key));
-          const timer = setTimeout(() => void this.runPending(key), LiveVoiceSession.PENDING_FALLBACK_MS);
-          timer.unref?.();
-          this.pendingTimers.set(key, timer);
-        } else if (inner?.type === "response.completed" || inner?.type === "response.done") {
-          // `output` is always empty here; the calls were read item by item.
-          await this.runPending(key);
-        }
-        return;
-      }
-      case "session.usage.updated": {
-        const seconds = (event.usage as { seconds?: unknown } | undefined)?.seconds;
-        if (typeof seconds === "number") {
-          this.usageSeconds = seconds;
-          console.log(`[voice] ${this.liveSessionId}: ${seconds}s of voice used`);
-        }
-        return;
-      }
-      case "error": {
-        const error = event.error as { code?: unknown; message?: unknown } | undefined;
-        const code = typeof error?.code === "string" ? error.code : "";
-        const said = typeof error?.message === "string" ? error.message : "";
-        console.error(`[voice] ${this.liveSessionId} error: ${code} ${said}`);
-        return;
-      }
-      case "session.started":
-        return;
-      case "session.closed":
-        console.log(`[voice] ${this.liveSessionId} closed after ${this.usageSeconds}s`);
-        this.finish();
-        return;
-      default:
-        return;
-    }
-  }
-
-  private async runPending(key: string) {
-    clearTimeout(this.pendingTimers.get(key));
-    this.pendingTimers.delete(key);
-    const calls = this.pending.get(key);
-    if (!calls || calls.length === 0) return;
-    this.pending.delete(key);
-    for (const call of calls) {
-      let output: unknown;
-      try {
-        output = await this.runTool(call.name, JSON.parse(call.arguments || "{}") as Record<string, unknown>);
-      } catch (error) {
-        output = { status: "error", error: error instanceof Error ? error.message : String(error) };
-      }
-      this.sendFrame({
-        type: "response.item.create",
-        event_id: this.eventId("tool"),
-        item: { type: "function_call_output", call_id: call.call_id, output: JSON.stringify(output) },
-      });
-    }
-    this.sendFrame({ type: "response.create", event_id: this.eventId("continue") });
-  }
-
-  // ---------------------------------------------------------------- tools
-
-  async runTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-    switch (name) {
-      case "coding_status":
-        return this.toolStatus();
-      case "send_to_agent":
-        return this.toolSend(args);
-      case "read_agent_reply":
-        return this.toolRead();
-      case "answer_approval":
-        return this.toolAnswer(typeof args.option === "string" ? args.option : "");
-      case "hang_up":
-        this.hangupTimer ??= setTimeout(() => void this.close(), LiveVoiceSession.HANGUP_DELAY_MS);
-        this.hangupTimer.unref?.();
-        return { status: "closing", note: "The call will end in a few seconds. Say a short goodbye now." };
-      case "stop_agent":
-        return this.toolStop();
-      default:
-        return { status: "error", error: `No tool called ${name}.` };
-    }
-  }
-
-  private async toolStatus() {
-    const agents = this.host.agents();
-    const recent = await Promise.all(
-      agents
-        .filter((a) => a.available)
-        .map(async (a) => ({
-          agent: a.name,
-          projects: (await this.host.projects(a.id).catch(() => [])).slice(0, 6).map((p) => p.name),
-        })),
-    );
-    const view = this.target.sessionId ? this.host.session(this.target.sessionId) : undefined;
-    const providerId = view?.providerId ?? this.target.providerId;
-    const cwd = view?.cwd ?? this.target.cwd;
-    const approval = view?.permissions[0];
-    return {
-      agents: agents.map((a) => ({ id: a.id, name: a.name, available: a.available })),
-      current: providerId
-        ? {
-            agent: this.agentName(providerId),
-            project: cwd ? basename(cwd) : undefined,
-            open: view !== undefined,
-            working: view?.working ?? false,
-            waiting_for_approval: approval
-              ? (() => {
-                  const d = describePermission(approval.params);
-                  return { wants_to: d.title, options: d.options.map((o) => o.name) };
-                })()
-              : undefined,
-          }
-        : "none",
-      recent_projects: recent,
-    };
-  }
-
-  private matchAgent(query: string) {
-    const q = norm(query);
-    const agents = this.host.agents().filter((a) => a.available);
-    return (
-      agents.find((a) => norm(a.id) === q || norm(a.name) === q) ??
-      agents.find((a) => norm(a.name).includes(q) || norm(a.id).includes(q) || q.includes(norm(a.id)))
-    );
-  }
-
-  private async toolSend(args: Record<string, unknown>) {
-    const message = typeof args.message === "string" ? args.message.trim() : "";
-    if (!message) return { status: "error", error: "No message to send." };
-    const current = this.target.sessionId ? this.host.session(this.target.sessionId) : undefined;
-
-    let providerId = current?.providerId ?? this.target.providerId;
-    let agentChanged = false;
-    if (typeof args.agent === "string" && args.agent.trim()) {
-      const agent = this.matchAgent(args.agent);
-      if (!agent) {
-        return {
-          status: "error",
-          error: `No agent matching "${args.agent}". Available: ${this.host
-            .agents()
-            .filter((a) => a.available)
-            .map((a) => a.name)
-            .join(", ")}.`,
-        };
-      }
-      agentChanged = agent.id !== providerId;
-      providerId = agent.id;
-    }
-    providerId ??= this.host.agents().find((a) => a.available)?.id;
-    if (!providerId) return { status: "error", error: "No coding agent is available on the computer." };
-
-    let cwd = agentChanged ? undefined : (current?.cwd ?? this.target.cwd);
-    let projectChanged = false;
-    if (typeof args.project === "string" && args.project.trim()) {
-      const q = norm(args.project);
-      const projects = await this.host.projects(providerId).catch(() => []);
-      const hit =
-        projects.find((p) => norm(p.name) === q) ?? projects.find((p) => norm(p.name).includes(q));
-      const known = hit ? await this.host.knownProject(providerId, hit.path) : undefined;
-      if (!known) {
-        return {
-          status: "error",
-          error: `No project matching "${args.project}" for ${this.agentName(providerId)}. Recent: ${projects
-            .slice(0, 6)
-            .map((p) => p.name)
-            .join(", ")}.`,
-        };
-      }
-      projectChanged = known !== cwd;
-      cwd = known;
-    }
-    cwd ??= await this.host.lastWorkspace(providerId);
-
-    const continuing =
-      args.new_conversation !== true &&
-      !agentChanged &&
-      !projectChanged &&
-      this.target.sessionId !== undefined;
-    const agent = this.agentName(providerId);
-    const project = cwd ? basename(cwd) : undefined;
-
-    // Not awaited: opening an agent takes seconds and its turn minutes. The
-    // voice model is told the outcome by commentary when there is one.
-    void this.deliver(message, providerId, cwd, continuing).catch((error) => {
-      const reason = error instanceof Error ? error.message : String(error);
-      this.status("error", { providerId, folder: project, detail: reason });
-      this.commentary(`The message to ${agent} could not be sent: ${reason}`);
-    });
-    return {
-      status: "started",
-      agent,
-      project,
-      conversation: continuing ? "continuing the current conversation" : "new conversation",
-      note: "The agent is working in the background. You will be told when it finishes or needs approval.",
-    };
-  }
-
-  private async deliver(message: string, providerId: string, cwd: string | undefined, continuing: boolean) {
-    let sessionId: string | undefined;
-    if (continuing && this.target.sessionId && this.host.session(this.target.sessionId)) {
-      sessionId = this.target.sessionId;
-    } else if (continuing && this.target.agentSessionId) {
-      // The conversation's agent was reaped or the daemon restarted: reopen it
-      // rather than silently starting a fresh one.
-      const agentSessionId = this.target.agentSessionId;
-      const { broadcasts, replies } = await this.host.dispatch({
-        t: "session.resume",
-        providerId,
-        agentSessionId,
-        ...(cwd && { cwd }),
-      });
-      sessionId = startedId(broadcasts, (m) => m.agentSessionId === agentSessionId);
-      if (!sessionId) throw new Error(replyError(replies) ?? "the conversation could not be reopened");
-    }
-    if (!sessionId) {
-      const requestId = `voice:${this.liveSessionId}:${++this.sequence}`;
-      const { broadcasts, replies } = await this.host.dispatch({
-        t: "session.start",
-        requestId,
-        providerId,
-        ...(cwd && { cwd }),
-      });
-      sessionId = startedId(broadcasts, (m) => m.requestId === requestId);
-      if (!sessionId) throw new Error(replyError(replies) ?? "the agent could not be started");
-    }
-    const view = this.host.session(sessionId);
-    this.target = {
-      sessionId,
-      providerId,
-      cwd: view?.cwd ?? cwd,
-      agentSessionId: view?.agentSessionId,
-    };
-    this.watched.set(sessionId, {
-      providerId,
-      folder: basename(view?.cwd ?? cwd ?? ""),
-      reply: "",
-      voiceTurn: true,
-      lastReply: this.watched.get(sessionId)?.lastReply,
-    });
-    const id = sessionId;
-    await this.host.dispatch({ t: "session.prompt", sessionId: id, text: message }, (reply) => {
-      const error = replyError([reply]);
-      if (error) this.commentary(`${this.agentName(providerId)} could not take that message: ${error}`);
-    });
-  }
-
-  private toolRead() {
-    const sessionId = this.target.sessionId;
-    if (!sessionId) return { status: "none", note: "There is no current conversation." };
-    const watched = this.watched.get(sessionId);
-    const exchange = this.host.lastExchange(sessionId);
-    const reply = (watched?.voiceTurn ? watched.reply : watched?.lastReply) || exchange?.reply || "";
-    const view = this.host.session(sessionId);
-    return {
-      agent: view ? this.agentName(view.providerId) : undefined,
-      working: view?.working ?? false,
-      request: exchange?.request ? tail(exchange.request, 1000) : undefined,
-      reply: reply ? tail(reply, READ_REPLY_MAX) : "No reply yet.",
-    };
-  }
-
-  private toolAnswer(option: string) {
-    const sessionId = this.target.sessionId;
-    const view = sessionId ? this.host.session(sessionId) : undefined;
-    const pending = view?.permissions[0];
-    if (!view || !pending) return { status: "none", note: "Nothing is waiting for approval." };
-    const { options } = describePermission(pending.params);
-    const q = norm(option);
-    const chosen =
-      options.find((o) => norm(o.optionId) === q || norm(o.name) === q) ??
-      options.find((o) => norm(o.name).includes(q) || norm(o.optionId).includes(q));
-    if (!chosen) {
-      return { status: "error", error: `No option "${option}". Options: ${options.map((o) => o.name).join(", ")}.` };
-    }
-    if (!this.host.answerPermission(view.sessionId, pending.requestId, chosen.optionId)) {
-      return { status: "error", error: "That approval was already answered or has gone." };
-    }
-    this.status("agent_working", this.statusFor(view.sessionId));
-    return { status: "answered", option: chosen.name };
-  }
-
-  private async toolStop() {
-    const sessionId = this.target.sessionId;
-    const view = sessionId ? this.host.session(sessionId) : undefined;
-    if (!view?.working) return { status: "none", note: "The agent is not working on anything." };
-    const { replies } = await this.host.dispatch({ t: "session.cancel", sessionId: view.sessionId });
-    const error = replyError(replies);
-    return error ? { status: "error", error } : { status: "stopping" };
-  }
-
-  // ---------------------------------------------------------- observation
-
-  private statusFor(sessionId: string) {
-    const w = this.watched.get(sessionId);
-    return { sessionId, providerId: w?.providerId, folder: w?.folder || undefined };
-  }
-
-  observe(observation: VoiceObservation) {
-    const watched = this.watched.get(observation.sessionId);
-    if (!watched || this.finished) return;
-    const agent = this.agentName(watched.providerId);
-    const where = watched.folder ? ` in ${watched.folder}` : "";
-    if (observation.kind === "turn_start") {
-      if (!watched.voiceTurn) return;
-      watched.reply = "";
-      this.status("agent_working", this.statusFor(observation.sessionId));
-      return;
-    }
-    if (observation.kind === "turn_end") {
-      if (!watched.voiceTurn) return;
-      watched.voiceTurn = false;
-      watched.lastReply = watched.reply;
-      this.status("agent_done", this.statusFor(observation.sessionId));
-      const said = speakable(watched.reply);
-      this.commentary(
-        said
-          ? `${agent} has finished${where}. Its reply ends: ${tail(said, 1200)}`
-          : `${agent} has finished${where} without a written reply.`,
-      );
-      return;
-    }
-    const text = chunkText(observation.payload);
-    if (text !== undefined) {
-      if (watched.voiceTurn) watched.reply = `${watched.reply}${text}`.slice(-REPLY_BUFFER);
-      return;
-    }
-    const payload = observation.payload as { kind?: unknown; params?: unknown } | null;
-    if (payload?.kind === "permission_request") {
-      const { title, options } = describePermission(payload.params);
-      this.status("agent_waiting", { ...this.statusFor(observation.sessionId), detail: title });
-      this.commentary(
-        `${agent}${where} is waiting for approval to ${title}. Options: ${options.map((o) => o.name).join(", ") || "none given"}. Ask the user which they want.`,
-      );
-    }
-  }
-
-  // ------------------------------------------------------------- closing
-
-  /** Ask OpenAI to end the session, and wait briefly for it to confirm. */
-  close(): Promise<void> {
-    if (this.finished) return Promise.resolve();
-    this.closing ??= new Promise<void>((resolve) => {
-      if (!this.socket || this.socket.readyState !== 1) {
-        this.finish();
-        resolve();
-        return;
-      }
-      this.sendFrame({ type: "session.close" });
-      const fallback = setTimeout(() => {
-        this.finish();
-        resolve();
-      }, CLOSE_WAIT_MS);
-      fallback.unref?.();
-      const check = setInterval(() => {
-        if (this.finished) {
-          clearInterval(check);
-          clearTimeout(fallback);
-          resolve();
-        }
-      }, 50);
-      check.unref?.();
-    });
-    return this.closing;
-  }
-
-  get done() {
-    return this.finished;
-  }
-
-  /** Tear down once, whatever ended it. */
-  finish() {
-    if (this.finished) return;
-    this.finished = true;
-    if (this.timer) clearTimeout(this.timer);
-    for (const timer of this.pendingTimers.values()) clearTimeout(timer);
-    this.pendingTimers.clear();
-    if (this.hangupTimer) clearTimeout(this.hangupTimer);
-    this.outbox = [];
-    const socket = this.socket;
-    this.socket = undefined;
-    if (socket) {
-      socket.onclose = null;
-      try {
-        socket.close(1000, "done");
-      } catch {
-        // Already gone.
-      }
-    }
-    this.status("closed");
-    this.options.onFinished(this);
-  }
+    tools: voiceTools(),
+    tool_choice: "auto",
+    // A long call: when the conversation outgrows the model's window, drop
+    // the oldest fifth in one go instead of a little every turn, so the
+    // instructions stay cached (OpenAI realtime `truncation`; verified
+    // accepted by the client_secrets endpoint, 20 Oct).
+    truncation: { type: "retention_ratio", retention_ratio: 0.8 },
+  };
 }
 
-function startedId(
-  broadcasts: unknown[],
-  match: (message: Record<string, unknown>) => boolean,
-): string | undefined {
-  for (const message of broadcasts) {
-    const m = message as Record<string, unknown>;
-    if (m?.t === "session.started" && typeof m.sessionId === "string" && match(m)) return m.sessionId;
-  }
-  return undefined;
-}
+export type MintResult =
+  | { ok: true; secret: string; expiresAt: number; model: string }
+  | { ok: false; status?: number; error: string };
 
-function replyError(replies: unknown[]): string | undefined {
-  for (const message of replies) {
-    const m = message as { t?: unknown; message?: unknown };
-    if (m?.t === "error" && typeof m.message === "string") return m.message;
+/** POST the session config; the bearer is the user's token, never returned. */
+export async function mintClientSecret(
+  token: string,
+  session: ReturnType<typeof buildSessionConfig>,
+  fetchImpl: FetchLike = fetch,
+): Promise<MintResult> {
+  let response: Response;
+  try {
+    response = await fetchImpl(CLIENT_SECRETS_URL, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ session }),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    return { ok: false, error: "Couldn't reach OpenAI from this computer." };
   }
-  return undefined;
+  const text = await response.text();
+  if (!response.ok) {
+    const detail = (() => {
+      try {
+        const message = (JSON.parse(text) as { error?: { message?: unknown } }).error?.message;
+        return typeof message === "string" ? message : undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+    const error =
+      response.status === 401 || response.status === 403
+        ? "OpenAI refused this computer's login. Sign in again to use voice."
+        : `OpenAI couldn't start the call (${response.status})${detail ? `: ${detail.slice(0, 160)}` : "."}`;
+    return { ok: false, status: response.status, error };
+  }
+  try {
+    const body = JSON.parse(text) as { value?: unknown; expires_at?: unknown; session?: { model?: unknown } };
+    if (typeof body.value !== "string") return { ok: false, error: "OpenAI returned no call secret." };
+    const expiresAt =
+      typeof body.expires_at === "number" ? body.expires_at * 1000 : Date.now() + 600_000;
+    const model = typeof body.session?.model === "string" ? body.session.model : session.model;
+    return { ok: true, secret: body.value, expiresAt: Math.round(expiresAt), model };
+  } catch {
+    return { ok: false, error: "OpenAI returned an unreadable answer." };
+  }
 }

@@ -222,6 +222,25 @@ export function canResolveCommand(command: string, env: NodeJS.ProcessEnv): bool
   return wellKnownDirs(env).some((dir) => runnable(join(dir, command), env, platform));
 }
 
+/**
+ * The full path `canResolveCommand` finds, or undefined.
+ *
+ * For a command run somewhere other than the daemon's own spawn, such as an
+ * iTerm window: that window's login shell has its own PATH, which can lack
+ * the folder the agent lives in (pnpm adds `~/Library/pnpm` only in
+ * `~/.zshrc`, which a login shell never reads), so a bare name there exits
+ * at once with "command not found".
+ */
+export function commandPath(command: string, env: NodeJS.ProcessEnv): string | undefined {
+  const found = findOnPath(command, env);
+  if (found !== undefined) return found;
+  if (isAbsolute(command) || command.includes("/")) return undefined;
+  const platform = platformOf(env);
+  return wellKnownDirs(env)
+    .map((dir) => join(dir, command))
+    .find((path) => runnable(path, env, platform));
+}
+
 export interface LoadResult {
   providers: LoadedProvider[];
   /** Manifests that failed to parse or validate. Never throws — one bad file

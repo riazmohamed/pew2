@@ -88,6 +88,64 @@ test("the mirror emits only what is appended after the baseline, as history rend
   expect(JSON.stringify(events)).not.toContain("Earlier");
 });
 
+test("a conversation OG Coder compacts into a new, unlinked session is followed there, without repeats", async () => {
+  const { root, file } = await fixture();
+  const directory = path.dirname(file);
+  // Another conversation in the same project, started after the handover: never followed.
+  const events: unknown[] = [];
+  const mirror = new GgCoderMirror({
+    agentSessionId: AGENT_ID,
+    cwd: CWD,
+    sessionsRoot: root,
+    pollMs: 20,
+    turnEndQuietMs: 20,
+    batchSettleMs: 40,
+    callbacks: {
+      onUpdate: (update) => events.push(update),
+      onUserMessage: (text) => events.push({ user: text }),
+      onTurnStart: () => {},
+      onTurnEnd: () => {},
+    },
+  });
+  await mirror.baseline();
+  mirror.start();
+  await appendFile(file, msg("u1", "user", "Call me") + msg("a1", "assistant", [{ type: "text", text: "Calling" }], "u1"));
+  await until(() => events.length >= 2, "the turn in the first file");
+
+  const old = new Date(Date.now() - 5_000).toISOString();
+  const stamp = (entry: Record<string, unknown>) => line({ ...entry, timestamp: old });
+  const other = path.join(directory, "2026-10-13T11-00-00-000Z_99999999.jsonl");
+  await writeFile(
+    other,
+    stamp({ type: "session", id: "99999999-0000", conversationId: "99999999-0000" }) +
+      stamp({ type: "message", id: "o1", parentId: null, message: { role: "user", content: "Someone else's chat" } }),
+  );
+  const checkpoint = path.join(directory, "2026-10-13T11-00-01-000Z_cccccccc.jsonl");
+  await writeFile(
+    checkpoint,
+    stamp({ type: "session", id: "cccccccc-0000", conversationId: "cccccccc-0000", preview: "Earlier question" }) +
+      stamp({ type: "message", id: "s1", parentId: null, message: { role: "user", content: "[Previous conversation summary]\n\nIt went well." } }) +
+      stamp({ type: "message", id: "c1", parentId: null, message: { role: "user", content: "Earlier question" } }) +
+      stamp({ type: "message", id: "c2", parentId: null, message: { role: "user", content: "Call me" } }) +
+      stamp({ type: "message", id: "c3", parentId: null, message: { role: "assistant", content: [{ type: "text", text: "Calling" }] } }),
+  );
+  await Bun.sleep(80);
+  await appendFile(
+    checkpoint,
+    msg("n1", "user", "Hi") + msg("n2", "assistant", [{ type: "text", text: "Hello from the new file" }], "n1"),
+  );
+  await until(() => JSON.stringify(events).includes("Hello from the new file"), "the reply in the compacted file");
+  await appendFile(other, msg("o2", "assistant", [{ type: "text", text: "Not ours" }], "o1"));
+  await Bun.sleep(80);
+  mirror.stop();
+  expect(events).toEqual([
+    { user: "Call me" },
+    { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Calling" } },
+    { user: "Hi" },
+    { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Hello from the new file" } },
+  ]);
+});
+
 test("OG Coder's own turns end on its final turn_metric, in the order its file really has", async () => {
   // OG Coder's screen writes a metric per model call as it ends, and the
   // turn's messages in one batch at the end, either side of the last metric.

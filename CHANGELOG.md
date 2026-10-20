@@ -118,6 +118,11 @@ Dates are the day the tag was cut.
 
 ### Fixed
 
+- **Replies from OG Coder reach the phone again after it compacts a long
+  chat.** OG Coder carries on in a new file when it squashes a long chat
+  into a summary. The phone kept watching the old one, so you saw your own
+  typing but not the answers. pew2 now spots the new file and follows it.
+
 - **Reopening a chat no longer starts another agent on it.** Each app
   restart used to add one, so a single chat could have five running at
   once, all spending your model credit together. That is what OpenRouter's

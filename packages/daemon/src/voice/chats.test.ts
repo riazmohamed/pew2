@@ -114,6 +114,18 @@ test("start_chat starts the agent last used in the project and sends the first m
   expect(calls).toEqual(["start codex /w/storefront", "tell live-2 Fix the checkout bug", "mark live-2"]);
 });
 
+test("start_chat in a project with an open chat sends it there instead of starting another", async () => {
+  const open = [{ sessionId: "s-open", folder: "storefront", agentName: "Codex", working: false, lastLines: [] }];
+  const { port: p, calls } = port({ statuses: () => open });
+  const result = JSON.parse((await runChatTool("start_chat", JSON.stringify({ project: "storefront", text: "Which projects are active?" }), p)).output);
+  expect(result).toMatchObject({ ok: true, session_id: "s-open", reused_open_chat: true, say: "Sent to storefront." });
+  expect(calls).toEqual(["tell s-open Which projects are active?", "mark s-open"]);
+  // Asked for a fresh chat: a new one.
+  const fresh = port({ statuses: () => open });
+  const started = JSON.parse((await runChatTool("start_chat", JSON.stringify({ project: "storefront", text: "hi", new_chat: true }), fresh.port)).output);
+  expect(started).toMatchObject({ ok: true, session_id: "live-2" });
+});
+
 test("failures are something Pew can say, never a throw", async () => {
   const { port: failing } = port({ resume: async () => undefined });
   expect(JSON.parse((await runChatTool("open_chat", '{"project":"docs"}', failing)).output)).toMatchObject({ ok: false, say: "I couldn't reopen that chat." });

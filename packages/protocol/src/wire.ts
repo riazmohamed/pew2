@@ -1392,6 +1392,53 @@ export const VoiceSessionRequest = z.object({
    */
   cwd: z.string().max(4096).optional(),
   providerId: z.string().max(200).optional(),
+  /**
+   * Call engines this app can run. "live": GPT-Live set up by the daemon
+   * from the phone's audio offer (`voice.offer`), tools run on the daemon.
+   * Absent: an older app, which only knows the realtime client secret.
+   */
+  engines: z.array(z.string().max(40)).max(8).optional(),
+});
+
+/**
+ * App -> daemon, live engine only. The phone's WebRTC offer for `callId`: the
+ * daemon creates the GPT-Live session with it (its own OpenAI key never
+ * leaves the computer) and answers with `voice.answer`.
+ */
+export const VoiceOffer = z.object({
+  t: z.literal("voice.offer"),
+  requestId: z.string(),
+  callId: z.string(),
+  sdp: z.string().max(200_000),
+});
+
+/** Daemon -> app. The answer to `voice.offer`: OpenAI's SDP, or why not. */
+export const VoiceAnswer = z.object({
+  t: z.literal("voice.answer"),
+  requestId: z.string(),
+  callId: z.string(),
+  ok: z.boolean(),
+  sdp: z.string().optional(),
+  error: z.string().optional(),
+});
+
+/**
+ * App -> daemon, live engine only. Text the user typed on the call screen (or
+ * the line for an answer given on the screen's card), for Pew to take as
+ * their words.
+ */
+export const VoiceTyped = z.object({
+  t: z.literal("voice.typed"),
+  callId: z.string(),
+  text: z.string().max(4000),
+  /** True: context for Pew (an answer given on screen), not words to answer. */
+  context: z.boolean().optional(),
+});
+
+/** Daemon -> app, live engine only. Pew ended the call (its goodbye is said): hang up. */
+export const VoiceHangup = z.object({
+  t: z.literal("voice.hangup"),
+  callId: z.string(),
 });
 
 /**
@@ -1428,6 +1475,11 @@ export const VoiceSession = z.object({
   callId: z.string().optional(),
   /** The inbox the briefing was built from, so the app can show the same list. */
   items: z.array(VoiceInboxItem).optional(),
+  /**
+   * "live": no secret; send `voice.offer` and play GPT-Live's events. Absent
+   * or "realtime": connect with `secret` as before.
+   */
+  engine: z.enum(["realtime", "live"]).optional(),
 });
 
 /** App -> daemon. The voice model called a tool; the daemon runs it. */
@@ -1823,6 +1875,8 @@ export const ClientMessage = z.discriminatedUnion("t", [
   VoiceSessionRequest,
   VoiceTool,
   VoiceEnd,
+  VoiceOffer,
+  VoiceTyped,
   VoicePrefs,
   VoiceArm,
   VoipRegister,
@@ -1862,6 +1916,8 @@ export const ServerMessage = z.discriminatedUnion("t", [
   VoiceSession,
   VoiceToolResult,
   VoiceRing,
+  VoiceAnswer,
+  VoiceHangup,
   ErrorMessage,
 ]);
 
@@ -1888,6 +1944,10 @@ export type VoiceSession = z.output<typeof VoiceSession>;
 export type VoiceTool = z.output<typeof VoiceTool>;
 export type VoiceToolResult = z.output<typeof VoiceToolResult>;
 export type VoiceEnd = z.output<typeof VoiceEnd>;
+export type VoiceOffer = z.output<typeof VoiceOffer>;
+export type VoiceAnswer = z.output<typeof VoiceAnswer>;
+export type VoiceTyped = z.output<typeof VoiceTyped>;
+export type VoiceHangup = z.output<typeof VoiceHangup>;
 export type VoiceRing = z.output<typeof VoiceRing>;
 export type VoicePrefsValues = z.output<typeof VoicePrefsValues>;
 export type VoicePrefs = z.output<typeof VoicePrefs>;

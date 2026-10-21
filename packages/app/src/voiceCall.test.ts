@@ -89,7 +89,7 @@ describe("connecting", () => {
   test("start asks the daemon for a session, with focus, and arms a timeout", () => {
     const { state, effects } = run(IDLE_CALL, { type: "start", requestId: "v1", focus: "f" });
     expect(state.phase).toBe("connecting");
-    expect(daemon(effects)).toEqual([{ t: "voice.session", requestId: "v1", focus: "f" }]);
+    expect(daemon(effects)).toEqual([{ t: "voice.session", requestId: "v1", focus: "f", engines: ["live"] }]);
     expect(effects.some((e) => e.kind === "timer" && e.key === "session")).toBe(true);
   });
 
@@ -442,12 +442,12 @@ describe("voice.note: what the daemon tells Pew mid-call", () => {
 
   test("the call is started with the open conversation", () => {
     const { effects } = run(IDLE_CALL, { type: "start", requestId: "v9", sessionId: "s1" });
-    expect(daemon(effects)[0]).toEqual({ t: "voice.session", requestId: "v9", sessionId: "s1" });
+    expect(daemon(effects)[0]).toEqual({ t: "voice.session", requestId: "v9", sessionId: "s1", engines: ["live"] });
   });
 
   test("from a new chat with nothing sent, the call carries the project and agent on screen", () => {
     const { effects } = run(IDLE_CALL, { type: "start", requestId: "v9", place: { cwd: "/w/storefront", providerId: "claude" } });
-    expect(daemon(effects)[0]).toEqual({ t: "voice.session", requestId: "v9", cwd: "/w/storefront", providerId: "claude" });
+    expect(daemon(effects)[0]).toEqual({ t: "voice.session", requestId: "v9", cwd: "/w/storefront", providerId: "claude", engines: ["live"] });
   });
 });
 
@@ -763,5 +763,100 @@ describe("typing on a call", () => {
   test("nothing typed, or no live call, does nothing", () => {
     expect(run(quietCall(), { type: "typed", text: "   " }).effects).toEqual([]);
     expect(run(IDLE_CALL, { type: "typed", text: "hello" }).effects).toEqual([]);
+  });
+});
+
+describe("live engine (GPT-Live, run by the daemon)", () => {
+  const liveSession = {
+    type: "daemon" as const,
+    message: { t: "voice.session", requestId: "v1", ok: true, callId: "c1", engine: "live", model: "gpt-live-1", items: [item(1)] },
+  };
+  const liveOpen = () => run(IDLE_CALL, { type: "start", requestId: "v1" }, liveSession, { type: "open" });
+  const say = (who: "in" | "out", delta: string) => ({
+    type: "server" as const,
+    event: { type: `session.${who === "in" ? "input" : "output"}_transcript.delta`, delta },
+  });
+
+  test("start offers the live engine", () => {
+    const { effects } = run(IDLE_CALL, { type: "start", requestId: "v1" });
+    expect(daemon(effects)[0]).toMatchObject({ t: "voice.session", engines: ["live"] });
+  });
+
+  test("a live session connects through the daemon, with no secret", () => {
+    const { state, effects } = run(IDLE_CALL, { type: "start", requestId: "v1" }, liveSession);
+    const connect = effects.find((e) => e.kind === "connect");
+    expect(connect).toEqual({ kind: "connect", live: true });
+    expect(state.engine).toBe("live");
+    expect(state.callId).toBe("c1");
+  });
+
+  test("opening never sends a realtime event", () => {
+    const { state, effects } = liveOpen();
+    expect(state.phase).toBe("live");
+    expect(realtime(effects)).toEqual([]);
+    const later = run(state, { type: "daemon", message: { t: "voice.inbox", items: [item(1), item(2)] } }, { type: "interrupt" });
+    expect(realtime(later.effects)).toEqual([]);
+  });
+
+  test("transcript deltas become captions, and each settled line joins the transcript", () => {
+    let step = run(liveOpen().state, say("in", "hello "), say("in", "there"));
+    expect(step.state.caption).toMatchObject({ who: "you", text: "hello there", final: false });
+    expect(step.state.heardUser).toBe(true);
+    step = run(step.state, say("out", "Hi"), say("out", " Riaz"));
+    expect(step.state.caption).toMatchObject({ who: "pew", text: "Hi Riaz" });
+    expect(step.state.activity).toBe("speaking");
+    expect(timers(step.effects)).toContain("liveSpeech");
+    expect(step.state.transcript).toEqual([{ role: "user", text: "hello there" }]);
+    step = run(step.state, { type: "timeout", what: "liveSpeech" });
+    expect(step.state.activity).toBe("listening");
+    const ended = run(step.state, { type: "hangup" });
+    expect(daemon(ended.effects).find((m) => m.t === "voice.end")).toMatchObject({
+      transcript: [{ role: "user", text: "hello there" }, { role: "assistant", text: "Hi Riaz" }],
+    });
+  });
+
+  test("voice.note and voice.tool are ignored; voice.hangup ends after a grace timer", () => {
+    const open = liveOpen().state;
+    const ignored = run(
+      open,
+      { type: "daemon", message: { t: "voice.note", callId: "c1", text: "x", speak: true } },
+      { type: "daemon", message: { t: "voice.tool", callId: "c1", toolCallId: "t1", output: "{}" } },
+    );
+    expect(ignored.effects).toEqual([]);
+    const ending = run(open, { type: "daemon", message: { t: "voice.hangup", callId: "c1" } });
+    expect(ending.state.phase).toBe("ending");
+    expect(timers(ending.effects)).toContain("liveHangup");
+    const done = run(ending.state, { type: "timeout", what: "liveHangup" });
+    expect(done.state.phase).toBe("ended");
+    expect(daemon(done.effects).some((m) => m.t === "voice.end")).toBe(true);
+  });
+
+  test("session.closed hangs up", () => {
+    const { state } = run(liveOpen().state, { type: "server", event: { type: "session.closed" } });
+    expect(state.phase).toBe("ended");
+  });
+
+  test("typed text goes to the daemon as voice.typed, never as a realtime event", () => {
+    const { state, effects } = run(liveOpen().state, { type: "typed", text: " call me back " });
+    expect(daemon(effects)).toEqual([{ t: "voice.typed", callId: "c1", text: "call me back" }]);
+    expect(realtime(effects)).toEqual([]);
+    expect(state.transcript).toEqual([{ role: "user", text: "call me back" }]);
+  });
+
+  test("an answer on screen is sent and told to Pew as context", () => {
+    const { state, effects } = run(liveOpen().state, {
+      type: "answeredOnScreen",
+      itemId: item(1).id,
+      message: { t: "session.permission", requestId: "r1" },
+      tell: "They allowed it.",
+      tool: "answer_permission",
+      arguments: { decision: "allow" },
+    });
+    expect(daemon(effects)).toEqual([
+      { t: "session.permission", requestId: "r1" },
+      { t: "voice.typed", callId: "c1", text: "They allowed it.", context: true },
+    ]);
+    expect(realtime(effects)).toEqual([]);
+    expect(state.completed).toHaveLength(1);
   });
 });

@@ -31,6 +31,13 @@ export interface VoicePort {
   callMeBack(minutes: number): void;
   /** Ring once this session's turn ends (or it needs them). Absent: an older host. */
   callWhenDone?(sessionId: string, folder: string | undefined): void;
+  /** Drop any booked callback (clock or when-done, and the automatic ring for handed work). Returns whether one was booked. */
+  cancelCallback?(): boolean;
+  /**
+   * The chat `tell_agent` goes to when none is named: the one the call
+   * started from, else the last one Pew worked with on this call.
+   */
+  defaultSession?(): string | undefined;
   /** Let a session ring (or stop it); returns whether ringing is switched on at all. Optional for older ports/tests. */
   setRing?(sessionId: string, on: boolean): { ringing: boolean };
   /** Pew acted on a session: touch its lane on the call board, optionally with a line. */
@@ -386,18 +393,31 @@ export function runVoiceTool(name: string, rawArgs: string, port: VoicePort): To
     }
 
     case "tell_agent": {
-      const said = typeof args.session_id === "string" ? args.session_id : "";
-      const sessionId = resolveSession(said, port.statuses()) ?? said;
+      const said = typeof args.session_id === "string" ? args.session_id.trim() : "";
+      const statuses = port.statuses();
+      // No chat named (or one that matches nothing): the chat they called
+      // from or last worked with, else the only one open. Refusing here made
+      // Pew tell them it couldn't reach the agent.
+      const fallback = () => port.defaultSession?.() ?? (statuses.length === 1 ? statuses[0]!.sessionId : undefined);
+      const sessionId = (said ? resolveSession(said, statuses) : undefined) ?? fallback() ?? said;
       const raw = typeof args.text === "string" ? args.text.trim() : "";
       const { text, asked } = withoutCallback(raw);
       if (!text) return fail("What should I tell it?", "text required");
       const sent = port.tellAgent(sessionId, text);
-      if (!sent.ok) return fail("That session isn't open.", "unknown session");
+      if (!sent.ok) {
+        return fail(
+          said ? `${said} isn't open. Open it with open_chat, or start one with start_chat, then send it.` : "Which project should I send it to?",
+          "unknown session",
+        );
+      }
       port.mark?.(sessionId, { kind: "pew", text });
+      const status = port.statuses(sessionId).find((entry) => entry.sessionId === sessionId);
       return out({
         ok: true,
+        session_id: sessionId,
+        ...(status?.folder ? { project: status.folder } : {}),
         queued: sent.queued === true,
-        say: sent.queued ? "Queued." : "Sent.",
+        say: `${sent.queued ? "Queued for" : "Sent to"} ${status?.folder ?? "it"}.`,
         // "…and call me back" belongs to Pew, not the agent: taken out of the
         // message, and Pew reminded to book it (when it hasn't already).
         ...(asked ? { note: "Their call-me-back was left out of the agent's message: book it with call_me_back (when_done) if you haven't." } : {}),
@@ -452,6 +472,12 @@ export function runVoiceTool(name: string, rawArgs: string, port: VoicePort): To
       port.callMeBack(minutes);
       const when = minutes < 1 ? `${Math.round(minutes * 60)} seconds` : `${minutes} minute${minutes === 1 ? "" : "s"}`;
       return out({ ok: true, minutes, say: `Talk in ${when}.` }, true);
+    }
+
+    case "cancel_callback": {
+      if (!port.cancelCallback) return fail("I can't change that from here.", "cancel_callback unsupported");
+      const had = port.cancelCallback();
+      return out({ ok: true, cancelled: had, say: had ? "Callback cancelled." : "No callback was booked." });
     }
 
     case "set_ring": {

@@ -1,0 +1,52 @@
+diff --git a/cpp/rnskia/RNSkPictureView.h b/cpp/rnskia/RNSkPictureView.h
+index bc6d1a8ef06ec9cee6e696c434255f15f6c403bf..37a1da790b5a6d929987b6cd9e523e9034eb874a 100644
+--- a/cpp/rnskia/RNSkPictureView.h
++++ b/cpp/rnskia/RNSkPictureView.h
+@@ -51,28 +51,43 @@ public:
+     performDraw(canvasProvider);
+   }
+ 
++  // pew2 patch: the picture is set from the UI (Reanimated) thread and drawn
++  // on the main thread. Unguarded, a swap during a draw freed the picture
++  // being drawn: SIGSEGV in SkRecordDraw (Shopify/react-native-skia#3925).
++  // The swap is now locked and a draw holds its own reference.
+   void setPicture(sk_sp<SkPicture> picture) {
+-    _picture = picture;
++    sk_sp<SkPicture> previous;
++    {
++      std::lock_guard<std::mutex> lock(_pictureMutex);
++      previous = std::move(_picture);
++      _picture = std::move(picture);
++    }
+     _requestRedraw();
+   }
+ 
+-  sk_sp<SkPicture> getPicture() const { return _picture; }
++  sk_sp<SkPicture> getPicture() const {
++    std::lock_guard<std::mutex> lock(_pictureMutex);
++    return _picture;
++  }
+ 
+ private:
+   bool performDraw(std::shared_ptr<RNSkCanvasProvider> canvasProvider) {
++    sk_sp<SkPicture> picture = getPicture();
+     return canvasProvider->renderToCanvas([=, this](SkCanvas *canvas) {
+       // Make sure to scale correctly
+       auto pd = _platformContext->getPixelDensity();
+       canvas->clear(SK_ColorTRANSPARENT);
+       canvas->save();
+       canvas->scale(pd, pd);
+-      if (_picture != nullptr) {
+-        canvas->drawPicture(_picture);
++      if (picture != nullptr) {
++        canvas->drawPicture(picture);
+       }
+       canvas->restore();
+     });
+   }
+ 
++  mutable std::mutex _pictureMutex;
++
+   std::shared_ptr<RNSkPlatformContext> _platformContext;
+   sk_sp<SkPicture> _picture;
+ };

@@ -1498,7 +1498,7 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
       />
       <AlertsCard card={alerts.card} onAllow={alerts.allow} onNotNow={alerts.notNow} />
       <IncomingCallCard ring={androidRing.incoming} onAnswer={androidRing.answer} onDecline={androidRing.decline} />
-      <CallScreen call={voice.call} board={voice.board} providers={daemon.providers} onHangUp={voice.hangUp} onMute={voice.setMuted} onDismiss={voice.dismiss} onRetry={() => { const focus = voice.call.focus; voice.dismiss(); startCall(focus); }} onAnswer={voice.answerOnScreen} color={active?.color} onInterrupt={voice.interrupt} onType={voice.type} micLevel={voice.micLevel} speech={voice.speech} />
+      <CallScreen call={voice.call} board={voice.board} providers={daemon.providers} onHangUp={voice.hangUp} onMute={voice.setMuted} onDismiss={voice.dismiss} onRetry={() => { const focus = voice.call.focus; voice.dismiss(); startCall(focus); }} onAnswer={voice.answerOnScreen} color={active?.color} onInterrupt={voice.interrupt} onType={voice.type} micLevel={voice.micLevel} speech={voice.speech} sessions={daemon.sessions} />
       <CommandSheet
         visible={commandsOpen}
         commands={daemon.commands}

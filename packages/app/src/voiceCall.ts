@@ -160,6 +160,12 @@ export interface CallState {
    * turn: Pew must say exactly what it is about to approve, and hear yes.
    */
   readBack: Record<string, number>;
+  /**
+   * "live": GPT-Live, set up and driven by the daemon (tools, notes, turn
+   * taking). The phone only carries audio and shows captions; it never sends
+   * realtime events. Undefined: the realtime engine.
+   */
+  engine?: "live";
 }
 
 /**
@@ -247,6 +253,10 @@ export const HANGUP_GRACE_MS = 8_000;
  * as the user's (cut off mid-sentence, then answering itself).
  */
 export const ECHO_TAIL_MS = 700;
+/** Live engine: Pew counts as speaking until this long after its last transcript delta. */
+export const LIVE_SPEECH_MS = 1200;
+/** Live engine: after the daemon's `voice.hangup`, how long Pew's last words get to play. */
+export const LIVE_HANGUP_MS = 1500;
 /** How long the mic stays closed at the start of each reply Pew speaks (see `leadIn`). */
 export const LEAD_IN_MS = 1000;
 /** Lines kept for `voice.end`; the daemon caps it again. */
@@ -375,6 +385,10 @@ export type CallInput =
   | { type: "timeout"; what: "goodbye" }
   | { type: "timeout"; what: "gather" }
   | { type: "timeout"; what: "pause" }
+  /** Live engine: no transcript from Pew for a while, so it has stopped talking. */
+  | { type: "timeout"; what: "liveSpeech" }
+  /** Live engine: Pew's goodbye has had time to play out. */
+  | { type: "timeout"; what: "liveHangup" }
   /** Back to idle once the ended/failed screen is dismissed. */
   | { type: "reset" }
   /**
@@ -401,7 +415,8 @@ export type RealtimeEvent = Record<string, unknown> & { type: string };
 
 export type CallEffect =
   | { kind: "daemon"; message: Record<string, unknown> & { t: string } }
-  | { kind: "connect"; secret: string; expiresAt?: number }
+  /** `live`: GPT-Live, the offer goes to the daemon (`voice.offer`), no secret. */
+  | { kind: "connect"; secret?: string; expiresAt?: number; live?: true }
   | { kind: "realtime"; event: RealtimeEvent }
   | { kind: "timer"; key: string; ms: number; input: CallInput }
   | { kind: "cancelTimer"; key: string }
@@ -538,7 +553,7 @@ function reconcile(state: CallState, effects: CallEffect[]): CallState {
   if (!inbox) return state;
   const { added, removed } = diffInbox(state.told, inbox);
   if (added.length === 0 && removed.length === 0) return state;
-  const live = state.phase === "live";
+  const live = state.phase === "live" && state.engine !== "live";
   let items = state.items;
   let urgent = state.held.urgent;
   for (const item of added) {
@@ -649,6 +664,10 @@ function speakUnprompted(state: CallState, effects: CallEffect[]): CallState {
 }
 
 function finish(state: CallState, effects: CallEffect[], reason: VoiceEndReason, error?: string): CallState {
+  if (state.engine === "live") {
+    state = settleLiveCaption(state);
+    effects.push({ kind: "cancelTimer", key: "liveSpeech" }, { kind: "cancelTimer", key: "liveHangup" });
+  }
   effects.push({ kind: "close" });
   for (const tool of state.tools) effects.push({ kind: "cancelTimer", key: `tool:${tool.toolCallId}` });
   effects.push({ kind: "cancelTimer", key: "session" }, { kind: "cancelTimer", key: "goodbye" });
@@ -833,6 +852,46 @@ function captionDone(state: CallState, who: CallCaption["who"], transcript: unkn
   return setCaption(state, who, text, true, ref);
 }
 
+/** Live engine: the open caption is a whole line now; record it for `voice.end`. */
+function settleLiveCaption(state: CallState): CallState {
+  const open = state.caption;
+  if (!open || open.final) return state;
+  const settled: CallState = { ...state, caption: { ...open, final: true } };
+  return addTranscript(settled, open.who === "pew" ? "assistant" : "user", open.text);
+}
+
+/** Live engine: one transcript delta. A change of speaker settles the other's line first. */
+function liveDelta(state: CallState, who: CallCaption["who"], delta: unknown): CallState {
+  if (typeof delta !== "string" || delta === "") return state;
+  const base = state.caption && state.caption.who !== who ? settleLiveCaption(state) : state;
+  return captionDelta(base, who, delta, undefined);
+}
+
+/** GPT-Live's data channel events (the daemon runs everything else). */
+function onLiveServer(state: CallState, event: Record<string, unknown>, effects: CallEffect[]): CallState {
+  switch (event.type) {
+    case "session.input_transcript.delta": {
+      const next = liveDelta(state, "you", event.delta);
+      if (next === state) return state;
+      if (state.activity === "speaking") effects.push({ kind: "cancelTimer", key: "liveSpeech" });
+      return { ...next, heardUser: true, activity: "listening" };
+    }
+    case "session.output_transcript.delta": {
+      const next = liveDelta(state, "pew", event.delta);
+      if (next === state) return state;
+      effects.push({ kind: "timer", key: "liveSpeech", ms: LIVE_SPEECH_MS, input: { type: "timeout", what: "liveSpeech" } });
+      return { ...next, activity: "speaking" };
+    }
+    case "session.closed":
+      return finish(state, effects, "hangup");
+    case "error":
+      if (typeof __DEV__ !== "undefined" && __DEV__) console.log(`[voice] live error ${JSON.stringify(event).slice(0, 300)}`);
+      return state;
+    default:
+      return state;
+  }
+}
+
 function onDaemon(state: CallState, message: unknown, effects: CallEffect[]): CallState {
   if (!isRecord(message)) return state;
   if (message.t === "voice.inbox") {
@@ -846,6 +905,13 @@ function onDaemon(state: CallState, message: unknown, effects: CallEffect[]): Ca
   }
   if (message.t === "voice.session" && message.requestId === state.requestId && state.phase === "connecting" && !state.callId) {
     effects.push({ kind: "cancelTimer", key: "session" });
+    if (message.ok === true && message.engine === "live") {
+      const callId = str(message.callId) ?? state.requestId;
+      const briefed = readInboxItems(message.items) ?? state.inbox ?? [];
+      effects.push({ kind: "connect", live: true });
+      // GPT-Live takes its own turns: the mic is never gated by Pew's voice.
+      return { ...state, engine: "live", echoGuard: false, callId, items: briefed.map(toCallItem), told: briefed.map((item) => item.id) };
+    }
     const secret = str(message.secret);
     if (message.ok !== true || !secret) {
       return finish(state, effects, "failed", str(message.error) ?? CALL_ERRORS.generic);
@@ -855,6 +921,14 @@ function onDaemon(state: CallState, message: unknown, effects: CallEffect[]): Ca
     const expiresAt = typeof message.expiresAt === "number" ? message.expiresAt : undefined;
     effects.push({ kind: "connect", secret, expiresAt });
     return { ...state, callId, items: briefed.map(toCallItem), told: briefed.map((item) => item.id) };
+  }
+  if (state.engine === "live") {
+    // The daemon tells GPT-Live itself (notes, tools). Only its hang-up matters here.
+    if (message.t === "voice.hangup" && message.callId === state.callId && (state.phase === "live" || state.phase === "connecting")) {
+      effects.push({ kind: "timer", key: "liveHangup", ms: LIVE_HANGUP_MS, input: { type: "timeout", what: "liveHangup" } });
+      return { ...state, phase: "ending" };
+    }
+    return state;
   }
   // A session Pew is working with started or finished a turn: tell the model,
   // and let it speak at the next pause (never on top of the user or itself).
@@ -882,6 +956,7 @@ function onServer(state: CallState, raw: unknown, effects: CallEffect[]): CallSt
   if (!isRecord(raw) || typeof raw.type !== "string") return state;
   if (state.phase !== "live" && state.phase !== "ending") return state;
   const event = raw;
+  if (state.engine === "live") return onLiveServer(state, event, effects);
   switch (event.type) {
     case "response.created":
       return { ...state, responding: true };
@@ -971,6 +1046,8 @@ function cutOff(state: CallState, effects: CallEffect[]): CallState {
 /** One step of the call. Pure: the same state and input always give the same answer. */
 export function stepCall(state: CallState, input: CallInput): CallStep {
   const step = stepInner(state, input);
+  // Live engine: GPT-Live paces itself; nothing is held to say at a pause.
+  if (step.state.engine === "live") return step;
   if (step.state.phase !== "live" && !step.state.held.pauseArmed) return step;
   const effects = [...step.effects];
   return { state: pace(step.state, effects), effects };
@@ -991,6 +1068,7 @@ function stepInner(state: CallState, input: CallInput): CallStep {
             ...(input.sessionId ? { sessionId: input.sessionId } : {}),
             ...(input.place?.cwd ? { cwd: input.place.cwd } : {}),
             ...(input.place?.providerId ? { providerId: input.place.providerId } : {}),
+            engines: ["live"],
           },
         },
         { kind: "timer", key: "session", ms: SESSION_TIMEOUT_MS, input: { type: "timeout", what: "session" } },
@@ -1009,6 +1087,8 @@ function stepInner(state: CallState, input: CallInput): CallStep {
       effects.push({ kind: "timer", key: "echoTail", ms: ECHO_TAIL_MS, input: { type: "echoTail" } });
       let next: CallState = gateMic(state, { ...state, phase: "live", activity: "listening", echoTail: true }, effects);
       next = reconcile(next, effects);
+      // GPT-Live greets on its own.
+      if (next.engine === "live") return { state: next, effects };
       // Pew speaks first: the bound instructions say how to open. A greeting,
       // never an action: nobody has asked for anything yet.
       next = speakUnprompted(next, effects);
@@ -1026,7 +1106,7 @@ function stepInner(state: CallState, input: CallInput): CallStep {
       if (!callActive(state)) return { state, effects };
       return { state: gateMic(state, { ...state, muted: input.muted }, effects), effects };
     case "interrupt": {
-      if (state.phase !== "live" || !state.pewAudio) return { state, effects };
+      if (state.phase !== "live" || !state.pewAudio || state.engine === "live") return { state, effects };
       return { state: cutOff(state, effects), effects };
     }
     case "echoTail":
@@ -1057,6 +1137,14 @@ function stepInner(state: CallState, input: CallInput): CallStep {
         if (state.phase !== "connecting" || state.callId) return { state, effects };
         return { state: finish(state, effects, "failed", CALL_ERRORS.noAnswer), effects };
       }
+      if (input.what === "liveSpeech") {
+        if (state.engine !== "live" || state.activity !== "speaking") return { state, effects };
+        return { state: { ...state, activity: "listening" }, effects };
+      }
+      if (input.what === "liveHangup") {
+        if (state.engine !== "live" || !callActive(state)) return { state, effects };
+        return { state: finish(state, effects, "hangup"), effects };
+      }
       if (input.what === "goodbye") {
         if (!state.hangUpPending) return { state, effects };
         return { state: finish(state, effects, "hangup"), effects };
@@ -1078,6 +1166,11 @@ function stepInner(state: CallState, input: CallInput): CallStep {
     case "typed": {
       const text = input.text.trim().slice(0, TRANSCRIPT_MAX_CHARS);
       if (state.phase !== "live" || !text) return { state, effects };
+      if (state.engine === "live") {
+        effects.push({ kind: "daemon", message: { t: "voice.typed", callId: state.callId ?? "", text } });
+        const next = addTranscript(setCaption(settleLiveCaption(state), "you", text, true, undefined), "user", text);
+        return { state: { ...next, heardUser: true, userTurns: next.userTurns + 1, activity: "listening" }, effects };
+      }
       // Pew stops talking to read it, as if they had spoken over it.
       const base = state.pewAudio ? cutOff(state, effects) : state;
       effects.push({
@@ -1109,7 +1202,9 @@ function stepInner(state: CallState, input: CallInput): CallStep {
         },
       ];
       let next: CallState = { ...state, answeredHere, completed, toolCounter, heardUser: true, unprompted: false };
-      if (state.phase === "live") {
+      if (state.phase === "live" && state.engine === "live") {
+        effects.push({ kind: "daemon", message: { t: "voice.typed", callId: state.callId ?? "", text: input.tell, context: true } });
+      } else if (state.phase === "live") {
         effects.push({ kind: "realtime", event: systemText(input.tell) });
         next = requestResponse(next, effects);
       }

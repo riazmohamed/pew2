@@ -81,12 +81,55 @@ test("work handed to a chat on a call rings when it is done, with Ring me on", a
   }
 }, 60_000);
 
-test("with Ring me off, handing work over books no ring", async () => {
+test("with Ring me off, handing work over still rings when it is done", async () => {
   const { daemon, sessionId, tool, ctx, callId } = await call();
   try {
     await tool("tell_agent", { session_id: sessionId, text: "run the tests" });
     await handleMessage(JSON.stringify({ t: "voice.end", callId }), ctx);
+    expect((daemon.voice as any).waitingOn?.sessionId).toBe(sessionId);
+  } finally {
+    daemon.closeAll();
+  }
+}, 60_000);
+
+test("tell_agent with no chat named goes to the only open chat, and names it", async () => {
+  const { daemon, sessionId, tool, ctx, callId } = await call();
+  try {
+    const sent = await tool("tell_agent", { text: "review the document" });
+    expect(sent).toMatchObject({ ok: true, session_id: sessionId });
+    expect(sent.say).toMatch(/^(Sent to|Queued for) /);
+    await handleMessage(JSON.stringify({ t: "voice.end", callId }), ctx);
+    expect((daemon.voice as any).waitingOn?.sessionId).toBe(sessionId);
+  } finally {
+    daemon.closeAll();
+  }
+}, 60_000);
+
+test("cancel_callback on the call: no ring for the work handed over", async () => {
+  const { daemon, sessionId, tool, ctx, callId } = await call({ mode: "onthego", ringUntil: 0 });
+  try {
+    await tool("tell_agent", { session_id: sessionId, text: "run the tests" });
+    expect(await tool("cancel_callback", {})).toMatchObject({ ok: true, cancelled: true });
+    await handleMessage(JSON.stringify({ t: "voice.end", callId }), ctx);
     expect((daemon.voice as any).waitingOn).toBeUndefined();
+    expect((daemon.voice as any).state.callbackAt).toBeUndefined();
+  } finally {
+    daemon.closeAll();
+  }
+}, 60_000);
+
+test("work that finished during the call (they heard it) rings nobody afterwards", async () => {
+  const { daemon, sessionId, tool, ctx, callId } = await call();
+  try {
+    await tool("tell_agent", { session_id: sessionId, text: "say ok" });
+    // Long after it was sent, and the chat is idle again: it is done.
+    const voice = daemon.voice as any;
+    const realNow = voice.now;
+    voice.now = () => realNow() + 60_000;
+    for (let i = 0; i < 100 && daemon.isWorking(sessionId) !== false; i++) await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(daemon.isWorking(sessionId)).toBe(false);
+    await handleMessage(JSON.stringify({ t: "voice.end", callId }), ctx);
+    expect(voice.waitingOn).toBeUndefined();
   } finally {
     daemon.closeAll();
   }

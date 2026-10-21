@@ -396,8 +396,12 @@ export async function pushVoiceRing(registry: PushRegistry, ring: VoiceRingPush,
   }
   const banners = registry.entries().filter(([deviceId]) => !rung.includes(deviceId));
   if (!options.relay) options.log?.("[voice] no relay: no call, banner only");
-  else if (registry.voipList().length === 0) options.log?.("[voice] no phone registered for calls: banner only");
-  if (banners.length > 0) options.log?.(`[voice] banner to ${banners.length} phone(s)`);
+  const native = banners.filter(([, target]) => target.nativeRing).length;
+  // An Android phone with the native ringer is rung by its data push below,
+  // not by VoIP: "no phone registered for calls" read as a missed ring.
+  if (options.relay && registry.voipList().length === 0 && native === 0) options.log?.("[voice] no phone registered for calls: banner only");
+  if (native > 0) options.log?.(`[voice] ringing ${native} Android phone(s) like a call`);
+  if (banners.length > native) options.log?.(`[voice] banner to ${banners.length - native} phone(s)`);
   if (rung.length === 0 && banners.length === 0) options.log?.("[voice] nothing to ring: no phone registered for alerts");
   if (banners.length > 0) {
     const messages = voiceRingMessages(registry, ring, ringId).filter((message) =>

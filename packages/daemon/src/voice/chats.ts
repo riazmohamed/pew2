@@ -241,6 +241,29 @@ export async function runChatTool(name: string, rawArgs: string, port: ChatPort)
       const cwd = cwds[0]!;
       const agent = pickAgent(chats, agents, cwd, str(args.agent), port.contextProvider());
       if ("say" in agent) return fail(agent.say, "agent");
+      // A chat already open in that project takes the message: a second
+      // agent on the same project was a duplicate nobody asked for (21 Oct).
+      // Not when they asked for a fresh chat or a model for it.
+      const text0 = str(args.text);
+      if (args.new_chat !== true && !str(args.model) && text0) {
+        const open = port.statuses().filter((status) => status.folder === projectName(cwd) && (!status.agentName || status.agentName === agent.agentName));
+        const target = open.find((status) => !status.working) ?? open[0];
+        if (target) {
+          const sent = port.tellAgent(target.sessionId, text0);
+          if (sent.ok) {
+            port.mark?.(target.sessionId, { kind: "pew", text: text0 });
+            return out({
+              ok: true,
+              session_id: target.sessionId,
+              project: projectName(cwd),
+              agent: target.agentName ?? agent.agentName,
+              sent: true,
+              reused_open_chat: true,
+              say: `${sent.queued ? "Queued for" : "Sent to"} ${projectName(cwd)}.`,
+            });
+          }
+        }
+      }
       const sessionId = await port.start(agent.providerId, cwd);
       // Before the first message, so that message already runs on it.
       const wantModel = str(args.model);

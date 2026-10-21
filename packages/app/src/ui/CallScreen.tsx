@@ -16,7 +16,7 @@
  * font for anything read, the LED face (`Led`) for labels and states.
  */
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   Easing,
@@ -39,6 +39,8 @@ import { PEW_BODY_CY } from "../pew/engine";
 import { canSwitchSpeaker, setSpeaker as routeSpeaker } from "../../modules/pew-audio-route";
 import { androidSpeakerSwitch, setAndroidSpeaker } from "./androidCall";
 import type { CallInput, CallState } from "../voiceCall";
+import type { Session } from "../daemonTypes";
+import { callLive, liveSessionId, type CallLive } from "../callLive";
 import { cardFor, reopenable, tappedAnswerText, tappedApprovalText, voicePick, type CardItem } from "../voiceCard";
 import { ApprovalSheet } from "./ApprovalSheet";
 import { AskUserSheet } from "./AskUserSheet";
@@ -68,6 +70,7 @@ import {
   type StatusTone,
   type StatusView,
   onProject,
+  spotlightOf,
 } from "../voiceBoard";
 import { haptics } from "./haptics";
 import { DotGrid } from "./stage/DotGrid";
@@ -79,6 +82,14 @@ import { CircleButton } from "./controls";
 import { ShimmerText } from "./ShimmerText";
 import { useSmoothText } from "./useSmoothText";
 import { MS_PER_SYLLABLE, highlightRuns, learnPace, sayPosition, totalSyllables, voicedNow, type SpeechClock } from "../speechSync";
+
+/**
+ * Android: no 60 fps Skia painters on the call screen. Pew holds still and the
+ * listening wave is plain text. React Native Skia 2.3 crashed the app mid-call
+ * (SIGSEGV in SkRecordDraw, librnskia, 20-21 Oct) while this screen ran half a
+ * dozen of them at once; a call is for listening, often while driving.
+ */
+const CALM = Platform.OS === "android";
 import { useReducedMotion } from "./useReducedMotion";
 
 /** Pew's text colour on the canvas: the purple, lifted for reading. */
@@ -157,9 +168,11 @@ interface Props {
   micLevel?: SharedValue<number>;
   /** Pew's speaking clock: the captions follow its voice word by word. */
   speech?: RefObject<SpeechClock>;
+  /** The app's sessions (`daemon.sessions`), for the live panel. Absent: the panel shows board lines only. */
+  sessions?: readonly Session[];
 }
 
-export function CallScreen({ call, board = IDLE_BOARD, providers = [], onHangUp, onMute, onDismiss, onRetry, onAnswer, color, onInterrupt, onType, micLevel, speech }: Props) {
+export function CallScreen({ call, board = IDLE_BOARD, providers = [], onHangUp, onMute, onDismiss, onRetry, onAnswer, color, onInterrupt, onType, micLevel, speech, sessions }: Props) {
   const visible = call.phase !== "idle";
   const over = call.phase === "ended" || call.phase === "failed";
   return (
@@ -178,6 +191,7 @@ export function CallScreen({ call, board = IDLE_BOARD, providers = [], onHangUp,
         onType={onType}
         micLevel={micLevel}
         speech={speech}
+        sessions={sessions}
         onSpeaker={canSwitchSpeaker ? routeSpeaker : androidSpeakerSwitch ? setAndroidSpeaker : undefined}
       />
     </Modal>
@@ -212,6 +226,8 @@ export interface MissionControlProps {
   micLevel?: SharedValue<number>;
   /** Pew's speaking clock (absent: captions paced by time, as in the demo). */
   speech?: RefObject<SpeechClock>;
+  /** The app's sessions, for the live panel (what the agent is streaming back). */
+  sessions?: readonly Session[];
 }
 
 /** Re-render on a short clock while a call is on screen, for type-out and captions. */
@@ -277,7 +293,7 @@ function clock(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export function MissionControl({ call, board, providers, onHangUp, onMute, onDismiss, onRetry, now: override, onSpeaker, onAnswer, color, onInterrupt, onType, micLevel, speech }: MissionControlProps) {
+export function MissionControl({ call, board, providers, onHangUp, onMute, onDismiss, onRetry, now: override, onSpeaker, onAnswer, color, onInterrupt, onType, micLevel, speech, sessions }: MissionControlProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
   const over = call.phase === "ended" || call.phase === "failed";
@@ -371,6 +387,7 @@ export function MissionControl({ call, board, providers, onHangUp, onMute, onDis
 
   const top = insets.top;
   const project = onProject(board, call);
+  const liveView = callLive(liveSessionId(spotlightOf(board, call), call), sessions, board.sessions);
   // Typing instead of talking: the mic is muted while the box is open, so
   // road noise or a passenger can't cut in, and comes back as it was after.
   const [typing, setTyping] = useState(false);
@@ -518,6 +535,7 @@ export function MissionControl({ call, board, providers, onHangUp, onMute, onDis
       <Animated.View style={[styles.pewStage, pewStyle]} accessibilityLiveRegion="polite">
         <Pew
           size={SOLO_SIZE}
+          paused={CALM}
           mood={mood}
           color={color}
           accessibilityLabel={call.pewAudio ? "Pew is talking. Tap to interrupt." : `Pew, ${mood}`}
@@ -559,6 +577,11 @@ export function MissionControl({ call, board, providers, onHangUp, onMute, onDis
             {`On ${project.folder}${project.agentName ? ` · ${project.agentName}` : ""}`}
           </Led>
         </View>
+      ) : null}
+      {/* What the agent is streaming back. Collapsed by default (a glance while
+          driving), under the question/approval card: hidden while one is up. */}
+      {live && liveView && !typing && !(settled && cardFor(chosenCard ? { ...call, focus: chosenCard } : call, hiddenCards)) ? (
+        <LivePanel live={liveView} bottom={insets.bottom + 32 + CONTROLS_H + 10 + 24} maxHeight={height * 0.48} reduceMotion={reduceMotion} />
       ) : null}
       <View style={[styles.controls, { bottom: insets.bottom + 32 }]}>
         <CircleButton
@@ -640,6 +663,55 @@ export function MissionControl({ call, board, providers, onHangUp, onMute, onDis
       />
     </View>
     </VoiceInkContext.Provider>
+  );
+}
+
+// ── Live panel ────────────────────────────────────────────
+
+function LivePanel({ live, bottom, maxHeight, reduceMotion }: { live: CallLive; bottom: number; maxHeight: number; reduceMotion: boolean }) {
+  const [open, setOpen] = useState(false);
+  const scroll = useRef<ScrollView>(null);
+  const toggle = () => {
+    haptics.select();
+    setOpen((o) => !o);
+  };
+  return (
+    <View style={[styles.liveWrap, { bottom }]} pointerEvents="box-none">
+      {open ? (
+        <View style={[styles.livePanel, { maxHeight }]}>
+          {live.prompt ? (
+            <Text style={styles.livePrompt} numberOfLines={1}>{live.prompt}</Text>
+          ) : null}
+          <ScrollView
+            ref={scroll}
+            style={styles.liveScroll}
+            onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: !reduceMotion })}
+            accessibilityLiveRegion="polite"
+          >
+            <Text style={styles.liveText} selectable>
+              {live.text || (live.working ? "Waiting for the agent…" : "Nothing yet.")}
+            </Text>
+          </ScrollView>
+          <Led tone={live.working ? "agent" : "dim"} size={10} numberOfLines={1} maxFontSizeMultiplier={ROW_FONT_MAX}>
+            {live.working ? "Working…" : "Done"}
+          </Led>
+        </View>
+      ) : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={open ? "Hide" : "Show what the agent is doing"}
+        accessibilityState={{ expanded: open, busy: live.working }}
+        onPress={toggle}
+        hitSlop={8}
+        style={({ pressed }) => [styles.livePill, pressed && { backgroundColor: theme.color.surfacePressed }]}
+      >
+        {live.working ? <View style={styles.liveDot} /> : null}
+        <Led tone={live.working ? "agent" : "dim"} size={11} numberOfLines={1} maxFontSizeMultiplier={ROW_FONT_MAX}>
+          {`Live${live.project ? ` · ${live.project}` : ""}`}
+        </Led>
+        <DotGlyph name={open ? "down" : "up"} size={12} color={theme.color.textDim} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -861,7 +933,11 @@ function CaptionBody({ caption, said, voiceLine, listening, speaking, micLevel, 
     return (
       <View style={[styles.waveBox, { height: textStyle.lineHeight * lines, alignItems: centred ? "center" : "flex-start" }]}>
         <Dissolve kind="swap" dissolveKey="listening">
-          <ListeningWave speaking={speaking} level={micLevel} color={voice.ink} off={theme.stage.dash} />
+          {CALM ? (
+            <Text style={[styles.calmListening, { color: voice.ink }]}>{speaking ? "Hearing you…" : "Listening…"}</Text>
+          ) : (
+            <ListeningWave speaking={speaking} level={micLevel} color={voice.ink} off={theme.stage.dash} />
+          )}
         </Dissolve>
       </View>
     );
@@ -1213,7 +1289,7 @@ function Lane({ lane, open, y, brand, reduceMotion, feeds, onReopen }: LaneProps
       onAccessibilityTap={onReopen}
     >
       <View style={styles.lanePew}>
-        <Pew size={LANE_PEW} mood={lane.mood} color={brand} sleepKey={lane.sessionId} feeds={feeds} feedFrom={{ x: LANE_PEW * 0.14, y: LANE_PEW * 0.5 }} />
+        <Pew size={LANE_PEW} paused={CALM} mood={lane.mood} color={brand} sleepKey={lane.sessionId} feeds={feeds} feedFrom={{ x: LANE_PEW * 0.14, y: LANE_PEW * 0.5 }} />
       </View>
       <View style={styles.laneHead}>
         <View style={styles.laneName}>
@@ -1519,6 +1595,7 @@ const styles = StyleSheet.create({
   soloText: { fontSize: theme.font.greeting, lineHeight: theme.line.greeting, fontWeight: "500", textAlign: "center" },
   unrevealed: { color: "transparent" },
   // Left-aligned with the label in the board's caption column, centred under Pew alone.
+  calmListening: { fontSize: 15, opacity: 0.75 },
   waveBox: { alignSelf: "stretch", justifyContent: "center" },
   soloHint: { color: theme.color.textDim, fontSize: theme.font.small, lineHeight: 18 },
   caption: { position: "absolute", left: CAP_LEFT, right: theme.gutter, gap: 4 },
@@ -1583,6 +1660,13 @@ const styles = StyleSheet.create({
   },
   typeInput: { flex: 1, color: theme.color.text, fontSize: theme.font.body, paddingVertical: theme.space(2), maxHeight: 96 },
   onProject: { position: "absolute", left: theme.gutter * 2, right: theme.gutter * 2, alignItems: "center" },
+  liveWrap: { position: "absolute", left: theme.gutter, right: theme.gutter, alignItems: "center", gap: theme.space(2) },
+  livePanel: { alignSelf: "stretch", backgroundColor: theme.color.surfaceRaised, borderColor: theme.color.border, borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, padding: theme.space(3), gap: theme.space(2) },
+  livePrompt: { color: theme.color.textDim, fontSize: 13 },
+  liveScroll: { flexGrow: 0 },
+  liveText: { color: theme.color.text, fontSize: 15, lineHeight: 21 },
+  livePill: { flexDirection: "row", alignItems: "center", gap: theme.space(2), paddingHorizontal: theme.space(3), minHeight: 32, borderRadius: 16, backgroundColor: theme.color.surface, borderColor: theme.color.border, borderWidth: StyleSheet.hairlineWidth },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.color.success },
   controls: { position: "absolute", left: 0, right: 0, height: CONTROLS_H, paddingHorizontal: 52, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   /** Holds the third control's place so End stays centred. */
   controlSpacer: { width: 60, height: 60 },

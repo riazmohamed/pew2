@@ -36,6 +36,9 @@
     "typescript-eslint": "^8"
   },
   "//trustedDependencies": "Skia 2.3+ ships its native libraries (libskia xcframeworks, Android .a) as GitHub release assets fetched by a checksum-verified postinstall, not inside the npm package. Bun skips untrusted postinstalls, which leaves the pod/gradle build with no libskia at all.",
+  "patchedDependencies": {
+    "@shopify/react-native-skia@2.3.14": "patches/@shopify%2Freact-native-skia@2.3.14.patch"
+  },
   "trustedDependencies": [
     "@shopify/react-native-skia"
   ]

@@ -15,6 +15,30 @@ Dates are the day the tag was cut.
 
 ### Added
 
+- **Calls run on GPT-Live again, inside the new call screen.** With an
+  OpenAI API key on the computer (`OPENAI_API_KEY`, or `openaiApiKey` in
+  `~/.pew2/voice.json`), the daemon creates the GPT-Live session from the
+  phone's audio offer and a stronger model behind it (gpt-6-luna) runs
+  Pew's tools on the computer. Pew passes work straight to the agent
+  instead of refusing or asking to reword it. Billed to the API key; the
+  ChatGPT sign-in is not accepted for GPT-Live. Without a key, or with
+  `"engine": "realtime"` in voice.json, calls use the realtime engine on
+  the full `gpt-realtime-2.1` model.
+- **A "Live" panel on the call screen** shows the agent's reply as it
+  streams. Collapsed by default.
+- **Work handed over on a call always rings you back when it is done**,
+  with Ring me on or off. Say "cancel the callback" to stop it.
+- **Pew sends to the chat already open in a project** instead of starting
+  a second one, and checks for fresh news before saying what an agent did.
+
+### Fixed
+
+- **The app no longer crashes mid-call on Android.** React Native Skia
+  could draw a picture that had just been freed (SIGSEGV in
+  SkRecordDraw). Patched in `patches/` (the picture swap is locked and a
+  draw holds its own reference); the call screen on Android also holds
+  Pew still and shows "Listening…" text instead of the animated wave.
+
 - **Pew rings your Android phone like a call, even with the app closed
   and the phone locked.** Your normal ringtone plays on repeat for up to
   30 seconds, with Answer and Decline. Needs your own Firebase project

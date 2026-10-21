@@ -61,7 +61,7 @@ describe("session config", () => {
     expect(config.audio.output.voice).toBe("marin");
     expect(voiceTools().map((t) => t.name)).toEqual([
       "list_waiting", "answer_permission", "answer_question", "decide_plan",
-      "tell_agent", "get_status", "call_me_back", "set_ring", "open_chat", "start_chat",
+      "tell_agent", "get_status", "call_me_back", "cancel_callback", "set_ring", "open_chat", "start_chat",
       "list_models",
       "set_model", "end_call",
     ]);
@@ -111,7 +111,7 @@ describe("tools", () => {
     expect(cb.hangUp).toBe(true);
     expect(back).toBe(20);
     expect(runVoiceTool("end_call", "", p).hangUp).toBe(true);
-    expect(JSON.parse(runVoiceTool("tell_agent", '{"session_id":"s1","text":"go"}', p).output).say).toBe("Queued.");
+    expect(JSON.parse(runVoiceTool("tell_agent", '{"session_id":"s1","text":"go"}', p).output).say).toBe("Queued for it.");
     expect(JSON.parse(runVoiceTool("bogus", "{", p).output).ok).toBe(false);
   });
 });
@@ -189,7 +189,7 @@ test("the briefing names the chat they called from, and treats folders as projec
   expect(text).toContain("drjones (Claude Code): working, Edit src/app.ts.");
   expect(text).toContain("never a person");
   expect(text).toContain("If nothing is waiting, never say so.");
-  expect(text).toContain("don't add steps, checks, requirements or details they didn't ask for");
+  expect(text).toContain("but don't add steps or requirements");
   expect(text).not.toContain("0 items waiting");
   expect(text).not.toContain("health");
 });
@@ -210,9 +210,13 @@ test("a call from a new, empty chat names its project; with no clue, the greetin
   expect(buildInstructions([], [], undefined, Date.now())).toContain("Never pick one from the session list to greet with.");
 });
 
-test("Pew is told never to act, invent a message or pick an answer on its own", () => {
+test("Pew passes project work straight on, but never invents work or picks an answer", () => {
   const text = buildInstructions([], [], undefined, Date.now(), undefined, [], { folder: "storefront" });
-  expect(text).toContain("Until they ask for something, you may look (get_status, list_waiting) but never send, start, open, answer or decide anything.");
+  // The mini model told them "I can't review the document" and offered to
+  // "tweak" requests (21 Oct): it is their voice to the agent.
+  expect(text).toContain("you never say you can't see, read, review or check something: you pass it to the agent");
+  expect(text).toContain("never offer to reword or \"tweak\" it");
+  expect(text).toContain("Never make up work they didn't ask for");
   expect(text).toContain("Never pick an answer to an agent's question or approval yourself, not even the recommended one.");
   expect(text).toContain("Only when they ask for work in it, call start_chat");
 });

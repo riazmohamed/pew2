@@ -36,7 +36,7 @@ export function actionLine(name: string, rawArgs: string, output: string, nameOf
   const item = (id: unknown) => (typeof id === "string" ? session(id.split(":")[0]) : "a session");
   switch (name) {
     case "tell_agent":
-      return `Sent ${session(args.session_id)}: "${clipText(str(args.text) ?? "", 160)}"`;
+      return `Sent ${session(args.session_id ?? (result as { session_id?: unknown }).session_id)}: "${clipText(str(args.text) ?? "", 160)}"`;
     case "answer_permission":
       return `${args.decision === "deny" ? "Denied" : "Approved"} ${item(args.item_id)}'s request`;
     case "answer_question":
@@ -49,6 +49,8 @@ export function actionLine(name: string, rawArgs: string, output: string, nameOf
       return `Started a chat in ${str(args.project) ?? "a project"}${str(args.text) ? `: "${clipText(str(args.text)!, 120)}"` : ""}`;
     case "call_me_back":
       return "Booked the callback they asked for";
+    case "cancel_callback":
+      return "Cancelled the callback";
     case "set_model":
       return `Switched ${session(args.session_id)} to ${str((result as { model?: unknown }).model) ?? str(args.model) ?? "another model"}`;
     case "set_ring":
@@ -100,6 +102,7 @@ export function actionTarget(name: string, rawArgs: string, output: string): str
     return undefined;
   }
   if (name === "open_chat" || name === "start_chat") return typeof result.session_id === "string" ? result.session_id : undefined;
+  if (name === "tell_agent" && typeof result.session_id === "string") return result.session_id;
   if (typeof args.session_id === "string" && args.session_id) return args.session_id;
   if (typeof args.item_id === "string" && args.item_id) return args.item_id.split(":")[0];
   return undefined;

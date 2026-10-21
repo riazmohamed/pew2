@@ -62,9 +62,17 @@ export interface TransportHandlers {
   onFailed(error: string): void;
 }
 
+/**
+ * Live engine: hands the offer's SDP to the daemon (`voice.offer`), which
+ * opens the GPT-Live session, and resolves with OpenAI's answer SDP. Rejects
+ * with a user-facing message.
+ */
+export type OfferExchange = (sdp: string) => Promise<string>;
+
 /** Open a call. Resolves with a handle at once; failures arrive on `onFailed`. */
 export function openTransport(
-  secret: string,
+  /** The realtime client secret; unused when `exchange` is given. */
+  secret: string | undefined,
   expiresAt: number | undefined,
   handlers: TransportHandlers,
   /**
@@ -74,6 +82,8 @@ export function openTransport(
    * apparently deadlocked", SIGABRT), so nothing touches the mic before this.
    */
   audioReady: Promise<unknown> = Promise.resolve(),
+  /** Live engine: the daemon answers the offer instead of OpenAI's calls endpoint. */
+  exchange?: OfferExchange,
 ): VoiceTransport {
   let closed = false;
   /** Hung up and lingering for the tone: nothing may reach the handlers any more. */
@@ -194,7 +204,23 @@ export function openTransport(
       const offer = await pc.createOffer({});
       step = "setLocalDescription";
       await pc.setLocalDescription(offer);
+      if (exchange) {
+        step = "exchange";
+        let sdp: string;
+        try {
+          sdp = await exchange(offer.sdp ?? "");
+        } catch (error) {
+          devLog(`offer refused by the computer: ${String(error)}`);
+          return fail(error instanceof Error && error.message ? error.message : CALL_ERRORS.generic);
+        }
+        if (closed) return;
+        step = "setRemoteDescription";
+        await pc.setRemoteDescription({ type: "answer", sdp });
+        devLog("offer answered (live)");
+        return;
+      }
       if (secretExpired(expiresAt, Date.now())) return fail(CALL_ERRORS.expired);
+      if (!secret) return fail(CALL_ERRORS.generic);
       step = "fetch";
       const timer = setTimeout(() => abort.abort(), OFFER_TIMEOUT_MS);
       const post = () =>

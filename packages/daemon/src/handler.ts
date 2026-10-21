@@ -748,31 +748,32 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         const agentName = message.providerId ? daemon.providerName(message.providerId) : undefined;
         const place = folder ? { folder, ...(agentName ? { agentName } : {}) } : undefined;
         reply(
-          await daemon.voice.openSession(message.requestId, message.focus, statuses, message.sessionId, projects, place),
+          await daemon.voice.openSession(message.requestId, message.focus, statuses, message.sessionId, projects, place, message.engines),
         );
         break;
       }
 
+      case "voice.offer": {
+        // A GPT-Live call: the daemon creates the session from the phone's
+        // offer and runs the backend's tools itself (`voice/live.ts`).
+        const callId = message.callId;
+        const answer = await daemon.voice.liveOffer(
+          callId,
+          message.sdp,
+          (toolCallId, name, args) => runCallTool(ctx, callId, toolCallId, name, args),
+          () => ctx.broadcast({ t: "voice.hangup", callId }),
+        );
+        reply({ t: "voice.answer", requestId: message.requestId, callId, ...answer });
+        break;
+      }
+
+      case "voice.typed": {
+        daemon.voice.liveTyped(message.callId, message.text, message.context === true);
+        break;
+      }
+
       case "voice.tool": {
-        // Opening or starting a chat spawns an agent, so it is the one async
-        // tool; it runs well inside the app's 30 s tool timeout.
-        let first = false;
-        const result = !daemon.voice.knowsCall(message.callId)
-          ? { output: JSON.stringify({ ok: false, error: "unknown call", say: "This call has ended." }), hangUp: true }
-          : await daemon.voice.runOnce(message.callId, message.toolCallId, async () => {
-              first = true;
-              return CHAT_TOOLS.has(message.name)
-                ? runChatTool(message.name, message.arguments, chatPort(ctx, message.callId))
-                : message.name === "set_model" || message.name === "list_models"
-                  ? runModelTool(message.arguments, voicePort(ctx, message.callId), message.name === "list_models")
-                  : runVoiceTool(message.name, message.arguments, voicePort(ctx, message.callId));
-            });
-        if (first) {
-          const named = (sessionId: string) => daemon.voiceStatuses(sessionId)[0]?.folder;
-          const said = actionTarget(message.name, message.arguments, result.output);
-          const target = said ? (resolveSession(said, daemon.voiceStatuses()) ?? said) : undefined;
-          daemon.voice.noteAction(message.callId, actionLine(message.name, message.arguments, result.output, named), target);
-        }
+        const result = await runCallTool(ctx, message.callId, message.toolCallId, message.name, message.arguments);
         reply({
           t: "voice.tool",
           requestId: message.requestId,
@@ -852,6 +853,34 @@ function runTurn(ctx: HandlerContext, sessionId: string, turn: Promise<PromptOut
 }
 
 /** The daemon's ordinary methods, as the voice tools call them. */
+/**
+ * One tool call of a call, once per id, with its line on the call's record.
+ * The realtime engine's app sends these as `voice.tool`; the GPT-Live engine
+ * runs them from the sideband. Opening or starting a chat spawns an agent, so
+ * it is the one slow tool; it runs well inside the app's 30 s tool timeout.
+ */
+async function runCallTool(ctx: HandlerContext, callId: string, toolCallId: string, name: string, args: string): Promise<{ output: string; hangUp?: boolean }> {
+  const { daemon } = ctx;
+  let first = false;
+  const result = !daemon.voice.knowsCall(callId)
+    ? { output: JSON.stringify({ ok: false, error: "unknown call", say: "This call has ended." }), hangUp: true }
+    : await daemon.voice.runOnce(callId, toolCallId, async () => {
+        first = true;
+        return CHAT_TOOLS.has(name)
+          ? runChatTool(name, args, chatPort(ctx, callId))
+          : name === "set_model" || name === "list_models"
+            ? runModelTool(args, voicePort(ctx, callId), name === "list_models")
+            : runVoiceTool(name, args, voicePort(ctx, callId));
+      });
+  if (first) {
+    const named = (sessionId: string) => daemon.voiceStatuses(sessionId)[0]?.folder;
+    const said = actionTarget(name, args, result.output);
+    const target = said ? (resolveSession(said, daemon.voiceStatuses()) ?? said) : undefined;
+    daemon.voice.noteAction(callId, actionLine(name, args, result.output, named), target);
+  }
+  return result;
+}
+
 function voicePort(ctx: HandlerContext, callId: string): VoicePort {
   const { daemon } = ctx;
   return {
@@ -879,7 +908,15 @@ function voicePort(ctx: HandlerContext, callId: string): VoicePort {
     },
     statuses: (sessionId) => daemon.voiceStatuses(sessionId),
     callMeBack: (minutes) => daemon.voice.callMeBack(minutes, callId),
-    callWhenDone: (sessionId, folder) => daemon.voice.callWhenDone(sessionId, folder),
+    callWhenDone: (sessionId, folder) => daemon.voice.callWhenDone(sessionId, folder, callId),
+    cancelCallback: () => daemon.voice.cancelCallback(callId),
+    defaultSession: () => {
+      const open = new Set(daemon.voiceStatuses().map((status) => status.sessionId));
+      const last = daemon.voice.lastTouched(callId);
+      if (last && open.has(last)) return last;
+      const context = daemon.voice.callContext(callId);
+      return context && open.has(context) ? context : undefined;
+    },
     setRing: (sessionId, on) => {
       daemon.voice.arm(sessionId, on);
       return { ringing: daemon.voice.currentPrefs.mode === "onthego" };

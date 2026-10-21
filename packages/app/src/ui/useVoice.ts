@@ -45,6 +45,16 @@ import { NEW_CLOCK, tickClock, type SpeechClock } from "../speechSync";
 const AUDIO_SETTLE_MS = 1500;
 /** The hang-up tone's length: the call's audio stays up (silent) until it is over. */
 const END_TONE_MS = 1200;
+/** Live engine: how long the daemon has to answer `voice.offer`. */
+const OFFER_EXCHANGE_MS = 25_000;
+
+interface PendingOffer {
+  requestId: string;
+  callId: string;
+  resolve(sdp: string): void;
+  reject(error: Error): void;
+  timer: ReturnType<typeof setTimeout>;
+}
 
 function enterCallAudio(): Promise<void> {
   return setAudioModeAsync({
@@ -98,6 +108,15 @@ export function useVoice({ post, online }: Options) {
   const counter = useRef(0);
   const postRef = useRef(post);
   postRef.current = post;
+  /** Live engine: the `voice.offer` waiting on its `voice.answer`. */
+  const pendingOffer = useRef<PendingOffer | undefined>(undefined);
+  const dropOffer = useCallback((error: string) => {
+    const pending = pendingOffer.current;
+    if (!pending) return;
+    pendingOffer.current = undefined;
+    clearTimeout(pending.timer);
+    pending.reject(new Error(error));
+  }, []);
 
   const nextId = useCallback(() => `voice-${Date.now().toString(36)}-${++counter.current}`, []);
 
@@ -111,8 +130,22 @@ export function useVoice({ post, online }: Options) {
             dispatch({ type: "failed", error: CALL_ERRORS.offline });
           }
           break;
-        case "connect":
+        case "connect": {
           transport.current?.close();
+          const callId = callRef.current.callId ?? "";
+          const exchange = effect.live
+            ? (sdp: string) =>
+                new Promise<string>((resolve, reject) => {
+                  dropOffer(CALL_ERRORS.generic);
+                  const requestId = nextId();
+                  const timer = setTimeout(() => {
+                    if (pendingOffer.current?.requestId === requestId) dropOffer(CALL_ERRORS.generic);
+                  }, OFFER_EXCHANGE_MS);
+                  pendingOffer.current = { requestId, callId, resolve, reject, timer };
+                  const offer: wire.VoiceOffer = { t: "voice.offer", requestId, callId, sdp };
+                  if (!postRef.current(offer)) dropOffer(CALL_ERRORS.offline);
+                })
+            : undefined;
           transport.current = openTransport(
             effect.secret,
             effect.expiresAt,
@@ -122,8 +155,10 @@ export function useVoice({ post, online }: Options) {
               onFailed: (error) => dispatch({ type: "failed", error }),
             },
             audioReady.current,
+            exchange,
           );
           break;
+        }
         case "realtime":
           transport.current?.send(effect.event);
           break;
@@ -149,6 +184,7 @@ export function useVoice({ post, online }: Options) {
           break;
         }
         case "close":
+          dropOffer(CALL_ERRORS.generic);
           // The hang-up tone is already playing (see `dispatch`); the call
           // goes silent now and its audio shuts down once the tone is over.
           if (transport.current) {
@@ -168,7 +204,7 @@ export function useVoice({ post, online }: Options) {
           break;
       }
     }
-  }, []);
+  }, [dropOffer, nextId]);
 
   const dispatch = useCallback(
     (input: CallInput) => {
@@ -204,6 +240,17 @@ export function useVoice({ post, online }: Options) {
       if (t === "voice.inbox") {
         const items = readInboxItems((message as { items?: unknown }).items);
         if (items) setInbox(items);
+      }
+      if (t === "voice.answer") {
+        const answer = message as Partial<wire.VoiceAnswer>;
+        const pending = pendingOffer.current;
+        if (pending && answer.requestId === pending.requestId && answer.callId === pending.callId) {
+          pendingOffer.current = undefined;
+          clearTimeout(pending.timer);
+          if (answer.ok === true && typeof answer.sdp === "string" && answer.sdp) pending.resolve(answer.sdp);
+          else pending.reject(new Error(typeof answer.error === "string" && answer.error ? answer.error : CALL_ERRORS.generic));
+        }
+        return;
       }
       if (t === "voice.board" || t === "voice.inbox") setBoard(foldBoard(boardRef.current, message, Date.now()));
       dispatch({ type: "daemon", message });

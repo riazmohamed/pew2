@@ -15,7 +15,8 @@ import { turnNote } from "./notes.js";
 import { CALLBACK_ANSWER_MS, MEMORY_ACTIONS, callbackLines } from "./memory.js";
 import { HOME_THREAD, threadLines, type ThreadLine, type ThreadStore } from "./threads.js";
 import * as policy from "./policy.js";
-import { buildInstructions, buildSessionConfig, mintClientSecret, type SessionStatus } from "./session.js";
+import { briefingOf, buildInstructions, buildSessionConfig, mintClientSecret, voiceTools, type SessionStatus } from "./session.js";
+import { LIVE_MODEL, LiveCall, createLiveSession, liveSessionConfig, readLiveSettings, type CreateSocket, type LiveSettings, type RunTool } from "./live.js";
 import type { VoiceRingPush } from "../push.js";
 
 export interface VoiceHost {
@@ -84,7 +85,7 @@ export class VoiceController {
    */
   private readonly answered = new Map<string, Promise<{ output: string; hangUp?: boolean }>>();
   /** What Pew did on each live call, for the memory it leaves. */
-  private readonly actions = new Map<string, { text: string; sessionId?: string }[]>();
+  private readonly actions = new Map<string, { text: string; sessionId?: string; at?: number }[]>();
   /** "Call me back when it's done": the session being waited on. */
   private waitingOn?: { sessionId: string; folder?: string; since: number; started: boolean };
   /** When "call me back" was asked, and when that callback last rang. */
@@ -93,7 +94,16 @@ export class VoiceController {
   private callbackAbout?: { folder?: string; handed: boolean };
   private callbackRungAt?: number;
   private readonly calls = new Set<string>();
+  /** Calls on which they cancelled the callback: no automatic ring for handed work. */
+  private readonly cancelledOn = new Set<string>();
   private callCounter = 0;
+  /** GPT-Live calls minted and waiting for the phone's offer: their session config. */
+  private readonly livePending = new Map<string, { settings: LiveSettings; session: Record<string, unknown> }>();
+  /** GPT-Live calls in progress, by call id. */
+  private readonly liveCalls = new Map<string, LiveCall>();
+  /** Tests swap the sideband socket and OpenAI fetch. */
+  liveSocket?: CreateSocket;
+  liveFetch?: (url: string, init: RequestInit) => Promise<Response>;
   /** The open call's board: Pew's marks and the throttle. Live state, cleared at hang-up. */
   private board?: {
     callId: string;
@@ -184,6 +194,14 @@ export class VoiceController {
     return this.board?.callId === callId ? this.board.context : undefined;
   }
 
+  /** The chat Pew last acted on during this call, if any. */
+  lastTouched(callId: string): string | undefined {
+    if (this.board?.callId !== callId) return undefined;
+    let best: [string, number] | undefined;
+    for (const [sessionId, at] of this.board.memory.touched) if (!best || at >= best[1]) best = [sessionId, at];
+    return best?.[0];
+  }
+
   /** A session closed: its arming goes with it. */
   sessionClosed(sessionId: string): void {
     if (this.armed.has(sessionId)) this.arm(sessionId, false);
@@ -257,10 +275,14 @@ export class VoiceController {
     context?: string,
     projects?: readonly string[],
     place?: { folder: string; agentName?: string },
+    engines?: readonly string[],
   ): Promise<wire.VoiceSession> {
     this.inboxChanged();
-    const found = await resolveCredential(this.options.paths, { now: this.now(), fetchImpl: this.fetchImpl });
-    if (!found.ok) return { t: "voice.session", requestId, ok: false, error: found.reason };
+    // GPT-Live when the app can run it and an API key is set: the engine
+    // the user preferred. Otherwise the realtime client secret, as before.
+    const live = engines?.includes("live") ? await readLiveSettings(dirname(this.options.paths.voiceAuth)) : undefined;
+    const found = live ? undefined : await resolveCredential(this.options.paths, { now: this.now(), fetchImpl: this.fetchImpl });
+    if (found && !found.ok) return { t: "voice.session", requestId, ok: false, error: found.reason };
     const items = this.items;
     const known = context && statuses.some((status) => status.sessionId === context) ? context : undefined;
     const callback = this.callbackRungAt !== undefined && this.now() - this.callbackRungAt <= CALLBACK_ANSWER_MS && this.callbackAskedAt !== undefined
@@ -284,10 +306,14 @@ export class VoiceController {
     const earlier = thread.key ? await this.options.threads?.get(thread.key) : undefined;
     const about = thread.key && thread.key !== HOME_THREAD ? `the ${earlier?.label ?? thread.label ?? "same"} chat` : undefined;
     const remembered = [...callbackLines(this.now(), callback), ...threadLines(earlier, this.now(), about)];
-    const config = buildSessionConfig(buildInstructions(items, statuses, focus, this.now(), known, projects, place, remembered));
-    const minted = await mintClientSecret(found.credential.token, config, this.fetchImpl);
-    if (!minted.ok) return { t: "voice.session", requestId, ok: false, error: minted.error };
+    const full = buildInstructions(items, statuses, focus, this.now(), known, projects, place, remembered);
+    const minted = found?.ok ? await mintClientSecret(found.credential.token, buildSessionConfig(full), this.fetchImpl) : undefined;
+    if (minted && !minted.ok) return { t: "voice.session", requestId, ok: false, error: minted.error };
     const callId = `call_${this.now().toString(36)}_${++this.callCounter}`;
+    if (live) {
+      this.livePending.set(callId, { settings: live, session: liveSessionConfig(live, full, briefingOf(full), voiceTools()) });
+      this.log(`[voice] ${callId}: GPT-Live (${live.backendModel} behind it)`);
+    }
     this.calls.add(callId);
     this.callThreads.set(callId, thread);
     while (this.calls.size > MAX_CALLS) {
@@ -298,6 +324,7 @@ export class VoiceController {
     this.state = policy.callStarted(this.state, this.now(), items);
     this.schedule();
     this.openBoard(callId, items.find((item) => item.id === focus)?.sessionId ?? known, known);
+    if (!minted?.ok) return { t: "voice.session", requestId, ok: true, provider: "openai", engine: "live", model: LIVE_MODEL, callId, items };
     return {
       t: "voice.session",
       requestId,
@@ -309,6 +336,39 @@ export class VoiceController {
       callId,
       items,
     };
+  }
+
+  /**
+   * The phone's WebRTC offer for a GPT-Live call: create the session with it,
+   * attach the sideband, and answer with OpenAI's SDP.
+   */
+  async liveOffer(callId: string, sdp: string, runTool: RunTool, onHangup: () => void): Promise<{ ok: true; sdp: string } | { ok: false; error: string }> {
+    const pending = this.livePending.get(callId);
+    if (!pending || !this.calls.has(callId)) return { ok: false, error: "This call has ended. Try again." };
+    this.livePending.delete(callId);
+    const created = await createLiveSession({ apiKey: pending.settings.apiKey, sdp, session: pending.session, ...(this.liveFetch ? { fetch: this.liveFetch } : {}) });
+    if (!created.ok) {
+      this.log(`[voice] ${callId}: GPT-Live refused: ${created.error}`);
+      return created;
+    }
+    const call = new LiveCall(callId, created.liveSessionId, {
+      runTool,
+      onHangup,
+      onFinished: () => {
+        if (this.liveCalls.get(callId) === call) this.liveCalls.delete(callId);
+      },
+      log: (line) => this.log(line),
+      greeting: "The call just connected. Open it now, in one short line, as your instructions say.",
+    });
+    this.liveCalls.set(callId, call);
+    call.attach(pending.settings.apiKey, this.liveSocket);
+    this.log(`[voice] ${callId}: GPT-Live session ${created.liveSessionId}`);
+    return { ok: true, sdp: created.sdp };
+  }
+
+  /** Typed on the call screen during a GPT-Live call. */
+  liveTyped(callId: string, text: string, context: boolean): void {
+    this.liveCalls.get(callId)?.typed(text, context);
   }
 
   knowsCall(callId: string): boolean {
@@ -378,7 +438,7 @@ export class VoiceController {
   noteAction(callId: string, line: string | undefined, sessionId?: string): void {
     if (!line || !this.calls.has(callId)) return;
     const list = this.actions.get(callId) ?? [];
-    list.push({ text: line, ...(sessionId ? { sessionId } : {}) });
+    list.push({ text: line, ...(sessionId ? { sessionId } : {}), at: this.now() });
     this.actions.set(callId, list.slice(-MEMORY_ACTIONS));
   }
 
@@ -389,6 +449,9 @@ export class VoiceController {
     const thread = this.callThreads.get(callId);
     if (this.calls.has(callId) && thread) void this.saveCall(thread, transcript, this.actions.get(callId) ?? []);
     const handed = this.calls.has(callId) ? this.handedWork(callId) : undefined;
+    this.livePending.delete(callId);
+    this.liveCalls.get(callId)?.close();
+    this.liveCalls.delete(callId);
     this.callThreads.delete(callId);
     this.actions.delete(callId);
     for (const key of this.answered.keys()) if (key.startsWith(`${callId}\u0000`)) this.answered.delete(key);
@@ -396,17 +459,18 @@ export class VoiceController {
     if (this.board?.callId === callId) this.closeBoard();
     this.state = policy.callEnded(this.state, this.now(), reason);
     // Work handed over on the call and still running: ring when it is done,
-    // as if they had said "call me when it's done". Only with Ring me on,
-    // and never over a callback they asked for themselves.
-    if (handed && !this.waitingOn && this.state.callbackAt === undefined) {
-      const prefs = this.currentPrefs;
-      if (prefs.mode === "onthego" && !policy.ringExpired(prefs, this.now())) {
-        this.log(`[voice] work handed to ${handed.folder ?? handed.sessionId} on the call: ring when it's done`);
-        this.callWhenDone(handed.sessionId, handed.folder);
-        this.callbackAbout = { ...(handed.folder ? { folder: handed.folder } : {}), handed: true };
-        return;
-      }
+    // as if they had said "call me when it's done". Always, Ring me on or
+    // off: handing work over and hanging up is asking for the answer (with
+    // Ring me off it never rang, 21 Oct). Never over a callback they asked
+    // for themselves, nor once they cancelled it on the call.
+    if (handed && !this.waitingOn && this.state.callbackAt === undefined && !this.cancelledOn.has(callId)) {
+      this.cancelledOn.delete(callId);
+      this.log(`[voice] work handed to ${handed.folder ?? handed.sessionId} on the call: ring when it's done`);
+      this.callWhenDone(handed.sessionId, handed.folder);
+      this.callbackAbout = { ...(handed.folder ? { folder: handed.folder } : {}), handed: true };
+      return;
     }
+    this.cancelledOn.delete(callId);
     this.schedule();
   }
 
@@ -418,7 +482,13 @@ export class VoiceController {
     const sent = (this.actions.get(callId) ?? []).filter((action) => action.sessionId && /^(Sent |Started a chat in [^:]+: )/.test(action.text));
     for (const action of sent.reverse()) {
       const source = this.host.boardSources?.().find((entry) => entry.sessionId === action.sessionId);
-      if (source) return { sessionId: source.sessionId, ...(source.folder ? { folder: source.folder } : {}) };
+      if (!source) continue;
+      // Still working, or sent so recently it may not have started. Idle
+      // after that means it finished during the call and they heard the
+      // outcome: ringing about it again was a call about nothing.
+      const fresh = action.at !== undefined && this.now() - action.at < WAIT_START_MS;
+      if (source.working || fresh) return { sessionId: source.sessionId, ...(source.folder ? { folder: source.folder } : {}) };
+      return undefined;
     }
     return undefined;
   }
@@ -428,7 +498,8 @@ export class VoiceController {
    * (or it stops to ask them something), however long it takes, up to
    * WAIT_MAX_MS. One at a time; a new one replaces it.
    */
-  callWhenDone(sessionId: string, folder: string | undefined): void {
+  callWhenDone(sessionId: string, folder: string | undefined, callId?: string): void {
+    if (callId !== undefined) this.cancelledOn.delete(callId);
     this.waitingOn = { sessionId, folder, since: this.now(), started: false };
     this.callbackThread = { sessionId, ...this.host.threadFor?.(sessionId) };
     this.callbackAskedAt = this.now();
@@ -466,7 +537,27 @@ export class VoiceController {
     this.schedule();
   }
 
+  /**
+   * "Cancel the callback": drop a clock or when-done callback, and the
+   * automatic ring for work handed over on `callId`. Returns whether
+   * anything was booked.
+   */
+  cancelCallback(callId?: string): boolean {
+    const had = this.state.callbackAt !== undefined || this.waitingOn !== undefined || (callId !== undefined && this.handedWork(callId) !== undefined);
+    this.waitingOn = undefined;
+    this.callbackAbout = undefined;
+    this.callbackThread = undefined;
+    this.callbackAskedAt = undefined;
+    this.state = { ...this.state, callbackAt: undefined };
+    if (callId !== undefined) this.cancelledOn.add(callId);
+    this.log("[voice] callback cancelled");
+    this.schedule();
+    return had;
+  }
+
   callMeBack(minutes: number, callId?: string): void {
+    // A new booking on this call undoes a "cancel" said earlier on it.
+    if (callId !== undefined) this.cancelledOn.delete(callId);
     this.callbackAskedAt = this.now();
     // A clock callback asked on a call is about nothing in particular.
     // `checkWaitedOn` calls this too (no call id), for a closed session: that
@@ -531,6 +622,8 @@ export class VoiceController {
       if (!watched) continue;
       const note = turnNote(source, source.working, this.items.some((item) => item.sessionId === source.sessionId));
       this.host.broadcast({ t: "voice.note", callId: board.callId, ...note } satisfies wire.VoiceNote);
+      // A GPT-Live call hears it on the sideband (its app ignores voice.note).
+      this.liveCalls.get(board.callId)?.note(note.text, note.speak === true);
     }
   }
 
@@ -600,6 +693,7 @@ export class VoiceController {
   }
 
   stop(): void {
+    for (const call of this.liveCalls.values()) call.close();
     this.closeBoard();
     this.timer?.cancel();
     this.timer = undefined;

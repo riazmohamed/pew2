@@ -53,7 +53,8 @@ describe("push targets on disk", () => {
     await settled();
     const path = pushTargetsPath(env);
     expect(await readFile(path, "utf8")).not.toContain(PAIRING);
-    expect((await stat(path)).mode & 0o077).toBe(0);
+    // Windows has no POSIX mode bits to assert on (as in `goalFiles.test.ts`).
+    if (process.platform !== "win32") expect((await stat(path)).mode & 0o077).toBe(0);
   });
 
   it("read a missing or corrupt file as no phones", async () => {

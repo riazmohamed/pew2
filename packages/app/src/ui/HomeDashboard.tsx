@@ -15,15 +15,23 @@ import { Modal, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "
 import {
   runOnJS,
   useAnimatedReaction,
+  useFrameCallback,
   useSharedValue,
   withDelay,
   withTiming,
+  type FrameInfo,
 } from "react-native-reanimated";
 import { theme } from "../theme";
 import { text } from "../appStyles";
 import { lastActiveLabel } from "../ggState";
 import { loadHomeCards, saveHomeCards } from "../preferences";
-import type { DashboardCard, HomeDashboard as Dashboard } from "../homeDashboard";
+import {
+  homeLayoutCards,
+  homeMessage,
+  type DashboardCard,
+  type HomeDashboard as Dashboard,
+  type HomeLink,
+} from "../homeDashboard";
 import { homeMood, pewInk } from "../pew/palette";
 import { Pew } from "../pew/Pew";
 import type { PewMood } from "../pew/engine";
@@ -59,10 +67,23 @@ const LABEL_AFTER_MS = 140;
 const FONT_SCALE = 1.3;
 /** The cards enter one after another, in reading order (left to right, top to bottom). */
 const CARD_STAGGER_MS = 45;
+/**
+ * The line under Pew: one headline. Held whether or not anything is in it,
+ * because Pew is centred on himself plus this line, and every change in its
+ * height ("Can't reach your computer" giving way to "Spin me") moved him.
+ */
+const UNDER = text.headline.lineHeight ?? 28;
+/** With no cards, the line can be a headline and a two-line note; hold all of it. */
+const UNDER_CENTRED = UNDER + theme.space(1) + 2 * (text.subline.lineHeight ?? 19);
 
 export interface HomeDashboardProps {
   home: Dashboard;
-  online: boolean;
+  link: HomeLink;
+  /**
+   * Called once Pew is placed and the screen has drawn a run of smooth frames,
+   * which is when the native splash can dissolve into home and be seen to.
+   */
+  onFirstPaint?: () => void;
   /** The machine refused this phone (rotated key, version mismatch). */
   fatal?: string;
   /** Agents turned on and available; undefined while the list is unknown. */
@@ -71,6 +92,12 @@ export interface HomeDashboardProps {
   color?: string;
   /** False until the first wait is over: nothing below Pew is shown before it, so nothing arrives out of order. */
   settled: boolean;
+  /**
+   * The computer has actually answered with its agents and their sessions
+   * (`State.heard`). Only then may home say there are none, or remember a
+   * count for the next launch: "online" alone is just a socket that opened.
+   */
+  heard: boolean;
   top: number;
   bottom: number;
   onOpen: (id: string) => void;
@@ -78,42 +105,27 @@ export interface HomeDashboardProps {
   onPressPew?: () => void;
 }
 
-/** What home says when it has no cards to show (or can't reach the computer). */
-export function homeMessage(p: {
-  fatal?: string;
-  online: boolean;
-  agents?: number;
-  empty: boolean;
-  hasCards: boolean;
-}): { title: string; line?: string } | undefined {
-  if (p.fatal) return { title: "Can't connect", line: p.fatal };
-  if (!p.online)
-    return {
-      title: "Can't reach your computer",
-      line: p.hasCards ? undefined : "It connects again by itself.",
-    };
-  if (p.agents === 0)
-    return { title: "No agents turned on", line: "Run pew2 setup on your computer." };
-  if (p.empty) return { title: "No sessions yet", line: "Start one from the menu." };
-  return undefined;
-}
-
 const FIRST_BEAT: LifeBeat = { mood: "idle", ms: 7000 };
 
 function HomeDashboardView({
   home,
-  online,
+  link,
+  onFirstPaint,
   fatal,
   agents,
   color,
   settled,
+  heard,
   top,
   bottom,
   onOpen,
   onPressPew,
 }: HomeDashboardProps) {
   const working = home.cards.some((card) => card.state === "working");
-  const real: PewMood = fatal ? "oops" : homeMood(online, working);
+  // Asleep only once the computer is really out of reach, not while the socket
+  // re-dials: that is every return to the app, and he dozed off and woke again
+  // in the space of a second.
+  const real: PewMood = fatal ? "oops" : homeMood(link !== "unreachable", working);
   const appActive = useAppActive();
   const { height } = useWindowDimensions();
 
@@ -242,14 +254,27 @@ function HomeDashboardView({
   useEffect(() => {
     if (settled && introAt === undefined) setIntroAt(Date.now());
   }, [settled, introAt]);
-  const cards = settled && introAt !== undefined ? home.cards : [];
-  const message = settled
-    ? homeMessage({ fatal, online, agents, empty: home.empty, hasCards: cards.length > 0 })
+  // Latched, not live: a reconnect reloads the list (`settled` drops back to
+  // false while it does), and the cards and the line under Pew used to vanish
+  // for that moment and fade back in. What was shown stays until it changes.
+  const introduced = introAt !== undefined;
+  const cards = introduced ? home.cards : [];
+  // "No sessions yet" only from the computer's answer. Before it, an empty
+  // list is just one that has not arrived, and claiming it showed the empty
+  // state for a second on every launch over the relay.
+  const message = introduced
+    ? homeMessage({
+        fatal,
+        link,
+        agents,
+        empty: home.empty && heard,
+        hasCards: cards.length > 0,
+      })
     : undefined;
   // The toy's line, when home has nothing more important to say.
   // Not with reduced motion: there's no spin then, so no invitation to one.
   const toyLine =
-    !message && settled && real === "idle" && !reduceMotion
+    !message && introduced && real === "idle" && !reduceMotion
       ? after
         ? SPIN_AFTER.line
         : SPIN_STAGES[shownStage]!.line
@@ -270,19 +295,28 @@ function HomeDashboardView({
       setRecalled(true);
     });
   }, []);
+  // Remembered only from the computer's own answer. `settled` was used here
+  // and turns true as soon as the socket opens, before anything has arrived,
+  // so an empty list was saved and the next launch laid out for none.
   useEffect(() => {
-    if (settled) void saveHomeCards(home.cards.length);
-  }, [settled, home.cards.length]);
-  const willShow = settled || home.cards.length > 0 ? home.cards.length : (remembered ?? 0);
-  // Pew appears once his place is known: the remembered count (read at once)
-  // or, the first time ever, the settled list.
-  // And never before his colour is known: a first launch (right after
-  // pairing) has no agent yet, and Pew used to appear grey and asleep, then
-  // repaint in the agent's colour and wake when the list landed.
+    if (heard) void saveHomeCards(home.cards.length);
+  }, [heard, home.cards.length]);
+  const willShow = homeLayoutCards({ known: home.cards.length, remembered });
+  // Pew appears once his place is known, and only after the remembered count
+  // has been read (a count read late would move him): from that count, or the
+  // first time ever, from the answer itself, or, with no answer coming, from
+  // what there is. And never before his colour is known: a first launch (right
+  // after pairing) has no agent yet, and Pew used to appear grey and asleep,
+  // then repaint in the agent's colour and wake when the list landed.
   const decided =
-    settled ||
-    ((home.cards.length > 0 || (recalled && remembered !== undefined)) && color !== undefined);
+    recalled &&
+    (heard || (settled && link !== "online") || (remembered !== undefined && color !== undefined));
   const centred = willShow === 0;
+  const [painted, setPainted] = useState(false);
+  const onPainted = useCallback(() => {
+    setPainted(true);
+    onFirstPaint?.();
+  }, [onFirstPaint]);
   const rows = Math.ceil(willShow / 2);
   const sectionHeight = rows > 0 ? LABEL_SPACE + rows * CARD_HEIGHT + (rows - 1) * ROW_GAP : 0;
   // Sized for what home WILL show (the session count, known before the cards
@@ -292,12 +326,29 @@ function HomeDashboardView({
     height,
     top,
     bottom: bottom + theme.space(4),
-    cards: home.cards.length,
+    // `willShow`, as the comment above says: sized from the cards loaded so
+    // far, he was drawn for none and then shrunk when the list landed.
+    cards: willShow,
     cardHeight: CARD_HEIGHT,
     rowGap: ROW_GAP,
     label: LABEL_SPACE,
     chrome: CHROME,
   });
+  // What home has to say, when it says anything. Under Pew when there is no
+  // card space; otherwise in the card space, where it takes up room that is
+  // already held and so cannot move him (under him, its second line did).
+  const messageView = message ? (
+    <Dissolve kind="swap" dissolveKey={message.title} style={styles.message}>
+      <Text style={text.headline} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
+        {message.title}
+      </Text>
+      {message.line && (
+        <Text style={text.subline} numberOfLines={2}>
+          {message.line}
+        </Text>
+      )}
+    </Dissolve>
+  ) : null;
   return (
     <ScrollView
       // Only once the sessions overflow: otherwise there's nothing to scroll,
@@ -337,39 +388,32 @@ function HomeDashboardView({
           // Holds Pew's box, so the space is the same before and after.
           <View style={{ width: pew, height: pew }} />
         )}
-        {toyLine && (
-          // Tucked up under his body: his box has room below it for the shadow.
-          <Dissolve
-            kind="swap"
-            dissolveKey={toyLine}
-            style={[styles.message, { marginTop: -Math.round(pew * 0.12) }]}
-          >
-            <Led
-              tone={shownStage >= 3 || after ? "agent" : "dim"}
-              color={shownStage >= 3 || after ? color : undefined}
-            >
-              {toyLine}
-            </Led>
-          </Dissolve>
-        )}
-        {message && (
-          <Dissolve kind="swap" dissolveKey={message.title} style={styles.message}>
-            <Text
-              style={text.headline}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.5}
-            >
-              {message.title}
-            </Text>
-            {message.line && (
-              <Text style={text.subline} numberOfLines={2}>
-                {message.line}
-              </Text>
-            )}
-          </Dissolve>
-        )}
+        {/* One slot for whatever is said under him, its height held from the
+            first frame and through every swap, so Pew never moves for a line
+            of text. Tucked up under his body: his box has room below it for
+            the shadow. */}
+        <View
+          style={[
+            styles.under,
+            { minHeight: centred ? UNDER_CENTRED : UNDER, marginTop: -Math.round(pew * 0.12) },
+          ]}
+        >
+          {toyLine ? (
+            <Dissolve kind="swap" dissolveKey={toyLine} style={styles.message}>
+              <Led
+                tone={shownStage >= 3 || after ? "agent" : "dim"}
+                color={shownStage >= 3 || after ? color : undefined}
+              >
+                {toyLine}
+              </Led>
+            </Dissolve>
+          ) : message && centred ? (
+            messageView
+          ) : null}
+        </View>
       </View>
+
+      {decided && onFirstPaint && !painted ? <FirstPaint onPainted={onPainted} /> : null}
 
       {/* The burst: his dots across the whole screen, over everything. */}
       {popKey > 0 && scene && color ? (
@@ -388,6 +432,9 @@ function HomeDashboardView({
           their arrival never pushes Pew. */}
       {!centred && (
         <View style={[styles.section, { minHeight: sectionHeight }]}>
+          {cards.length === 0 && messageView ? (
+            <View style={styles.sectionMessage}>{messageView}</View>
+          ) : null}
           {cards.length > 0 && (
             <>
               <Dissolve kind="row" startAt={(introAt ?? 0) + LABEL_AFTER_MS} lateSettled={false}>
@@ -412,6 +459,38 @@ function HomeDashboardView({
 }
 
 export const HomeDashboard = memo(HomeDashboardView);
+
+/** Consecutive on-time frames that count as "drawing smoothly again". */
+const SMOOTH_FRAMES = 4;
+/** Slower than this is a dropped frame at 60Hz, and restarts the count. */
+const SMOOTH_FRAME_MS = 34;
+
+/**
+ * Reports once the screen is drawing on time again after home's first build.
+ *
+ * Counted on the UI thread, in frames, because the build freezes the screen
+ * while JS timers keep running: a clock would say "ready" in the middle of the
+ * freeze. Mounted only until it reports (mounting is how a frame callback
+ * starts and stops here; see `PewTicker`).
+ */
+function FirstPaint({ onPainted }: { onPainted: () => void }) {
+  const smooth = useSharedValue(0);
+  const done = useSharedValue(false);
+  const tick = useCallback(
+    (info: FrameInfo) => {
+      "worklet";
+      if (done.value) return;
+      const dt = info.timeSincePreviousFrame;
+      smooth.value = dt !== null && dt < SMOOTH_FRAME_MS ? smooth.value + 1 : 0;
+      if (smooth.value < SMOOTH_FRAMES) return;
+      done.value = true;
+      runOnJS(onPainted)();
+    },
+    [done, smooth, onPainted],
+  );
+  useFrameCallback(tick, true);
+  return null;
+}
 
 function Card({
   card,
@@ -472,8 +551,10 @@ const styles = StyleSheet.create({
   // Pew takes the upper room; the cards sit at the bottom.
   heroFill: { flexGrow: 1, justifyContent: "center" },
   message: { alignItems: "center", gap: theme.space(1), alignSelf: "stretch" },
+  under: { alignSelf: "stretch", alignItems: "center" },
 
   section: { gap: theme.space(3) },
+  sectionMessage: { flexGrow: 1, justifyContent: "center", alignItems: "center" },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: ROW_GAP },
   // Two per row: half the width less half the gap.
   cell: { width: `48.6%` },

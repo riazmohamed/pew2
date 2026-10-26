@@ -1017,6 +1017,29 @@ export const VoipRegister = z.object({
 });
 
 /**
+ * App -> daemon. A short trace of what the phone saw during a call (audio
+ * route changes, the mic opening and closing, Pew starting and stopping), for
+ * the daemon's log: the only place a lock-screen call can be looked at after
+ * the fact. No words from the call, ever; only states and times.
+ *
+ * Printable ASCII only and capped in size, because every line lands in a log
+ * file verbatim: a newline or control character would let it forge log lines.
+ * An older daemon answers `unknown_message`, which the phone ignores.
+ */
+export const AppDiag = z.object({
+  t: z.literal("app.diag"),
+  lines: z
+    .array(
+      z
+        .string()
+        .max(300)
+        .regex(/^[\x20-\x7E]*$/),
+    )
+    .min(1)
+    .max(60),
+});
+
+/**
  * Daemon -> every other client, when one of them says `hello`.
  *
  * The daemon is the only party that sees arrivals on both transports, so it is
@@ -1886,6 +1909,7 @@ export const ClientMessage = z.discriminatedUnion("t", [
   VoiceArm,
   VoipRegister,
   VoiceForget,
+  AppDiag,
 ]);
 
 export const ServerMessage = z.discriminatedUnion("t", [
@@ -1959,6 +1983,7 @@ export type VoicePrefs = z.output<typeof VoicePrefs>;
 export type VoiceForget = z.output<typeof VoiceForget>;
 export type VoiceArm = z.output<typeof VoiceArm>;
 export type VoipRegister = z.output<typeof VoipRegister>;
+export type AppDiag = z.output<typeof AppDiag>;
 export type VoiceNote = z.output<typeof VoiceNote>;
 export type VoiceArmed = z.output<typeof VoiceArmed>;
 export type VoiceQuietHours = z.output<typeof VoiceQuietHours>;

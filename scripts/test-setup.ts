@@ -41,6 +41,13 @@ if (inherited) {
   process.env.TMPDIR = root;
   process.env.TEMP = root;
   process.env.TMP = root;
+  // And the daemon's own home. Every path in `~/.pew2` (the child registry,
+  // session prefs, push targets) defaults to the real one unless a test passes
+  // its own env, and many spawn agents with plain `process.env`: the developer's
+  // live daemon was reading 25 dead test agents in `children.json` and dozens of
+  // `echo` sessions in its prefs. A test that sets `PEW2_HOME` itself still
+  // wins; this only replaces the default. Inherited by spawned processes.
+  process.env.PEW2_HOME = join(root, "pew2-home");
 
   // `afterAll` from a preload, not `process.on("exit")`: the test runner ends
   // the process without running exit hooks, so that version swept nothing at

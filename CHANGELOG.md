@@ -61,7 +61,7 @@ Dates are the day the tag was cut.
   give a chat something to do on a call, hang up, and Pew rings when it
   finishes or needs you. Its first words are the news, not a bare hello.
 - **The call screen says which project it is on,** above the call buttons.
-- **Merged the original repo up to 0.9.25.** Calls with Pew (ask about your
+- **Merged the original repo up to 0.9.29** (earlier: 0.9.25). Calls with Pew (ask about your
   agents, answer approvals and questions by voice, per-chat call history),
   *Ring me*, onboarding, the home dashboard, a new sound palette and a QR-only
   pairing screen. Everything on this branch is kept.
@@ -197,6 +197,52 @@ Dates are the day the tag was cut.
   before; this app on an older pew2 shows no live typing, no switch and no
   computer icon, and on a pew2 without *Open in OG Coder* the icon just opens
   `pew2 chat`. The relay is unchanged.
+
+## 0.9.29 — 2026-10-22
+
+### Added
+
+- **Call traces in the log.** With the matching app build, each voice call
+  writes a short `[diag]` trace to the daemon log: audio route changes, the
+  microphone opening and closing, and Pew starting and stopping speaking. No
+  words from the call are recorded.
+
+## 0.9.28 — 2026-10-22
+
+### Fixed
+
+- **A callback picks up where you asked for it.** Answered from the lock
+  screen, a "call me back" asked from one project opened by asking what you
+  wanted to do in your home folder. Pew now remembers which chat or project
+  the callback was asked from and starts the callback there.
+
+## 0.9.27 — 2026-10-22
+
+### Changed
+
+- **The daemon log says when.** Every `[relay]`, `[push]`, `[voice]` and other
+  tagged line now starts with the local time, so a dropped connection or a
+  missed notification can be placed against what you were doing. The startup
+  banner and pairing QR code are unchanged.
+- **Every notification is logged with its outcome**: accepted, rejected by
+  Expo (with the reason), refused, or not sent at all. A phone signing up for
+  banners is logged too (`[push] '<device>' will get banners`). Tokens are
+  never written to the log.
+
+## 0.9.26 — 2026-10-21
+
+### Fixed
+
+- **Notifications keep coming after the daemon restarts.** The phones to notify
+  were held only in memory, so after a self-update, a crash or a reboot the
+  daemon knew no phone at all, and finished turns and approvals went
+  unannounced until the app was next opened. They are now saved in
+  `~/.pew2/push-targets.json` (owner-only, tied to the pairing — `pew2 pair
+  --rotate` forgets them). Connect the phone once after updating to save it.
+- **The daemon answers the app's liveness check on the local network**, as the
+  relay already does, so a phone reopened on the same Wi-Fi can confirm its
+  connection instead of rebuilding it. Needs the matching app update to matter.
+
 ## 0.9.25 — 2026-10-20
 
 ### Changed

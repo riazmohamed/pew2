@@ -43,6 +43,12 @@ import {
 } from "./live.js";
 import type { VoiceRingPush } from "../push.js";
 
+/** Where a call was made from: its chat, or a new chat's project and agent. */
+interface CallOrigin {
+  context?: string;
+  place?: { folder: string; agentName?: string };
+}
+
 export interface VoiceHost {
   inboxSources(): InboxSource[];
   /** To every connected client. */
@@ -105,6 +111,21 @@ export class VoiceController {
   >();
   /** The thread a pending callback continues. */
   private callbackThread?: { sessionId?: string; key?: string; label?: string };
+  /**
+   * Where each live call was made from: the chat it was placed in, or the
+   * project of a new chat with nothing sent yet.
+   */
+  private readonly callOrigins = new Map<string, CallOrigin>();
+  /**
+   * Where a pending callback was asked from, which is where it is about.
+   *
+   * Not taken from the phone when it is answered: a callback is usually
+   * answered on the lock screen, which starts the app with no chat open, and
+   * the place it sent was its default folder (the home directory). Pew then
+   * asked "what do you want to do in kenkai?" about a call made from another
+   * project entirely.
+   */
+  private callbackOrigin?: CallOrigin;
   /**
    * Each tool call's answer, by call and tool call id: the phone sends a
    * request again after its link drops, and the same call must never run twice
@@ -337,8 +358,6 @@ export class VoiceController {
     if (found && !found.ok)
       return { t: "voice.session", requestId, ok: false, error: found.reason };
     const items = this.items;
-    const known =
-      context && statuses.some((status) => status.sessionId === context) ? context : undefined;
     const callback =
       this.callbackRungAt !== undefined &&
       this.now() - this.callbackRungAt <= CALLBACK_ANSWER_MS &&
@@ -351,6 +370,17 @@ export class VoiceController {
           }
         : undefined;
     this.callbackRungAt = undefined;
+    // An answered callback is about where it was asked, not where the phone
+    // happens to be (see `callbackOrigin`).
+    const origin = callback && this.callbackOrigin ? this.callbackOrigin : { context, place };
+    if (callback) this.callbackOrigin = undefined;
+    const known =
+      origin.context && statuses.some((status) => status.sessionId === origin.context)
+        ? origin.context
+        : undefined;
+    // A place only stands in for a chat that is not there: the call's own
+    // chat, still open, says more than its folder does.
+    const where = known ? undefined : origin.place;
     // The thread this call continues: the callback's, else the chat they
     // called from, else home. A chat with no conversation yet (new, nothing
     // sent) has none: a fresh call, bound to it if it gets one (`bindCall`).
@@ -358,7 +388,7 @@ export class VoiceController {
       ? (this.callbackThread ?? {})
       : known
         ? { sessionId: known, ...this.host.threadFor?.(known) }
-        : place
+        : where
           ? {}
           : { key: HOME_THREAD };
     if (callback) {
@@ -381,7 +411,7 @@ export class VoiceController {
       this.now(),
       known,
       projects,
-      place,
+      where,
       remembered,
     );
     const minted = found?.ok
@@ -399,10 +429,15 @@ export class VoiceController {
     }
     this.calls.add(callId);
     this.callThreads.set(callId, thread);
+    this.callOrigins.set(callId, {
+      ...(known ? { context: known } : {}),
+      ...(where ? { place: where } : {}),
+    });
     while (this.calls.size > MAX_CALLS) {
       const oldest = this.calls.values().next().value;
       if (oldest === undefined) break;
       this.calls.delete(oldest);
+      this.callOrigins.delete(oldest);
     }
     this.state = policy.callStarted(this.state, this.now(), items);
     this.schedule();
@@ -572,6 +607,7 @@ export class VoiceController {
     this.liveCalls.get(callId)?.close();
     this.liveCalls.delete(callId);
     this.callThreads.delete(callId);
+    this.callOrigins.delete(callId);
     this.actions.delete(callId);
     for (const key of this.answered.keys())
       if (key.startsWith(`${callId}\u0000`)) this.answered.delete(key);
@@ -634,6 +670,8 @@ export class VoiceController {
     if (callId !== undefined) this.cancelledOn.delete(callId);
     this.waitingOn = { sessionId, folder, since: this.now(), started: false };
     this.callbackThread = { sessionId, ...this.host.threadFor?.(sessionId) };
+    // About the chat being waited on; its folder if it has closed by then.
+    this.callbackOrigin = { context: sessionId, ...(folder ? { place: { folder } } : {}) };
     this.callbackAskedAt = this.now();
     this.callbackAbout = { ...(folder ? { folder } : {}), handed: false };
     this.log(`[voice] call back when ${folder ?? sessionId} is done`);
@@ -703,6 +741,9 @@ export class VoiceController {
     // The callback continues the thread of the call it was asked on.
     const thread = callId ? this.callThreads.get(callId) : undefined;
     if (thread) this.callbackThread = thread;
+    // And is about where that call was made from.
+    const origin = callId ? this.callOrigins.get(callId) : undefined;
+    if (origin) this.callbackOrigin = origin;
     this.log(
       `[voice] call back at ${new Date(this.now() + minutes * 60_000).toLocaleTimeString()}`,
     );

@@ -19,6 +19,7 @@ LogBox.ignoreLogs(["expo-notifications: obtaining a push token may not work on i
 import * as SplashScreen from "expo-splash-screen";
 
 import { installCrashHandler } from "./src/crashLog";
+import { DUR } from "./src/motion";
 import App from "./App";
 
 // Hold the native splash until the app has something real to show.
@@ -34,6 +35,15 @@ import App from "./App";
 SplashScreen.preventAutoHideAsync().catch(() => {
   // Already hidden, or no splash on this platform. Not a reason to fail launch.
 });
+// Dissolve into the app rather than cut to it. The splash draws Pew big and
+// centred; home has him higher and smaller, above the cards, so a cut read as
+// him jumping up the screen on every launch. Moving him from one to the other
+// in JS was tried and recorded: home's first frames stall the UI thread, so
+// any animation started then is over before it is seen, and nothing reports
+// when the splash has really left the glass. A cross-dissolve is a Core
+// Animation transition, which a busy app thread cannot skip. iOS only (the
+// option does nothing elsewhere); the length is the app's dissolve.
+SplashScreen.setOptions({ fade: true, duration: DUR.dissolve });
 
 // Before anything renders, so a crash during startup is still recorded. Startup
 // is where the unexplained ones happen — a native module missing, a stored value

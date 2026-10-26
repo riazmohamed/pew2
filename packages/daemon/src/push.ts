@@ -533,7 +533,34 @@ async function sendVoip(
   }
 }
 
+/**
+ * One line for the log saying what a push attempt came to.
+ *
+ * Every attempt is logged, success included: "I never got the notification"
+ * is otherwise unanswerable, because a push that was sent and one that was
+ * never attempted look identical from the daemon's side. Never the token.
+ */
+export function describePush(
+  count: number,
+  outcome: { status: number } | { tickets: unknown } | { failed: unknown },
+): string {
+  const head = `[push] ${count} banner(s):`;
+  if ("failed" in outcome) {
+    const reason =
+      outcome.failed instanceof Error ? outcome.failed.message : String(outcome.failed);
+    return `${head} not sent (${reason})`;
+  }
+  if ("status" in outcome) return `${head} refused by Expo (HTTP ${outcome.status})`;
+  if (!Array.isArray(outcome.tickets)) return `${head} sent, no receipt`;
+  const errors = (outcome.tickets as ExpoTicket[])
+    .filter((ticket) => ticket?.status === "error")
+    .map((ticket) => ticket.details?.error ?? "error");
+  if (errors.length === 0) return `${head} accepted`;
+  return `${head} ${outcome.tickets.length - errors.length} accepted, ${errors.length} rejected (${[...new Set(errors)].sort().join(", ")})`;
+}
+
 async function sendMessages(registry: PushRegistry, messages: { to: string }[]): Promise<void> {
+  if (messages.length === 0) return;
   try {
     const response = await fetch(PUSH_URL, {
       method: "POST",
@@ -547,25 +574,16 @@ async function sendMessages(registry: PushRegistry, messages: { to: string }[]):
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) {
-      console.log(`[push] refused by the push service: HTTP ${response.status}`);
+      console.log(describePush(messages.length, { status: response.status }));
       return;
     }
     const payload = (await response.json()) as { data?: unknown };
+    console.log(describePush(messages.length, { tickets: payload?.data }));
     applyTickets(registry, messages, payload?.data);
-    // One line per send, so "it didn't ring" can be told apart from "it was
-    // never sent" in the log. Never the token or the text.
-    const tickets = Array.isArray(payload?.data)
-      ? (payload.data as { status?: string; details?: { error?: string } }[])
-      : [];
-    const failed = tickets
-      .filter((ticket) => ticket?.status === "error")
-      .map((ticket) => ticket.details?.error ?? "error");
-    console.log(
-      `[push] sent to ${messages.length} phone(s)${failed.length > 0 ? `, refused: ${failed.join(", ")}` : ""}`,
-    );
   } catch (error) {
     // Offline desktop, DNS failure, Expo outage. Nothing here is worth
-    // interrupting the session that just finished successfully.
-    console.log(`[push] not sent: ${error instanceof Error ? error.message : String(error)}`);
+    // interrupting the session that just finished successfully, but it is
+    // worth a line: it is the answer to "why did no banner come?".
+    console.log(describePush(messages.length, { failed: error }));
   }
 }

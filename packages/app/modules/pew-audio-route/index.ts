@@ -19,10 +19,17 @@ interface PewAudioRouteNative {
   /** Absent from a build made before the speaker kept its choice. */
   setVoiceChatMode?(): boolean;
   setProximity?(on: boolean): void;
-  addListener?(
-    event: "onRoute",
-    listener: (event: { speaker: boolean; wanted: boolean }) => void,
-  ): { remove(): void };
+  addListener?(event: "onRoute", listener: (event: RouteEvent) => void): { remove(): void };
+}
+
+/** One audio route change, as iOS reported it. Everything past `speaker` is absent from older builds. */
+export interface RouteEvent {
+  speaker: boolean;
+  wanted?: boolean;
+  reason?: string;
+  category?: string;
+  mode?: string;
+  outputs?: string;
 }
 
 const native = requireOptionalNativeModule<PewAudioRouteNative>("PewAudioRoute");
@@ -92,10 +99,10 @@ export function setVoiceChatMode(): boolean {
  * its own button.
  */
 export function onRouteChange(
-  listener: (speaker: boolean) => void,
+  listener: (speaker: boolean, event: RouteEvent) => void,
 ): { remove(): void } | undefined {
   if (typeof native?.addListener !== "function") return undefined;
-  return native.addListener("onRoute", (event) => listener(event.speaker === true));
+  return native.addListener("onRoute", (event) => listener(event.speaker === true, event));
 }
 
 /** Screen off at the ear during a call (as the Phone app does). No-op on an older build. */

@@ -30,6 +30,13 @@ interface Options {
   onAnswer: (focus: string | undefined) => void;
   onHangUp: () => void;
   onMute: (muted: boolean) => void;
+  /**
+   * Get the connection up now (`useDaemon`'s `resumeNow`). A call answered on
+   * the lock screen leaves the app in the background, where nothing else
+   * hurries the socket: it trusted one iOS had already dropped, or waited out
+   * a background retry of up to a minute, and the answered call was silent.
+   */
+  reconnect: () => void;
 }
 
 export function useCallKit({
@@ -40,9 +47,10 @@ export function useCallKit({
   onAnswer,
   onHangUp,
   onMute,
+  reconnect,
 }: Options) {
-  const handlers = useRef({ onAnswer, onHangUp, onMute });
-  handlers.current = { onAnswer, onHangUp, onMute };
+  const handlers = useRef({ onAnswer, onHangUp, onMute, reconnect });
+  handlers.current = { onAnswer, onHangUp, onMute, reconnect };
   /** Declines and misses not yet told to the daemon (the app may have woken offline). */
   const [unsent, setUnsent] = useState<wire.VoiceEnd[]>([]);
   /** The system call is on screen: ringing, or answered and live. */
@@ -65,9 +73,12 @@ export function useCallKit({
       switch (event.type) {
         case "ringing":
           systemCall.current = true;
+          // While it rings, so the line is up by the time it is answered.
+          handlers.current.reconnect();
           break;
         case "answer":
           systemCall.current = true;
+          handlers.current.reconnect();
           handlers.current.onAnswer(event.focus ?? undefined);
           break;
         case "declined":

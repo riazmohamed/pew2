@@ -30,9 +30,13 @@ import { relayOrigin } from "./push.js";
 import { persistPushTargets, readPushTargets } from "./push-store.js";
 import { hostname } from "node:os";
 import { daemonLogPaths, rotateLog, startLogRotation } from "./logs.js";
+import { installLogTimes } from "./log-time.js";
 import { sweepOrphans } from "./children.js";
 import { startUpdateScheduler } from "./update/scheduler.js";
 import type { ServerWebSocket } from "bun";
+
+// First, so every line after it carries a time (`log-time.ts`).
+installLogTimes();
 
 const PORT = Number(process.env.PEW2_PORT ?? 8787);
 

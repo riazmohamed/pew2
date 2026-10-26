@@ -306,6 +306,56 @@ test("call me back: rings with nothing waiting and Ring me off, and the callback
   expect(briefing).toContain("Your earlier calls with them from home");
 });
 
+test("an answered callback is about where it was asked, not where the phone opened", async () => {
+  // Answered on the lock screen, the app starts with no chat open and sends
+  // its default folder. Pew asked "what do you want to do in kenkai?" (the
+  // home directory) about a callback asked from the linktree-harmony project.
+  let now = T0;
+  const minted: string[] = [];
+  const timers: { at: number; fn: () => void; live: boolean }[] = [];
+  const root = mkdtempSync(join(tmpdir(), "pew2-voice-origin-"));
+  writeFileSync(
+    join(root, "g.json"),
+    JSON.stringify({ openai: { accessToken: "tok", expiresAt: T0 + 24 * 3_600_000 } }),
+  );
+  const voice = new VoiceController(
+    { inboxSources: () => [], broadcast: () => {}, ring: () => {} },
+    {
+      paths: {
+        voicePrefs: join(root, "p.json"),
+        voiceAuth: join(root, "a.json"),
+        ggAuth: join(root, "g.json"),
+        codexAuth: join(root, "c.json"),
+      },
+      now: () => now,
+      fetchImpl: (async (_url: string, init: { body?: string }) => {
+        minted.push(JSON.parse(init.body ?? "{}")?.session?.instructions ?? "");
+        return new Response(JSON.stringify({ value: "ek", expires_at: 9e9 }), { status: 200 });
+      }) as never,
+      setTimer: (fn, ms) => {
+        const timer = { at: now + ms, fn, live: true };
+        timers.push(timer);
+        return { cancel: () => (timer.live = false) };
+      },
+    },
+  );
+  const asked = await voice.openSession("r1", undefined, [], undefined, [], {
+    folder: "linktree-harmony",
+    agentName: "Claude Code",
+  });
+  voice.callMeBack(1, asked.callId);
+  voice.endCall(asked.callId!, "hangup", []);
+  now += 61_000;
+  for (const timer of timers.filter((t) => t.live && t.at <= now)) timer.fn();
+  // Answered cold: the phone names its default folder.
+  await voice.openSession("r2", undefined, [], undefined, [], { folder: "kenkai" });
+  expect(minted.at(-1)).toContain("linktree-harmony");
+  expect(minted.at(-1)).not.toContain("kenkai");
+  // Once it has been answered, a call of their own is where they are again.
+  await voice.openSession("r3", undefined, [], undefined, [], { folder: "kenkai" });
+  expect(minted.at(-1)).toContain("kenkai");
+});
+
 test("call me back when it's done: rings once that session's turn ends, not before", async () => {
   let now = T0;
   const rings: VoiceRingPush[] = [];

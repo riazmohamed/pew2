@@ -312,3 +312,17 @@ test("goal rows carry instructions, and workspace browsing can ask for files", a
     WorkspaceEntry.safeParse({ path: "/a/b", name: "b", repo: false, kind: "link" }).success,
   ).toBe(false);
 });
+
+test("app.diag lines cannot forge log lines", () => {
+  // Every line lands in the daemon's log verbatim, so a newline would let a
+  // phone write a line that looks like the daemon's own.
+  const ok = { t: "app.diag", lines: ["+0.42s route override speaker"] };
+  expect(ClientMessage.safeParse(ok).success).toBe(true);
+  for (const line of ["a\nb", "a\rb", "tab\there", "\u001b[31mred"]) {
+    expect(ClientMessage.safeParse({ t: "app.diag", lines: [line] }).success).toBe(false);
+  }
+  expect(ClientMessage.safeParse({ t: "app.diag", lines: ["x".repeat(301)] }).success).toBe(false);
+  expect(ClientMessage.safeParse({ t: "app.diag", lines: Array(61).fill("x") }).success).toBe(
+    false,
+  );
+});

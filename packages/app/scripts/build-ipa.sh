@@ -47,6 +47,22 @@ if ! $EAS whoami >/dev/null 2>&1; then
   exit 1
 fi
 
+# `--local` builds from a clean copy of the repository, and `eas-project.json`
+# is gitignored, so the copy has no identity and `app.config.js` embeds no
+# `extra.eas.projectId`. The app then cannot get an Expo push token and never
+# registers for banners — calls still work, so nothing looks broken. The
+# environment does reach the build, and `app.config.js` reads it first.
+if [[ -z "${EAS_PROJECT_ID:-}" && -f eas-project.json ]]; then
+  EAS_PROJECT_ID=$(node -p 'require("./eas-project.json").projectId ?? ""')
+  EAS_OWNER=${EAS_OWNER:-$(node -p 'require("./eas-project.json").owner ?? ""')}
+  export EAS_PROJECT_ID EAS_OWNER
+fi
+if [[ -z "${EAS_PROJECT_ID:-}" ]]; then
+  echo "No EAS project id: set EAS_PROJECT_ID or run 'npx eas-cli init'." >&2
+  echo "Without one the app cannot receive push notifications." >&2
+  exit 1
+fi
+
 echo "Building iOS release locally. Around three minutes."
 $EAS build --local --platform ios --profile production --output "$STAGE"
 
@@ -85,6 +101,15 @@ fi
 if grep -A1 -i "get-task-allow" <<<"$ENTITLEMENTS" | grep -qi "<true/>"; then
   echo "Built with a development profile; the App Store will reject it." >&2
   echo "Check the credentials on the Expo account: npx eas-cli credentials" >&2
+  exit 1
+fi
+
+# Checked in the archive itself, not trusted from the environment above: an
+# archive with no project id uploads, passes review and installs fine, and then
+# never shows a single remote notification. Build 53 shipped exactly so.
+CONFIG="$APP/EXConstants.bundle/app.config"
+if ! node -e 'const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); process.exit(c.extra?.eas?.projectId ? 0 : 1)' "$CONFIG" 2>/dev/null; then
+  echo "The archive has no EAS project id; push notifications would never arrive. Refusing to hand it over." >&2
   exit 1
 fi
 

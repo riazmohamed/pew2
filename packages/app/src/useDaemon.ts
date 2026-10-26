@@ -104,6 +104,7 @@ export function useDaemon(
     busy: false,
     activity: IDLE_ACTIVITY,
     loadingSessions: false,
+    heard: false,
     loadingSession: false,
     projects: {},
     projectPath: {},

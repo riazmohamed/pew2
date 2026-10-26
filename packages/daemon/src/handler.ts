@@ -333,6 +333,15 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         break;
       }
 
+      case "app.diag": {
+        // A paired phone's own call trace (`AppDiag`): already printable and
+        // capped by the schema, so it can go to the log as it is.
+        const deviceId = ctx.deviceId;
+        if (!deviceId) break;
+        for (const line of message.lines) console.log(`[diag] '${deviceId}' ${line}`);
+        break;
+      }
+
       case "app.push": {
         // `deviceId` comes from the `hello` on this connection, so a phone that
         // reconnects with a rotated token replaces its own entry rather than
@@ -358,8 +367,14 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           // Said out loud rather than ignored: a silently rejected token looks
           // exactly like a working one until someone waits for a notification
           // that never comes.
+          console.log(`[push] '${deviceId}' sent something that is not an Expo push token`);
           reply(errorMessage("push_token_invalid", "That is not an Expo push token."));
+          break;
         }
+        // The banner half of what `app.voip` logs for calls. Without it, a phone
+        // that never sends a token (notifications off on the phone) is
+        // indistinguishable in the log from one that did. Never the token.
+        console.log(`[push] '${deviceId}' will get banners (${message.platform})`);
         break;
       }
 

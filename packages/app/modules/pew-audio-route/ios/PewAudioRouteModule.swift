@@ -49,14 +49,48 @@ public class PewAudioRouteModule: Module {
   private func routeChanged(_ note: Notification) {
     let session = AVAudioSession.sharedInstance()
     let route = session.currentRoute
+    let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt)
+      .flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
     if Self.external(route) {
       wantSpeaker = false
-    } else if wantSpeaker && !Self.onSpeaker(route) {
-      // Put the user's choice back; the override's own change comes round
-      // again with the speaker on, so this can't loop.
+    } else if reason == .override {
+      // Someone chose the output: this module's own `setSpeaker`, or the
+      // Speaker button on the system call screen (a call answered on the lock
+      // screen), which never comes through here. Either way it is the user's
+      // choice now, and is kept like one: before, the system button's choice
+      // was not, so the first reconfiguration below lost it.
+      wantSpeaker = Self.onSpeaker(route)
+    } else if wantSpeaker && (!Self.onSpeaker(route) || reason == .categoryChange) {
+      // Put the user's choice back. On a category change even while the sound
+      // is still on the speaker: the change clears the override flag that the
+      // system call screen's Speaker button shows, so the button went dark with
+      // the speaker still on, and its next press (meant as "off") asked for
+      // "on" and did nothing. The override's own change comes back as
+      // `.override` and is only adopted above, so this can't loop.
       try? session.overrideOutputAudioPort(.speaker)
     }
-    sendEvent("onRoute", ["speaker": Self.onSpeaker(session.currentRoute), "wanted": wantSpeaker])
+    sendEvent("onRoute", [
+      "speaker": Self.onSpeaker(session.currentRoute),
+      "wanted": wantSpeaker,
+      // For the call trace (`app.diag`): why it changed, and what the session is now.
+      "reason": Self.name(reason),
+      "category": session.category.rawValue.replacingOccurrences(of: "AVAudioSessionCategory", with: ""),
+      "mode": session.mode.rawValue.replacingOccurrences(of: "AVAudioSessionMode", with: ""),
+      "outputs": session.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: "+"),
+    ])
+  }
+
+  private static func name(_ reason: AVAudioSession.RouteChangeReason?) -> String {
+    switch reason {
+    case .newDeviceAvailable: return "newDevice"
+    case .oldDeviceUnavailable: return "oldDevice"
+    case .categoryChange: return "category"
+    case .override: return "override"
+    case .wakeFromSleep: return "wake"
+    case .noSuitableRouteForCategory: return "noRoute"
+    case .routeConfigurationChange: return "config"
+    default: return "unknown"
+    }
   }
 
   /// A player per sound file, created once (on `cueQueue`) and reused.

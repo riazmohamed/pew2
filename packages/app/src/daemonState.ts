@@ -231,6 +231,13 @@ export interface State {
    * The drawer shows skeleton rows instead of a false "No conversations yet".
    */
   loadingSessions: boolean;
+  /**
+   * Since launch, the computer has sent its list of agents and every agent it
+   * was asked about has answered with its conversations. Until then an empty
+   * session list means "not heard yet", never "none". Latched: a reconnect
+   * re-asks nothing (`probed`), so it never goes back to false.
+   */
+  heard: boolean;
   /** A stored transcript is loading and is not ready to reveal yet. */
   loadingSession: boolean;
   /** Ephemeral presentation identity, never persisted or sent over the wire. */

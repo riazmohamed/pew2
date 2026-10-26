@@ -8,11 +8,51 @@
 import * as SecureStore from "expo-secure-store";
 import { getRandomValues } from "expo-crypto";
 import { parsePairing, type Pairing } from "./pairingLink";
+import { readSecret, removeSecret, writeSecret, type SecretStore } from "./keychainSlots";
 
 export { parsePairing, type Pairing, type ParseResult } from "./pairingLink";
 
 const KEY = "pew2.pairing";
 const DEVICE_KEY = "pew2.deviceId";
+
+/**
+ * The keychain, with secrets written under "after first unlock" so the launch
+ * iOS makes for a call on a locked phone can still read them (`keychainSlots.ts`).
+ * Readable while locked, once unlocked since boot; still never leaves the
+ * keychain, and still moves with an encrypted backup exactly as before.
+ */
+const keychain: SecretStore = {
+  get: (key) => SecureStore.getItemAsync(key),
+  set: (key, value) =>
+    SecureStore.setItemAsync(key, value, { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK }),
+  remove: (key) => SecureStore.deleteItemAsync(key),
+};
+
+/**
+ * The stored pairing exists but cannot be read right now: the phone is locked
+ * and the pairing predates the after-first-unlock slot. Not "unpaired": the
+ * caller tries again once the app is in front of an unlocked phone.
+ */
+export class PairingUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super("The stored pairing cannot be read while the phone is locked.", { cause });
+    this.name = "PairingUnavailableError";
+  }
+}
+
+/**
+ * This install's id from the keychain, minted on first use. Rejects when the
+ * keychain cannot be read, rather than inventing one: a pairing loaded with a
+ * made-up id is refused by the daemon as a stranger's.
+ */
+async function storedDeviceId(): Promise<string> {
+  const existing = await readSecret(keychain, DEVICE_KEY);
+  if (existing) return existing;
+  const bytes = getRandomValues(new Uint8Array(16));
+  const minted = `phone-${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+  await writeSecret(keychain, DEVICE_KEY, minted);
+  return minted;
+}
 
 /**
  * A stable id for this install.
@@ -29,12 +69,7 @@ const DEVICE_KEY = "pew2.deviceId";
  */
 export async function deviceId(): Promise<string> {
   try {
-    const existing = await SecureStore.getItemAsync(DEVICE_KEY);
-    if (existing) return existing;
-    const bytes = getRandomValues(new Uint8Array(16));
-    const minted = `phone-${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
-    await SecureStore.setItemAsync(DEVICE_KEY, minted);
-    return minted;
+    return await storedDeviceId();
   } catch {
     // Without storage the id cannot persist, and a fixed fallback would be a
     // shared identity every install could claim under. Random keeps the pairing
@@ -51,6 +86,10 @@ export async function deviceId(): Promise<string> {
  * Re-validated on the way out rather than trusted: a value written by an older
  * build, or corrupted, must not reach the socket layer where the failure would
  * appear as an unexplained blank screen.
+ *
+ * Rejects with {@link PairingUnavailableError} when the keychain is locked:
+ * that is not "unpaired", and treating it so left a call answered on the lock
+ * screen with nothing on the other end (and the pairing screen behind it).
  */
 export async function loadPairing(): Promise<Pairing | null> {
   // Development only: `EXPO_PUBLIC_DEV_PAIRING=<link> npx expo start` pairs a
@@ -76,16 +115,15 @@ export async function loadPairing(): Promise<Pairing | null> {
     // which screen to show. Asking for the device id even when nothing is
     // stored costs a first-launch mint that the pairing screen would trigger
     // moments later anyway, so the id is simply ready sooner.
-    const [stored, id] = await Promise.all([SecureStore.getItemAsync(KEY), deviceId()]);
+    const [stored, id] = await Promise.all([readSecret(keychain, KEY), storedDeviceId()]);
     if (!stored) return null;
     // Stored with its fragment intact, because `parsePairing` strips the key out
     // of the URL it returns — keeping only that would lose the key on the first
     // reload, and the app would greet a paired user with the pairing screen.
     const parsed = parsePairing(stored, id);
     return parsed.ok ? parsed.pairing : null;
-  } catch {
-    // A locked or unavailable keychain must show the pairing screen, not crash.
-    return null;
+  } catch (error) {
+    throw new PairingUnavailableError(error);
   }
 }
 
@@ -94,7 +132,7 @@ export async function savePairing(pairing: Pairing): Promise<void> {
   // link — including the fragment carrying the key, which `parsePairing`
   // deliberately removes from `pairing.url` so it can never reach the wire.
   const complete = `${pairing.url}#k=${base64UrlFromHex(pairing.key)}`;
-  await SecureStore.setItemAsync(KEY, complete);
+  await writeSecret(keychain, KEY, complete);
 }
 
 /** hex -> base64url, the form the fragment uses. */
@@ -108,5 +146,5 @@ function base64UrlFromHex(hex: string): string {
 
 /** Forget the daemon. Used by "Unpair", and after the token is rotated. */
 export async function clearPairing(): Promise<void> {
-  await SecureStore.deleteItemAsync(KEY);
+  await removeSecret(keychain, KEY);
 }

@@ -58,6 +58,69 @@ export function homeDashboard(input: WidgetInput): HomeDashboard {
 }
 
 /**
+ * Where home stands with the computer.
+ *
+ * Three states, not two, because the gap between them is where the jumping
+ * was. A socket that is merely re-dialling (every return to the app, for the
+ * second or two the reconnect takes) used to read as "offline": Pew fell
+ * asleep, "Can't reach your computer" appeared under him, and both went away
+ * again a moment later, shifting him each time. The rest of the app calls that
+ * state "Connecting…" and only gives up once `unreachable` says the retries
+ * have stalled; home now draws the same line.
+ */
+export type HomeLink = "online" | "connecting" | "unreachable";
+
+/** The daemon's connection fields, folded into a {@link HomeLink}. */
+export function homeLink(status: string, unreachable: boolean | undefined): HomeLink {
+  if (unreachable) return "unreachable";
+  return status === "online" ? "online" : "connecting";
+}
+
+/** What home says when it has no cards to show (or can't reach the computer). */
+export function homeMessage(p: {
+  fatal?: string;
+  link: HomeLink;
+  agents?: number;
+  empty: boolean;
+  hasCards: boolean;
+}): { title: string; line?: string } | undefined {
+  if (p.fatal) return { title: "Can't connect", line: p.fatal };
+  if (p.link === "unreachable")
+    return {
+      title: "Can't reach your computer",
+      line: p.hasCards ? undefined : "It connects again by itself.",
+    };
+  // Re-dialling is not news when the cards are already up: they stay, Pew stays
+  // awake, and nothing under him changes. With nothing to show yet it is the
+  // one true thing to say.
+  if (p.link === "connecting") return p.hasCards ? undefined : { title: "Connecting…" };
+  if (p.agents === 0)
+    return { title: "No agents turned on", line: "Run pew2 setup on your computer." };
+  if (p.empty) return { title: "No sessions yet", line: "Start one from the menu." };
+  return undefined;
+}
+
+/**
+ * How many cards home lays itself out for, which is what places Pew.
+ *
+ * Never fewer than last launch showed. Every way the list can look short while
+ * the app starts (not connected yet, connected but not answered, one agent's
+ * list in and the rest still coming) is temporary, and laying out for it moved
+ * Pew to the middle of the screen and back up a moment later. Fewer cards than
+ * that just leave the space under them empty for this launch; the next one is
+ * laid out for the new count (`parseHomeCards`). More cards than ever before is
+ * the one change that can move him, and it is a real one.
+ */
+export function homeLayoutCards(p: {
+  /** Cards known right now, already capped at {@link HOME_CARDS}. */
+  known: number;
+  /** The count home showed last time (`parseHomeCards`), if any. */
+  remembered: number | undefined;
+}): number {
+  return Math.max(p.known, p.remembered ?? 0);
+}
+
+/**
  * How many cards home showed last time, as stored (a digit). Home lays itself
  * out for that many from the first frame, before the session list arrives,
  * so Pew never starts centred and then moves up. Unreadable reads as unknown.

@@ -30,7 +30,7 @@ import { useAppActive } from "./ui/useAppActive";
 import { waitingCount } from "./notificationPolicy";
 import { onWidgetLink, useHomeWidget } from "./ui/useHomeWidget";
 import { widgetSnapshot } from "./widgetSnapshot";
-import { homeDashboard } from "./homeDashboard";
+import { homeDashboard, homeLink } from "./homeDashboard";
 import { HomeDashboard } from "./ui/HomeDashboard";
 import { pushAddress } from "./ui/push";
 import { ComposerDock, type ComposerDockHandle } from "./ui/ComposerDock";
@@ -107,7 +107,16 @@ const NOOP = () => {};
 /** How long a fresh launch's home waits for the computer before saying it can't reach it. */
 const HOME_OFFLINE_WAIT_MS = 8000;
 
-export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void }) {
+export function Pew2({
+  pairing,
+  onUnpair,
+  onFirstPaint,
+}: {
+  pairing: Pairing;
+  onUnpair: () => void;
+  /** Home has placed Pew and is drawing smoothly: the splash may go (`App.tsx`). */
+  onFirstPaint?: () => void;
+}) {
   const { choice, setChoice, voiceRequest, setVoiceRequest, pushExpected, announceTurn } =
     useTurnBanners();
   // useVoice needs the daemon's `post`, and the daemon needs voice's frame
@@ -223,8 +232,15 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     consented: voiceConsent === true,
     callActive: callActive(voice.call),
     onAnswer: (focus) => setSystemAnswer({ focus }),
-    onHangUp: voice.hangUp,
+    // A hang-up also withdraws an answer still waiting for the connection:
+    // events queued at a locked launch replay together, and an answer left
+    // behind would start a call after the person had already hung up.
+    onHangUp: () => {
+      setSystemAnswer(undefined);
+      voice.hangUp();
+    },
     onMute: voice.setMuted,
+    reconnect: daemon.resumeNow,
   });
   // A phone the system cannot ring (Android) rings itself on `voice.ring`,
   // and an answer there starts the call the same way.
@@ -1521,7 +1537,8 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
                 ) : daemon.loadingSession ? null : onHome ? (
                   <HomeDashboard
                     home={devHome ?? dashboard}
-                    online={online}
+                    link={homeLink(daemon.status, daemon.unreachable)}
+                    onFirstPaint={onFirstPaint}
                     fatal={daemon.fatal}
                     agents={
                       daemon.providers.length > 0
@@ -1529,12 +1546,17 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
                         : undefined
                     }
                     color={active?.color}
+                    // Online, the wait is for the computer's answer (`heard`),
+                    // not for the socket: it opens a second before anything
+                    // arrives, and home revealed an empty list in that second.
+                    // Capped, so an agent that never answers cannot hold it.
                     settled={
                       homeWaited &&
                       (online
-                        ? !daemon.loadingSessions
+                        ? daemon.heard || offlineWaited
                         : everOnline || offlineWaited || Boolean(daemon.fatal))
                     }
+                    heard={daemon.heard}
                     top={threadTop}
                     bottom={insets.bottom + theme.space(2)}
                     onOpen={openSession}

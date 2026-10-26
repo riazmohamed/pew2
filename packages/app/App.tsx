@@ -9,7 +9,7 @@
  * unmissable surface rather than an inline row that can scroll away.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Alert, View } from "react-native";
+import { Alert, AppState, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -18,7 +18,13 @@ import { Pew2 } from "./src/Pew2Screen";
 import { ErrorBoundary } from "./src/ui/ErrorBoundary";
 import { Onboarding } from "./src/ui/Onboarding";
 import { devStep, gate, nextStep, type Gate, type Progress, type Step } from "./src/onboarding";
-import { clearPairing, loadPairing, savePairing, type Pairing } from "./src/pairing";
+import {
+  PairingUnavailableError,
+  clearPairing,
+  loadPairing,
+  savePairing,
+  type Pairing,
+} from "./src/pairing";
 import { clearCachedProviders, loadOnboarding, saveOnboarding } from "./src/preferences";
 import { clearSessionCache } from "./src/sessionCacheFile";
 import * as SplashScreen from "expo-splash-screen";
@@ -40,6 +46,13 @@ import { BitcountPropSingle_700Bold } from "@expo-google-fonts/bitcount-prop-sin
 
 /** `EXPO_PUBLIC_DEV_ONBOARDING=<step>`: show that page, leaving the stored pairing alone. */
 const DEV_STEP = __DEV__ ? devStep(process.env.EXPO_PUBLIC_DEV_ONBOARDING) : undefined;
+
+/**
+ * The longest the splash waits for home's first settled paint. A screen that
+ * is not home (a conversation being reopened) never reports one, and a slow
+ * device must not be held on the splash for it.
+ */
+const SPLASH_HOLD_MAX_MS = 1500;
 
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
@@ -127,19 +140,34 @@ function Root() {
   // The onboarding page on screen, or undefined for the app (`onboarding.ts`).
   const [onboard, setOnboard] = useState<Gate>({ step: undefined, repair: false });
 
+  // Bumped to read the keychain again (see the locked case below).
+  const [loadAttempt, setLoadAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
+    let waiting: { remove: () => void } | undefined;
     void Promise.all([
-      loadPairing().catch(() => {
-        // The same reasoning `pair` uses below, which already guards the write
-        // side: a locked or unavailable keychain has to read as "not paired",
-        // not as a rejection. Without this the promise rejects, `setChecked`
-        // never runs, and the app sits on its loading screen with no way out.
-        return null;
-      }),
+      loadPairing().then(
+        (stored) => ({ stored, locked: false }),
+        (error: unknown) => ({ stored: null, locked: error instanceof PairingUnavailableError }),
+      ),
       loadOnboarding(),
-    ]).then(([stored, progress]) => {
+    ]).then(([read, progress]) => {
       if (!alive) return;
+      // Launched behind the lock screen (iOS does this to take a call) with a
+      // pairing that cannot be read until the phone is unlocked. Deciding now
+      // would mean "not paired": no connection, so a silent call, and the
+      // pairing screen waiting when the app is opened. Instead nothing is
+      // decided (the splash stays, unseen) until the app is in front of
+      // someone, and the keychain is read again then. A second failure in the
+      // foreground is a real one, and reads as "not paired" as it always did,
+      // so the app can never sit on its splash with no way out.
+      if (read.locked && AppState.currentState !== "active") {
+        waiting = AppState.addEventListener("change", (next) => {
+          if (next === "active") setLoadAttempt((n) => n + 1);
+        });
+        return;
+      }
+      const stored = read.stored;
       setPairing(stored);
       const forced = DEV_STEP;
       if (forced) setOnboard({ step: forced, repair: false });
@@ -152,8 +180,9 @@ function Root() {
     });
     return () => {
       alive = false;
+      waiting?.remove();
     };
-  }, []);
+  }, [loadAttempt]);
 
   // Lift the splash only once there is a real screen behind it.
   //
@@ -161,19 +190,36 @@ function Root() {
   // for a paired device, the launch screen otherwise. `index.ts` holds the
   // splash from launch, and every path that sets `checked` — including the
   // keychain failures above, which resolve to "not paired" rather than
-  // rejecting — arrives here, so there is no route that leaves it up.
+  // rejecting — arrives here, so there is no route that leaves it up. (The one
+  // wait, a keychain locked at a background launch, ends the moment the app
+  // comes to the front.)
   //
   // One frame later, not immediately: `hideAsync` takes effect straight away,
   // and calling it during the commit that renders the first screen can uncover
   // the window before that screen has been drawn into it — a flash of empty
   // canvas, which is the exact thing the splash is being held to prevent.
+  //
+  // For the paired app, later still: until home reports its first settled
+  // paint (`onFirstPaint`), capped. Building home freezes the screen for the
+  // better part of a second, and a splash lifted at the start of that freeze
+  // was never seen to go: its dissolve played out while nothing was drawn, and
+  // the next frame was home, with Pew suddenly higher and smaller than the
+  // splash had him. Held across the freeze, the dissolve is seen in full. It
+  // costs nothing, because the screen could not have moved anyway.
+  const waitsForPaint = pairing !== null && onboard.step === undefined;
+  const [painted, setPainted] = useState(false);
+  const onFirstPaint = useCallback(() => setPainted(true), []);
   useEffect(() => {
     if (!checked) return;
+    if (waitsForPaint && !painted) {
+      const cap = setTimeout(() => setPainted(true), SPLASH_HOLD_MAX_MS);
+      return () => clearTimeout(cap);
+    }
     const frame = requestAnimationFrame(() => {
       void SplashScreen.hideAsync().catch(() => {});
     });
     return () => cancelAnimationFrame(frame);
-  }, [checked]);
+  }, [checked, waitsForPaint, painted]);
 
   const go = useCallback((progress: Progress, next: Gate) => {
     // A dev-forced page never writes, so the stored state survives screenshots.
@@ -236,7 +282,7 @@ function Root() {
         onDevGo={__DEV__ ? (to) => setOnboard({ step: to, repair: false }) : undefined}
       />
     );
-  if (pairing) return <Pew2 pairing={pairing} onUnpair={unpair} />;
+  if (pairing) return <Pew2 pairing={pairing} onUnpair={unpair} onFirstPaint={onFirstPaint} />;
   // Unreachable through `gate`, but never a blank screen.
   return (
     <Onboarding

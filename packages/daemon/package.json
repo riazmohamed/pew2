@@ -1,6 +1,6 @@
 {
   "name": "@pew2/daemon",
-  "version": "0.9.25",
+  "version": "0.9.29",
   "private": true,
   "type": "module",
   "bin": {

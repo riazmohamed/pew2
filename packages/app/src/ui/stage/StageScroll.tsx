@@ -22,7 +22,14 @@
  * back to dim after.
  */
 import { useCallback, useRef, useState, type ReactNode } from "react";
-import { StyleSheet, View, type LayoutChangeEvent, type ScrollViewProps, type StyleProp, type ViewStyle } from "react-native";
+import {
+  StyleSheet,
+  View,
+  type LayoutChangeEvent,
+  type ScrollViewProps,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import Reanimated, {
   interpolateColor,
   useAnimatedScrollHandler,
@@ -48,7 +55,12 @@ const LINGER_MS = 700;
 /** Room each side for a lit control's glow (StageButton's is 10pt). Under a sheet's 20pt margin. */
 export const GLOW_BLEED = 12;
 
-type Padding = { paddingLeft?: unknown; paddingRight?: unknown; paddingHorizontal?: unknown; padding?: unknown };
+type Padding = {
+  paddingLeft?: unknown;
+  paddingRight?: unknown;
+  paddingHorizontal?: unknown;
+  padding?: unknown;
+};
 const num = (value: unknown) => (typeof value === "number" ? value : undefined);
 /** The content's own side padding plus `extra`, so the bleed never eats into it. */
 function sidePadding(style: StyleProp<ViewStyle>, extra: number, laneRight: number) {
@@ -60,7 +72,10 @@ function sidePadding(style: StyleProp<ViewStyle>, extra: number, laneRight: numb
   };
 }
 
-export interface StageScrollProps extends Omit<ScrollViewProps, "showsVerticalScrollIndicator" | "onScroll"> {
+export interface StageScrollProps extends Omit<
+  ScrollViewProps,
+  "showsVerticalScrollIndicator" | "onScroll"
+> {
   children?: ReactNode;
   /** Where the rail goes; see the module comment. */
   rail?: "outside" | "inside";
@@ -71,7 +86,16 @@ export interface StageScrollProps extends Omit<ScrollViewProps, "showsVerticalSc
   railGap?: number;
 }
 
-export function StageScroll({ children, style, contentContainerStyle, rail = "outside", railGap = 10, onLayout, onContentSizeChange, ...rest }: StageScrollProps) {
+export function StageScroll({
+  children,
+  style,
+  contentContainerStyle,
+  rail = "outside",
+  railGap = 10,
+  onLayout,
+  onContentSizeChange,
+  ...rest
+}: StageScrollProps) {
   const reduce = useReducedMotion();
   const agent = useAgentColor();
   const y = useSharedValue(0);
@@ -89,7 +113,9 @@ export function StageScroll({ children, style, contentContainerStyle, rail = "ou
   const measure = useCallback(() => {
     const { view: v, content: c } = sizes.current;
     const next = { height: v, overflows: railThumb(v, c, 0).overflows };
-    setTrack((now) => (now.height === next.height && now.overflows === next.overflows ? now : next));
+    setTrack((now) =>
+      now.height === next.height && now.overflows === next.overflows ? now : next,
+    );
   }, []);
 
   const light = () => {
@@ -98,7 +124,10 @@ export function StageScroll({ children, style, contentContainerStyle, rail = "ou
   };
   const dim = () => {
     "worklet";
-    lit.value = withDelay(LINGER_MS, withTiming(0, { duration: reduce ? 0 : DUR.dissolve, easing: EASE_OUT }));
+    lit.value = withDelay(
+      LINGER_MS,
+      withTiming(0, { duration: reduce ? 0 : DUR.dissolve, easing: EASE_OUT }),
+    );
   };
   const onScroll = useAnimatedScrollHandler({
     onScroll: (e) => {
@@ -135,7 +164,10 @@ export function StageScroll({ children, style, contentContainerStyle, rail = "ou
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={onScroll}
-        contentContainerStyle={[contentContainerStyle, sidePadding(contentContainerStyle, bleed, lane)]}
+        contentContainerStyle={[
+          contentContainerStyle,
+          sidePadding(contentContainerStyle, bleed, lane),
+        ]}
         onLayout={(e: LayoutChangeEvent) => {
           sizes.current.view = e.nativeEvent.layout.height;
           view.value = e.nativeEvent.layout.height;
@@ -156,7 +188,12 @@ export function StageScroll({ children, style, contentContainerStyle, rail = "ou
           pointerEvents="none"
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
-          style={[styles.rail, inside ? styles.railInside : ({ right: -railGap - RAIL_WIDTH / 2 } satisfies StyleProp<ViewStyle>)]}
+          style={[
+            styles.rail,
+            inside
+              ? styles.railInside
+              : ({ right: -railGap - RAIL_WIDTH / 2 } satisfies StyleProp<ViewStyle>),
+          ]}
         >
           <View style={styles.track}>
             {Array.from({ length: dots }, (_, i) => (
@@ -175,7 +212,12 @@ const styles = StyleSheet.create({
   bleed: { marginHorizontal: -GLOW_BLEED },
   rail: { position: "absolute", top: 0, bottom: 0, width: RAIL_WIDTH },
   railInside: { right: (INSIDE_LANE - RAIL_WIDTH) / 2 },
-  track: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "space-between", paddingVertical: 1 },
+  track: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 1,
+  },
   dot: { width: DOT, height: DOT, borderRadius: DOT / 2, backgroundColor: theme.stage.dash },
   thumb: { position: "absolute", top: 0, left: 0, width: RAIL_WIDTH, borderRadius: RAIL_WIDTH / 2 },
 });

@@ -26,7 +26,13 @@
  * name and the agent's opening line. Everything else in pew2 stays sealed; this
  * one string does not, and that is the price of an instant notification.
  */
-import { endsTurn, noticeBody, noticeTitle, type NoticeKind, type NoticeOrigin } from "@pew2/protocol";
+import {
+  endsTurn,
+  noticeBody,
+  noticeTitle,
+  type NoticeKind,
+  type NoticeOrigin,
+} from "@pew2/protocol";
 
 /** Expo's push endpoint. Needs no credentials of ours; EAS holds those. */
 const PUSH_URL = "https://exp.host/--/api/v2/push/send";
@@ -156,7 +162,10 @@ export class PushRegistry {
         }
       }
       for (const [deviceId, target] of Object.entries(snapshot.voip)) {
-        if (VOIP_TOKEN_SHAPE.test(target.token) && (target.env === "sandbox" || target.env === "production")) {
+        if (
+          VOIP_TOKEN_SHAPE.test(target.token) &&
+          (target.env === "sandbox" || target.env === "production")
+        ) {
           this.registerVoip(deviceId, target.token, target.env);
         }
       }
@@ -383,7 +392,13 @@ export function voiceRingMessages(
     target.nativeRing
       ? {
           to: target.token,
-          data: { pewRing: true, ring: ringId, title: ringTitle(ring), text: ring.body, ...(ring.focus ? { focus: ring.focus } : {}) },
+          data: {
+            pewRing: true,
+            ring: ringId,
+            title: ringTitle(ring),
+            text: ring.body,
+            ...(ring.focus ? { focus: ring.focus } : {}),
+          },
           priority: "high",
           ttl: 45,
         }
@@ -456,7 +471,11 @@ export function relayOrigin(url: string | undefined): string | undefined {
  *
  * @returns the devices rung by VoIP, for tests and logs.
  */
-export async function pushVoiceRing(registry: PushRegistry, ring: VoiceRingPush, options: RingOptions = {}): Promise<string[]> {
+export async function pushVoiceRing(
+  registry: PushRegistry,
+  ring: VoiceRingPush,
+  options: RingOptions = {},
+): Promise<string[]> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const ringId = options.ringId ?? `ring_${Date.now().toString(36)}`;
   const rung: string[] = [];
@@ -476,10 +495,13 @@ export async function pushVoiceRing(registry: PushRegistry, ring: VoiceRingPush,
   const native = banners.filter(([, target]) => target.nativeRing).length;
   // An Android phone with the native ringer is rung by its data push below,
   // not by VoIP: "no phone registered for calls" read as a missed ring.
-  if (options.relay && registry.voipList().length === 0 && native === 0) options.log?.("[voice] no phone registered for calls: banner only");
+  if (options.relay && registry.voipList().length === 0 && native === 0)
+    options.log?.("[voice] no phone registered for calls: banner only");
   if (native > 0) options.log?.(`[voice] ringing ${native} Android phone(s) like a call`);
-  if (banners.length > native) options.log?.(`[voice] banner to ${banners.length - native} phone(s)`);
-  if (rung.length === 0 && banners.length === 0) options.log?.("[voice] nothing to ring: no phone registered for alerts");
+  if (banners.length > native)
+    options.log?.(`[voice] banner to ${banners.length - native} phone(s)`);
+  if (rung.length === 0 && banners.length === 0)
+    options.log?.("[voice] nothing to ring: no phone registered for alerts");
   if (banners.length > 0) {
     const messages = voiceRingMessages(registry, ring, ringId).filter((message) =>
       banners.some(([, target]) => target.token === message.to),
@@ -532,9 +554,15 @@ async function sendMessages(registry: PushRegistry, messages: { to: string }[]):
     applyTickets(registry, messages, payload?.data);
     // One line per send, so "it didn't ring" can be told apart from "it was
     // never sent" in the log. Never the token or the text.
-    const tickets = Array.isArray(payload?.data) ? (payload.data as { status?: string; details?: { error?: string } }[]) : [];
-    const failed = tickets.filter((ticket) => ticket?.status === "error").map((ticket) => ticket.details?.error ?? "error");
-    console.log(`[push] sent to ${messages.length} phone(s)${failed.length > 0 ? `, refused: ${failed.join(", ")}` : ""}`);
+    const tickets = Array.isArray(payload?.data)
+      ? (payload.data as { status?: string; details?: { error?: string } }[])
+      : [];
+    const failed = tickets
+      .filter((ticket) => ticket?.status === "error")
+      .map((ticket) => ticket.details?.error ?? "error");
+    console.log(
+      `[push] sent to ${messages.length} phone(s)${failed.length > 0 ? `, refused: ${failed.join(", ")}` : ""}`,
+    );
   } catch (error) {
     // Offline desktop, DNS failure, Expo outage. Nothing here is worth
     // interrupting the session that just finished successfully.

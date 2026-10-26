@@ -88,7 +88,11 @@ function ToolSheetView({ visible, tools, onClose }: ToolSheetProps) {
                     </Text>
                   )}
                 </View>
-                <Ionicons name={STATUS[tool.status].icon} size={15} color={STATUS[tool.status].color} />
+                <Ionicons
+                  name={STATUS[tool.status].icon}
+                  size={15}
+                  color={STATUS[tool.status].color}
+                />
               </Pressable>
             ))
           )}

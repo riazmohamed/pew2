@@ -49,12 +49,34 @@ const TURNS: Turn[] = [
 
 /** The `review` view: Autopilot, plan markers and the plan sheet. */
 const REVIEW_TURNS: Turn[] = [
-  { id: "r-u1", role: "user", text: "Add a /health endpoint to the relay and cover it with a test." },
+  {
+    id: "r-u1",
+    role: "user",
+    text: "Add a /health endpoint to the relay and cover it with a test.",
+  },
   { id: "r-n1", role: "note", text: "Plan accepted · fresh context · 3 steps" },
-  { id: "r-a1", role: "agent", text: "Added `GET /health` in `relay/src/index.ts` and a test in `admission.test.ts`. All 1,296 tests pass." },
-  { id: "r-k1", role: "ken", text: "The endpoint has no test for the not-paired case. Add one, then run the relay tests.", ken: { phase: "prompted", round: 1 } },
-  { id: "r-a2", role: "agent", text: "Added the unpaired case; `bun test packages/relay` passes (8 tests)." },
-  { id: "r-k2", role: "ken", text: "Looks done: endpoint, both cases tested, suite green.", ken: { phase: "done" } },
+  {
+    id: "r-a1",
+    role: "agent",
+    text: "Added `GET /health` in `relay/src/index.ts` and a test in `admission.test.ts`. All 1,296 tests pass.",
+  },
+  {
+    id: "r-k1",
+    role: "ken",
+    text: "The endpoint has no test for the not-paired case. Add one, then run the relay tests.",
+    ken: { phase: "prompted", round: 1 },
+  },
+  {
+    id: "r-a2",
+    role: "agent",
+    text: "Added the unpaired case; `bun test packages/relay` passes (8 tests).",
+  },
+  {
+    id: "r-k2",
+    role: "ken",
+    text: "Looks done: endpoint, both cases tested, suite green.",
+    ken: { phase: "done" },
+  },
 ];
 
 const PLAN = {
@@ -72,10 +94,18 @@ const ASK: AskRequest = {
     {
       id: "store",
       kind: "choice",
-      question: "Where should the queued messages live while the phone is offline and the daemon restarts in between?",
+      question:
+        "Where should the queued messages live while the phone is offline and the daemon restarts in between?",
       options: [
-        { label: "In the daemon's session log, replayed to every client that reconnects", hint: "Survives a restart and shows on the desktop too.", recommended: true },
-        { label: "Only on the phone, in the outbox, until the socket is back", hint: "Simplest, but the desktop never sees them." },
+        {
+          label: "In the daemon's session log, replayed to every client that reconnects",
+          hint: "Survives a restart and shows on the desktop too.",
+          recommended: true,
+        },
+        {
+          label: "Only on the phone, in the outbox, until the socket is back",
+          hint: "Simplest, but the desktop never sees them.",
+        },
         { label: "Both, deduplicated by message id when they meet" },
       ],
     },
@@ -94,8 +124,25 @@ const ASK: AskRequest = {
 
 const LEVELS = ["off", "low", "medium", "high", "max"];
 const thinkOptions = (level: number): ConfigOption[] => [
-  { id: "model", name: "Model", category: "model", type: "select", currentValue: "opus", options: [{ value: "opus", name: "Claude Opus 4.5" }, { value: "sonnet", name: "Claude Sonnet 4.5" }] },
-  { id: "thinking", name: "Thinking", category: "thought_level", type: "select", currentValue: LEVELS[level]!, options: LEVELS.map((v) => ({ value: v, name: v[0]!.toUpperCase() + v.slice(1) })) },
+  {
+    id: "model",
+    name: "Model",
+    category: "model",
+    type: "select",
+    currentValue: "opus",
+    options: [
+      { value: "opus", name: "Claude Opus 4.5" },
+      { value: "sonnet", name: "Claude Sonnet 4.5" },
+    ],
+  },
+  {
+    id: "thinking",
+    name: "Thinking",
+    category: "thought_level",
+    type: "select",
+    currentValue: LEVELS[level]!,
+    options: LEVELS.map((v) => ({ value: v, name: v[0]!.toUpperCase() + v.slice(1) })),
+  },
 ];
 /** Up to the top, then back down: 1 2 3 4 3 2 1 0 … */
 const THINK_PATH = [1, 2, 3, 4, 4, 3, 2, 1, 0, 0];
@@ -114,7 +161,14 @@ const DEMO_GOAL: GoalSummary = {
 const WORKING: Activity = {
   startedAt: 0,
   speaking: false,
-  tools: [{ id: "t1", title: "Running bun run packages/daemon/src/server.ts", kind: "execute", status: "in_progress" }],
+  tools: [
+    {
+      id: "t1",
+      title: "Running bun run packages/daemon/src/server.ts",
+      kind: "execute",
+      status: "in_progress",
+    },
+  ],
 };
 
 function Screen() {
@@ -142,7 +196,11 @@ function Screen() {
   const [goalStarted, setGoalStarted] = useState(false);
   const [goalResults, setGoalResults] = useState<Record<string, GoalResult>>({});
   const createGoal = useCallback(() => {
-    setTimeout(() => setGoalResults({ g1: { t: "goal.result", requestId: "g1", ok: true, goal: DEMO_GOAL } }), 700);
+    setTimeout(
+      () =>
+        setGoalResults({ g1: { t: "goal.result", requestId: "g1", ok: true, goal: DEMO_GOAL } }),
+      700,
+    );
     return "g1";
   }, []);
 
@@ -168,7 +226,14 @@ function Screen() {
   const dock = measured || theme.size.composerResting + theme.space(4) + insets.bottom;
   const turns =
     VIEW === "stream"
-      ? [TURNS[0] as Turn, { id: "a1", role: "agent", text: REPLY.slice(0, Math.min(REPLY.length, streamed)) } as Turn]
+      ? [
+          TURNS[0] as Turn,
+          {
+            id: "a1",
+            role: "agent",
+            text: REPLY.slice(0, Math.min(REPLY.length, streamed)),
+          } as Turn,
+        ]
       : VIEW === "review" || VIEW === "plan"
         ? REVIEW_TURNS
         : TURNS;
@@ -184,8 +249,12 @@ function Screen() {
         <ChatThread
           ref={list}
           turns={goalStarted ? [] : turns}
-          restore={goalStarted ? { title: DEMO_GOAL.name, state: "starting", onRetry: noop } : undefined}
-          activeStream={VIEW === "stream" ? { sessionId: "s", turnKey: "a1", generation: 0 } : undefined}
+          restore={
+            goalStarted ? { title: DEMO_GOAL.name, state: "starting", onRetry: noop } : undefined
+          }
+          activeStream={
+            VIEW === "stream" ? { sessionId: "s", turnKey: "a1", generation: 0 } : undefined
+          }
           threadTop={insets.top + theme.space(4)}
           threadBottom={dock + theme.space(2)}
           working={VIEW === "chat"}
@@ -199,7 +268,12 @@ function Screen() {
       )}
       {VIEW === "ask" && <AskUserSheet ask={ASK} onAnswer={noop} />}
       {VIEW === "think" && (
-        <ConfigPicker visible onClose={noop} options={thinkOptions(thinkPicked ?? (thinkStep < 0 ? 0 : THINK_PATH[thinkStep]!))} onSelect={pickThink} />
+        <ConfigPicker
+          visible
+          onClose={noop}
+          options={thinkOptions(thinkPicked ?? (thinkStep < 0 ? 0 : THINK_PATH[thinkStep]!))}
+          onSelect={pickThink}
+        />
       )}
       {VIEW === "goal" && (
         <NewGoalSheet
@@ -213,35 +287,41 @@ function Screen() {
         />
       )}
       {VIEW === "plan" && <PlanReviewSheet plan={PLAN} busy={false} onDecide={noop} />}
-      <View style={styles.bottom} onLayout={(e) => setMeasured(Math.round(e.nativeEvent.layout.height))}>
-      {(VIEW === "review" || VIEW === "plan") && (
-        <View style={styles.strips}>
-          <GgControlStrip
-            planMode={false}
-            autopilot={{ enabled: true, reviewing: VIEW === "review" }}
-            showAutopilot
-            showChecklist
-            onToggleAutopilot={noop}
-            onOpenChecklist={noop}
-          />
-          <QueuedStrip messages={[{ id: "q1", text: "Also bump the relay version when you're done" }]} onCancel={noop} />
-        </View>
-      )}
-      <ComposerDock
-        style={[styles.dock, { paddingBottom: insets.bottom + theme.space(2) }]}
-        onHeightSettled={noop}
-        typing={false}
-        showCommands={false}
-        onCommands={noop}
-        onProjectDetails={noop}
-        onSend={send}
-        editable
-        placeholder="Ask GG Coder anything"
-        attachments={[]}
-        onAttach={noop}
-        onRemoveAttachment={noop}
-        dictation={{ available: true, listening: false, toggle: noop, cancel: noop }}
-      />
+      <View
+        style={styles.bottom}
+        onLayout={(e) => setMeasured(Math.round(e.nativeEvent.layout.height))}
+      >
+        {(VIEW === "review" || VIEW === "plan") && (
+          <View style={styles.strips}>
+            <GgControlStrip
+              planMode={false}
+              autopilot={{ enabled: true, reviewing: VIEW === "review" }}
+              showAutopilot
+              showChecklist
+              onToggleAutopilot={noop}
+              onOpenChecklist={noop}
+            />
+            <QueuedStrip
+              messages={[{ id: "q1", text: "Also bump the relay version when you're done" }]}
+              onCancel={noop}
+            />
+          </View>
+        )}
+        <ComposerDock
+          style={[styles.dock, { paddingBottom: insets.bottom + theme.space(2) }]}
+          onHeightSettled={noop}
+          typing={false}
+          showCommands={false}
+          onCommands={noop}
+          onProjectDetails={noop}
+          onSend={send}
+          editable
+          placeholder="Ask GG Coder anything"
+          attachments={[]}
+          onAttach={noop}
+          onRemoveAttachment={noop}
+          dictation={{ available: true, listening: false, toggle: noop, cancel: noop }}
+        />
       </View>
     </View>
   );

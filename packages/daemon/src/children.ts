@@ -118,7 +118,11 @@ const owned = new Set<number>();
  * cannot be read — by which point the child is almost certainly already gone.
  */
 export async function registerChild(
-  { pid, providerId, fallbackCommand }: { pid: number; providerId: string; fallbackCommand: string },
+  {
+    pid,
+    providerId,
+    fallbackCommand,
+  }: { pid: number; providerId: string; fallbackCommand: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   owned.add(pid);
@@ -138,10 +142,7 @@ export async function registerChild(
   await enqueue(env, (records) => [...records.filter((r) => r.pid !== entry.pid), entry]);
 }
 
-export function unregisterChild(
-  pid: number,
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<void> {
+export function unregisterChild(pid: number, env: NodeJS.ProcessEnv = process.env): Promise<void> {
   owned.delete(pid);
   return enqueue(env, (records) => records.filter((r) => r.pid !== pid));
 }

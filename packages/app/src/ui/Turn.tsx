@@ -268,9 +268,19 @@ const styles = StyleSheet.create({
   // Pew's globe fills the middle of its box; the rest is room to bounce,
   // so the box overhangs the old icon's footprint instead of growing the row.
   pew: { margin: -4 },
-  noteRow: { flexDirection: "row", alignItems: "center", gap: theme.space(3), paddingVertical: theme.space(1) },
+  noteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(3),
+    paddingVertical: theme.space(1),
+  },
   noteRule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: theme.color.border },
-  noteText: { color: theme.color.textDim, fontSize: theme.font.small, flexShrink: 1, textAlign: "center" },
+  noteText: {
+    color: theme.color.textDim,
+    fontSize: theme.font.small,
+    flexShrink: 1,
+    textAlign: "center",
+  },
   kenBubble: {
     flex: 1,
     gap: theme.space(1),

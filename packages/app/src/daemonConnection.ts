@@ -98,7 +98,7 @@ export function openConnection(
   const resetStream = () => {
     batch.boundary();
     streamGeneration.current += 1;
-    setState((prev) => prev.activeStream ? { ...prev, activeStream: undefined } : prev);
+    setState((prev) => (prev.activeStream ? { ...prev, activeStream: undefined } : prev));
   };
   streamBoundary.current = resetStream;
 
@@ -327,10 +327,9 @@ export function openConnection(
         // matters.
         // Except the ones whose request never reached a socket at all: they
         // are still in the outbox, and this reconnect is what sends them.
-        sessions: dropPendingSessions(
-          s.sessions,
-          queuedPendingSessions(outbox.current),
-        ).map((session) => (session.busy ? { ...session, busy: false } : session)),
+        sessions: dropPendingSessions(s.sessions, queuedPendingSessions(outbox.current)).map(
+          (session) => (session.busy ? { ...session, busy: false } : session),
+        ),
       }));
       // Cleartext, because it is what establishes the connection — and carries
       // a sealed proof beside it, so the daemon can tell a paired phone from
@@ -576,5 +575,6 @@ export function openConnection(
 
 /** Development only (`EXPO_PUBLIC_DEV_CONN_LOG=1`): the socket's life, one line per event, in the Metro log. */
 function connLog(line: string): void {
-  if (process.env.EXPO_PUBLIC_DEV_CONN_LOG === "1") console.log(`[conn] +${Math.round(performance.now())}ms ${line}`);
+  if (process.env.EXPO_PUBLIC_DEV_CONN_LOG === "1")
+    console.log(`[conn] +${Math.round(performance.now())}ms ${line}`);
 }

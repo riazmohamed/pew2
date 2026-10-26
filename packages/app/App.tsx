@@ -129,26 +129,27 @@ function Root() {
 
   useEffect(() => {
     let alive = true;
-    void Promise.all([loadPairing()
-      .catch(() => {
+    void Promise.all([
+      loadPairing().catch(() => {
         // The same reasoning `pair` uses below, which already guards the write
         // side: a locked or unavailable keychain has to read as "not paired",
         // not as a rejection. Without this the promise rejects, `setChecked`
         // never runs, and the app sits on its loading screen with no way out.
         return null;
-      }), loadOnboarding()])
-      .then(([stored, progress]) => {
-        if (!alive) return;
-        setPairing(stored);
-        const forced = DEV_STEP;
-        if (forced) setOnboard({ step: forced, repair: false });
-        else {
-          setOnboard(gate(progress, stored !== null));
-          // An existing user: remembered as done, so a later forget goes to Pair alone.
-          if (progress === undefined && stored) void saveOnboarding("finished");
-        }
-        setChecked(true);
-      });
+      }),
+      loadOnboarding(),
+    ]).then(([stored, progress]) => {
+      if (!alive) return;
+      setPairing(stored);
+      const forced = DEV_STEP;
+      if (forced) setOnboard({ step: forced, repair: false });
+      else {
+        setOnboard(gate(progress, stored !== null));
+        // An existing user: remembered as done, so a later forget goes to Pair alone.
+        if (progress === undefined && stored) void saveOnboarding("finished");
+      }
+      setChecked(true);
+    });
     return () => {
       alive = false;
     };
@@ -237,5 +238,13 @@ function Root() {
     );
   if (pairing) return <Pew2 pairing={pairing} onUnpair={unpair} />;
   // Unreachable through `gate`, but never a blank screen.
-  return <Onboarding step="pair" repair onNext={() => {}} onBack={() => {}} onPaired={(next) => pair(next, true)} />;
+  return (
+    <Onboarding
+      step="pair"
+      repair
+      onNext={() => {}}
+      onBack={() => {}}
+      onPaired={(next) => pair(next, true)}
+    />
+  );
 }

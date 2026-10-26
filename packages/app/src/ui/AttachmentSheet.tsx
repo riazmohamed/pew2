@@ -40,7 +40,12 @@ type Source = {
 };
 
 /** Short label so four tiles still fit one row; the hint says the rest. */
-const COMPUTER: Source = { id: "computer", icon: "desktop-outline", label: "Screen", hint: "Computer Screen: what's on your Mac right now" };
+const COMPUTER: Source = {
+  id: "computer",
+  icon: "desktop-outline",
+  label: "Screen",
+  hint: "Computer Screen: what's on your Mac right now",
+};
 
 const SOURCES: Source[] = [
   { id: "camera", icon: "camera-outline", label: "Camera", hint: "Take a photo" },
@@ -52,10 +57,22 @@ function AttachmentSheetView({ visible, computer, onSelect, onClose }: Attachmen
   const agent = useAgentColor();
   const sources = computer ? [COMPUTER, ...SOURCES] : SOURCES;
   return (
-    <Sheet visible={visible} label="Attach" title="Add to the message" onClose={onClose} dismissLabel="Close attachments">
+    <Sheet
+      visible={visible}
+      label="Attach"
+      title="Add to the message"
+      onClose={onClose}
+      dismissLabel="Close attachments"
+    >
       <View style={styles.tiles}>
         {sources.map((source, index) => (
-          <Dissolve key={source.id} kind="row" delay={visible ? index * 50 : 0} dissolveKey={String(visible)} style={styles.cell}>
+          <Dissolve
+            key={source.id}
+            kind="row"
+            delay={visible ? index * 50 : 0}
+            dissolveKey={String(visible)}
+            style={styles.cell}
+          >
             <PressScale
               feel="tap"
               style={styles.tile}
@@ -67,7 +84,11 @@ function AttachmentSheetView({ visible, computer, onSelect, onClose }: Attachmen
                 name={source.icon}
                 size={26}
                 color={agent}
-                style={{ textShadowColor: agent, textShadowRadius: 8, textShadowOffset: { width: 0, height: 0 } }}
+                style={{
+                  textShadowColor: agent,
+                  textShadowRadius: 8,
+                  textShadowOffset: { width: 0, height: 0 },
+                }}
               />
               <Led tone="text" size={11} unlit numberOfLines={1}>
                 {source.label}

@@ -92,7 +92,10 @@ function ScopeChoice({ label, on, onPress }: { label: string; on: boolean; onPre
       }}
       style={[styles.mode, styles.choice, on && styles.modeOn]}
     >
-      <Text style={[styles.modeLabel, styles.choiceLabel, on && { color: theme.color.text }]} numberOfLines={1}>
+      <Text
+        style={[styles.modeLabel, styles.choiceLabel, on && { color: theme.color.text }]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </Pressable>
@@ -100,7 +103,17 @@ function ScopeChoice({ label, on, onPress }: { label: string; on: boolean; onPre
 }
 
 /** A dashed row that turns solid in Pew's colour when on: a toggle in the stage style. */
-function ToggleRow({ label, a11y, on, onPress }: { label: string; a11y: string; on: boolean; onPress: () => void }) {
+function ToggleRow({
+  label,
+  a11y,
+  on,
+  onPress,
+}: {
+  label: string;
+  a11y: string;
+  on: boolean;
+  onPress: () => void;
+}) {
   return (
     <Pressable
       accessibilityRole="switch"
@@ -113,10 +126,15 @@ function ToggleRow({ label, a11y, on, onPress }: { label: string; a11y: string; 
       }}
       style={[styles.mode, styles.toggle, on && styles.modeOn]}
     >
-      <Text style={[styles.modeLabel, styles.toggleText, on && { color: theme.color.text }]} numberOfLines={1}>
+      <Text
+        style={[styles.modeLabel, styles.toggleText, on && { color: theme.color.text }]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
-      <View style={[styles.knob, on && styles.knobOn]}>{on ? <DotGlyph name="check" size={12} color={theme.color.bg} /> : null}</View>
+      <View style={[styles.knob, on && styles.knobOn]}>
+        {on ? <DotGlyph name="check" size={12} color={theme.color.bg} /> : null}
+      </View>
     </Pressable>
   );
 }
@@ -207,25 +225,41 @@ export function VoiceSettingsSheet({
       >
         <StageScroll style={styles.scroll} contentContainerStyle={styles.content}>
           {ready ? null : (
-            <Text style={styles.status}>{status ? voiceStatusLine(status) : "Asking your computer…"}</Text>
+            <Text style={styles.status}>
+              {status ? voiceStatusLine(status) : "Asking your computer…"}
+            </Text>
           )}
 
           {ready && forCall && onCall ? (
             <Dissolve kind="swap" style={styles.consent}>
-              <StageButton label={consented ? "Call Pew" : "Agree and call"} feel="sent" onPress={onCall} />
-              {consented ? null : <Text style={[styles.note, styles.consentLine]}>{VOICE_CONSENT_LINE}</Text>}
+              <StageButton
+                label={consented ? "Call Pew" : "Agree and call"}
+                feel="sent"
+                onPress={onCall}
+              />
+              {consented ? null : (
+                <Text style={[styles.note, styles.consentLine]}>{VOICE_CONSENT_LINE}</Text>
+              )}
             </Dissolve>
           ) : null}
 
           {login ? (
             <Dissolve kind="swap" style={styles.login}>
               <Led tone="dim">Your code</Led>
-              <Text selectable style={styles.code} numberOfLines={1} adjustsFontSizeToFit accessibilityLabel={`Sign-in code ${login.userCode.split("").join(" ")}`}>
+              <Text
+                selectable
+                style={styles.code}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                accessibilityLabel={`Sign-in code ${login.userCode.split("").join(" ")}`}
+              >
                 {login.userCode}
               </Text>
               <StageButton
                 label="Open sign-in page"
-                onPress={() => void WebBrowser.openBrowserAsync(login.verificationUrl).catch(() => {})}
+                onPress={() =>
+                  void WebBrowser.openBrowserAsync(login.verificationUrl).catch(() => {})
+                }
               />
               <View style={styles.row}>
                 <StageButton
@@ -238,7 +272,13 @@ export function VoiceSettingsSheet({
                     void Clipboard.setStringAsync(login.userCode);
                   }}
                 />
-                <StageButton compact kind="secondary" style={styles.rowButton} label="Cancel" onPress={() => onLogin("cancel")} />
+                <StageButton
+                  compact
+                  kind="secondary"
+                  style={styles.rowButton}
+                  label="Cancel"
+                  onPress={() => onLogin("cancel")}
+                />
               </View>
               <Text style={styles.note}>{DEVICE_CODE_NOTE}</Text>
             </Dissolve>
@@ -248,9 +288,13 @@ export function VoiceSettingsSheet({
               <Text style={styles.note}>{DEVICE_CODE_NOTE}</Text>
             </View>
           ) : status?.source === "pew2" ? (
-            <StageButton compact kind="secondary" label="Sign out" onPress={() => onLogin("logout")} />
+            <StageButton
+              compact
+              kind="secondary"
+              label="Sign out"
+              onPress={() => onLogin("logout")}
+            />
           ) : null}
-
 
           {prefs && !(forCall && !ready) ? (
             <>
@@ -282,7 +326,14 @@ export function VoiceSettingsSheet({
                       }}
                       style={[styles.mode, styles.choice, on && styles.modeOn]}
                     >
-                      <Text style={[styles.modeLabel, styles.choiceLabel, on && { color: theme.color.text }]} numberOfLines={1}>
+                      <Text
+                        style={[
+                          styles.modeLabel,
+                          styles.choiceLabel,
+                          on && { color: theme.color.text },
+                        ]}
+                        numberOfLines={1}
+                      >
                         {option.label}
                       </Text>
                     </Pressable>
@@ -290,8 +341,17 @@ export function VoiceSettingsSheet({
                 })}
               </View>
               {ringBlocked && !alertsGranted && onNeedAlerts ? (
-                <Pressable accessibilityRole="button" hitSlop={8} onPress={() => { haptics.tap(); void onNeedAlerts().then((allowed) => setRingBlocked(!allowed)); }}>
-                  <Text style={[styles.note, styles.consentLine, styles.alertsLink]}>{RING_NEEDS_ALERTS}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => {
+                    haptics.tap();
+                    void onNeedAlerts().then((allowed) => setRingBlocked(!allowed));
+                  }}
+                >
+                  <Text style={[styles.note, styles.consentLine, styles.alertsLink]}>
+                    {RING_NEEDS_ALERTS}
+                  </Text>
                 </Pressable>
               ) : null}
               {consented || (forCall && ready) ? null : (
@@ -302,7 +362,12 @@ export function VoiceSettingsSheet({
                   <Led tone="dim">Ring for</Led>
                   <View style={styles.choices} accessibilityRole="radiogroup">
                     {RING_SCOPES.map((option) => (
-                      <ScopeChoice key={option.scope} label={option.label} on={option.scope === scope} onPress={() => onPrefs({ ringScope: option.scope as RingScope })} />
+                      <ScopeChoice
+                        key={option.scope}
+                        label={option.label}
+                        on={option.scope === scope}
+                        onPress={() => onPrefs({ ringScope: option.scope as RingScope })}
+                      />
                     ))}
                   </View>
                 </>
@@ -341,7 +406,6 @@ export function VoiceSettingsSheet({
               }}
             />
           ) : null}
-
         </StageScroll>
       </Sheet>
     </AgentColorProvider>
@@ -406,6 +470,10 @@ const styles = StyleSheet.create({
     padding: theme.space(3),
     gap: 2,
   },
-  modeOn: { borderStyle: "solid", borderColor: PEW_VOICE_COLOR, backgroundColor: withAlpha(PEW_VOICE_COLOR, 0.1) },
+  modeOn: {
+    borderStyle: "solid",
+    borderColor: PEW_VOICE_COLOR,
+    backgroundColor: withAlpha(PEW_VOICE_COLOR, 0.1),
+  },
   modeLabel: { color: theme.color.textDim, fontSize: theme.font.body, lineHeight: 20 },
 });

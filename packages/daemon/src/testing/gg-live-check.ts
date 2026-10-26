@@ -59,11 +59,17 @@ async function until<T>(read: () => T | undefined, what: string, ms = 180_000): 
 const results: Record<string, unknown> = {};
 try {
   await send({ t: "goals", requestId: "g1" });
-  const goals = await until(() => sent.find((m) => m.t === "goals" && m.requestId === "g1"), "goals");
+  const goals = await until(
+    () => sent.find((m) => m.t === "goals" && m.requestId === "g1"),
+    "goals",
+  );
   results.goals = { count: goals.goals?.length, error: goals.error, first: goals.goals?.[0]?.name };
 
   await send({ t: "session.start", requestId: "s", providerId: "ggcoder" });
-  const started = await until(() => sent.find((m) => m.t === "session.started" && m.requestId === "s"), "start");
+  const started = await until(
+    () => sent.find((m) => m.t === "session.started" && m.requestId === "s"),
+    "start",
+  );
   const id = started.sessionId as string;
   await send({
     t: "session.prompt",
@@ -71,24 +77,51 @@ try {
     text: "Run this exact bash command and nothing else: sleep 8 && echo first-done. Then reply with one short line.",
   });
   await until(
-    () => sent.find((m) => m.t === "session.event" && m.sessionId === id && /tool_call/.test(m.payload?.sessionUpdate ?? m.payload?.update?.sessionUpdate ?? JSON.stringify(m.payload))),
+    () =>
+      sent.find(
+        (m) =>
+          m.t === "session.event" &&
+          m.sessionId === id &&
+          /tool_call/.test(
+            m.payload?.sessionUpdate ??
+              m.payload?.update?.sessionUpdate ??
+              JSON.stringify(m.payload),
+          ),
+      ),
     "first tool call",
   );
-  await send({ t: "session.prompt", sessionId: id, text: "Also: when you're done, say the word BANANA." });
-  const queued = await until(() => sent.find((m) => m.t === "session.queue" && m.queued.length === 1), "queued");
+  await send({
+    t: "session.prompt",
+    sessionId: id,
+    text: "Also: when you're done, say the word BANANA.",
+  });
+  const queued = await until(
+    () => sent.find((m) => m.t === "session.queue" && m.queued.length === 1),
+    "queued",
+  );
   results.queuedWhileRunning = queued.queued.map((q: any) => q.text);
-  await until(() => sent.find((m) => m.t === "session.idle" && m.sessionId === id), "idle", 240_000);
+  await until(
+    () => sent.find((m) => m.t === "session.idle" && m.sessionId === id),
+    "idle",
+    240_000,
+  );
   // Allow a follow-on turn (turnEnded hand-back) to complete.
   await Bun.sleep(1500);
   await until(() => !(daemon as any).sessions.get(id)?.working, "settled", 240_000);
-  const users = sent.filter((m) => m.t === "session.event" && m.payload?.kind === "user_message").map((m) => m.payload.text);
-  const agentText = JSON.stringify(sent.filter((m) => m.t === "session.event" && m.sessionId === id).map((m) => m.payload));
+  const users = sent
+    .filter((m) => m.t === "session.event" && m.payload?.kind === "user_message")
+    .map((m) => m.payload.text);
+  const agentText = JSON.stringify(
+    sent.filter((m) => m.t === "session.event" && m.sessionId === id).map((m) => m.payload),
+  );
   results.userMessages = users;
   results.finalQueue = sent.findLast((m) => m.t === "session.queue")?.queued;
   results.saidBanana = /BANANA/.test(agentText);
 } catch (error) {
   results.error = error instanceof Error ? error.message : String(error);
-  results.trace = sent.filter((m) => m.t !== "session.event").map((m) => `${m.t}:${m.code ?? ""}:${(m.message ?? "").slice(0, 300)}`);
+  results.trace = sent
+    .filter((m) => m.t !== "session.event")
+    .map((m) => `${m.t}:${m.code ?? ""}:${(m.message ?? "").slice(0, 300)}`);
 } finally {
   daemon.closeAll();
 }

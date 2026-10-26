@@ -10,16 +10,16 @@ import "./src/cryptoPolyfill";
 // After the polyfill (the agreement check draws random bytes), before any frame.
 import "./src/ui/nativeCrypto";
 
-import { registerRootComponent } from 'expo';
-import { LogBox } from 'react-native';
+import { registerRootComponent } from "expo";
+import { LogBox } from "react-native";
 
 // Simulator-only noise: iOS simulators can't mint a push token, and the
 // warning's banner sat over the bottom of every screen in development.
-LogBox.ignoreLogs(['expo-notifications: obtaining a push token may not work on iOS simulators']);
-import * as SplashScreen from 'expo-splash-screen';
+LogBox.ignoreLogs(["expo-notifications: obtaining a push token may not work on iOS simulators"]);
+import * as SplashScreen from "expo-splash-screen";
 
-import { installCrashHandler } from './src/crashLog';
-import App from './App';
+import { installCrashHandler } from "./src/crashLog";
+import App from "./App";
 
 // Hold the native splash until the app has something real to show.
 //

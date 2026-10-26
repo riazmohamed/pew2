@@ -74,7 +74,13 @@ export function syllables(word: string): number {
   const letters = word.toLowerCase().replace(/[^a-z]/g, "");
   if (!letters) return Math.max(digits, word.trim() ? 1 : 0);
   let groups = letters.match(/[aeiouy]+/g)?.length ?? 0;
-  if (letters.length > 2 && letters.endsWith("e") && !/[aeiouy]le$/.test(letters) && !letters.endsWith("le")) groups -= 1;
+  if (
+    letters.length > 2 &&
+    letters.endsWith("e") &&
+    !/[aeiouy]le$/.test(letters) &&
+    !letters.endsWith("le")
+  )
+    groups -= 1;
   return Math.max(1, groups) + digits;
 }
 
@@ -147,7 +153,12 @@ export function sayPosition(text: string, voicedMs: number, msPerSyllable: numbe
  * sweep at `position`, with a soft edge `edge` characters wide. Runs of equal
  * (quantised) brightness are merged so the text is a handful of spans.
  */
-export function highlightRuns(text: string, position: number, edge = 5, steps = 8): { text: string; level: number }[] {
+export function highlightRuns(
+  text: string,
+  position: number,
+  edge = 5,
+  steps = 8,
+): { text: string; level: number }[] {
   const runs: { text: string; level: number }[] = [];
   for (let i = 0; i < text.length; i++) {
     const raw = Math.max(0, Math.min(1, (position - i) / edge + 0.5));

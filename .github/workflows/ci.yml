@@ -46,6 +46,10 @@ jobs:
       # build — the React dependency-array ones need the app running to judge.
       - run: npm run lint
 
+      # The tree was reformatted in one commit so that this could be enforced.
+      # Fix a failure with `npm run format -- <paths>`, not by hand.
+      - run: npm run format:check
+
       # Exercises the ACP pipeline end to end via providers/echo.json, which
       # needs no API key and no network.
       - run: npm test

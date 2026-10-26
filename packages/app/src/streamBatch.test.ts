@@ -1,24 +1,58 @@
 import { expect, test } from "bun:test";
-import { createStreamBatch, foldStreamBatch, MAX_BUFFER_BYTES, MAX_BUFFER_EVENTS } from "./streamBatch";
+import {
+  createStreamBatch,
+  foldStreamBatch,
+  MAX_BUFFER_BYTES,
+  MAX_BUFFER_EVENTS,
+} from "./streamBatch";
 import type { StreamChunk } from "./streamBatch";
 import { IDLE_ACTIVITY } from "./activity";
 import { applyChunk } from "./replayFold";
 import type { Session, Turn } from "./useDaemon";
 import type { LiveStreamIdentity } from "./smoothText";
 
-function event(text: string, seq = 1, sessionId = "a", role: "agent" | "thought" = "agent"): StreamChunk {
-  return { sessionId, id: `${sessionId}:${seq}`, chunk: { role, text }, now: seq, payload: { update: { sessionUpdate: role === "agent" ? "agent_message_chunk" : "agent_thought_chunk", content: { type: "text", text } } } };
+function event(
+  text: string,
+  seq = 1,
+  sessionId = "a",
+  role: "agent" | "thought" = "agent",
+): StreamChunk {
+  return {
+    sessionId,
+    id: `${sessionId}:${seq}`,
+    chunk: { role, text },
+    now: seq,
+    payload: {
+      update: {
+        sessionUpdate: role === "agent" ? "agent_message_chunk" : "agent_thought_chunk",
+        content: { type: "text", text },
+      },
+    },
+  };
 }
 function harness() {
   const commits: (readonly StreamChunk[])[] = [];
   const timers = new Map<number, () => void>();
   let id = 0;
-  const batch = createStreamBatch((events) => commits.push(events), (cb, ms) => {
-    expect(ms).toBe(100);
-    timers.set(++id, cb);
-    return id;
-  }, (key) => { timers.delete(key); });
-  return { batch, commits, timers, tick() { for (const cb of [...timers.values()]) cb(); } };
+  const batch = createStreamBatch(
+    (events) => commits.push(events),
+    (cb, ms) => {
+      expect(ms).toBe(100);
+      timers.set(++id, cb);
+      return id;
+    },
+    (key) => {
+      timers.delete(key);
+    },
+  );
+  return {
+    batch,
+    commits,
+    timers,
+    tick() {
+      for (const cb of [...timers.values()]) cb();
+    },
+  };
 }
 
 test("first chunk immediate; subsequent chunks keep their identities and order", () => {
@@ -34,12 +68,26 @@ test("first chunk immediate; subsequent chunks keep their identities and order",
   expect(h.timers.size).toBe(0);
 });
 
-test.each(["permission", "tool", "cancel", "error", "replay", "navigation", "disconnect", "background"])("%s boundary commits tail before transition and resets first chunk", () => {
+test.each([
+  "permission",
+  "tool",
+  "cancel",
+  "error",
+  "replay",
+  "navigation",
+  "disconnect",
+  "background",
+])("%s boundary commits tail before transition and resets first chunk", () => {
   const h = harness();
   h.batch.push(event("a"));
   h.batch.push(event("b", 2));
   h.batch.boundary();
-  expect(h.commits.flat().map((e) => e.chunk.text).join("")).toBe("ab");
+  expect(
+    h.commits
+      .flat()
+      .map((e) => e.chunk.text)
+      .join(""),
+  ).toBe("ab");
   expect(h.timers.size).toBe(0);
   h.batch.push(event("c", 3));
   expect(h.commits.length).toBe(3);
@@ -51,7 +99,12 @@ test("session and role changes flush without mixing owners", () => {
   h.batch.push(event("b", 2));
   h.batch.push(event("thought", 3, "a", "thought"));
   h.batch.push(event("other", 1, "b"));
-  expect(h.commits.map((es) => es.map((e) => e.chunk.text))).toEqual([["a"], ["b"], ["thought"], ["other"]]);
+  expect(h.commits.map((es) => es.map((e) => e.chunk.text))).toEqual([
+    ["a"],
+    ["b"],
+    ["thought"],
+    ["other"],
+  ]);
 });
 
 test("event/UTF-8 bounds and oversized bypass never reorder or discard", () => {
@@ -90,8 +143,22 @@ test("dispose commits accepted content once; stale timer and future pushes canno
 });
 
 function state(sessionId = "a") {
-  const row: Session = { id: "a", providerId: "gg", title: "New conversation", startedAt: 1, turns: [], configOptions: [] };
-  return { sessionId, turns: [] as Turn[], sessions: [row], activity: IDLE_ACTIVITY, busy: false, activeStream: undefined as LiveStreamIdentity | undefined };
+  const row: Session = {
+    id: "a",
+    providerId: "gg",
+    title: "New conversation",
+    startedAt: 1,
+    turns: [],
+    configOptions: [],
+  };
+  return {
+    sessionId,
+    turns: [] as Turn[],
+    sessions: [row],
+    activity: IDLE_ACTIVITY,
+    busy: false,
+    activeStream: undefined as LiveStreamIdentity | undefined,
+  };
 }
 test("fold preserves chunk seams, latest state and updater replay without mutation", () => {
   const original = state();

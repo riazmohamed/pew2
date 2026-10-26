@@ -11,8 +11,21 @@
  * painted frame is already at the newest message — no reveal, no catch-up scroll.
  */
 import { createEntranceLifetime, DUR, type DissolveKind, type EntranceLifetime } from "../motion";
-import { OPEN_REVEAL_MS, OPEN_REVEAL_RISE, UNLOCK_BEAT_MS, UNLOCK_EXIT_MS, restoreReveal } from "../restoreState";
-import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
+import {
+  OPEN_REVEAL_MS,
+  OPEN_REVEAL_RISE,
+  UNLOCK_BEAT_MS,
+  UNLOCK_EXIT_MS,
+  restoreReveal,
+} from "../restoreState";
+import Animated, {
+  cancelAnimation,
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from "react-native-reanimated";
 import { useReducedMotion } from "./useReducedMotion";
 import { Dissolve } from "./motion/Dissolve";
 import {
@@ -47,7 +60,13 @@ import { retryTarget } from "../retryPrompt";
 import type { Turn as TurnData } from "../useDaemon";
 import { isEmptyTurn } from "../chunks";
 import { streamIdentityKey, type LiveStreamIdentity } from "../smoothText";
-import { loadEarlier, nextWindow, windowTurns, TRANSCRIPT_PAGE, type TranscriptWindow } from "../transcriptWindow";
+import {
+  loadEarlier,
+  nextWindow,
+  windowTurns,
+  TRANSCRIPT_PAGE,
+  type TranscriptWindow,
+} from "../transcriptWindow";
 import { Led } from "./stage/Led";
 import { DashedRule } from "./stage/DashedRule";
 import { haptics } from "./haptics";
@@ -177,7 +196,15 @@ function ChatThreadView(
   // Each key's entrance is decided once: the first batch the thread sees (a
   // restore replacing the skeleton) dissolves together; later turns animate
   // only if newer than the high-water mark; everything else renders settled.
-  const entrance = useRef<{ session: string | undefined; batch: number; lifetime: EntranceLifetime; seen: Map<string, { kind: DissolveKind | null; at: number }> } | undefined>(undefined);
+  const entrance = useRef<
+    | {
+        session: string | undefined;
+        batch: number;
+        lifetime: EntranceLifetime;
+        seen: Map<string, { kind: DissolveKind | null; at: number }>;
+      }
+    | undefined
+  >(undefined);
   const firstKey = turns[0] ? keyExtractor(turns[0]) : undefined;
   const session = firstKey?.slice(0, firstKey.lastIndexOf(":"));
   if (!entrance.current || entrance.current.session !== session) {
@@ -233,7 +260,8 @@ function ChatThreadView(
    * another spot). Cleared once it has gone.
    */
   const [loader, setLoader] = useState<ConversationRestoreProps | undefined>(undefined);
-  const waiting = turns.length === 0 && (restore?.state === "loading" || restore?.state === "reconnecting");
+  const waiting =
+    turns.length === 0 && (restore?.state === "loading" || restore?.state === "reconnecting");
   const loadingSince = useRef<number | undefined>(undefined);
   const pendingReveal = useRef(false);
   const beat = reduceMotion ? DUR.reduced : DUR.dissolve;
@@ -246,7 +274,9 @@ function ChatThreadView(
     const wait = revealDelay.current;
     revealDelay.current = 0;
     listOpacity.value = withDelay(wait, withTiming(1, { duration, easing: settle }));
-    listRise.value = reduceMotion ? 0 : withDelay(wait, withTiming(0, { duration, easing: settle }));
+    listRise.value = reduceMotion
+      ? 0
+      : withDelay(wait, withTiming(0, { duration, easing: settle }));
     // Pew leaves on the same frame the conversation starts to rise: a true
     // cross-fade, with no gap between them and no wait for him.
     if (unlockPending.current) {
@@ -262,8 +292,9 @@ function ChatThreadView(
     // Only an *opened* conversation (its first batch arrived at once, from a
     // load) reveals as a whole: a brand-new chat's first turn arrives live,
     // typed here, and must not blink out and fade back in.
-    const opened = loadingSince.current !== undefined || (restore !== undefined && restore.state !== "starting");
-    const batch = opened ? entrance.current?.batch ?? 0 : 0;
+    const opened =
+      loadingSince.current !== undefined || (restore !== undefined && restore.state !== "starting");
+    const batch = opened ? (entrance.current?.batch ?? 0) : 0;
     const plan = restoreReveal(batch, loadingSince.current, entranceClock());
     if (!plan.holdList) return;
     listOpacity.value = 0;
@@ -281,7 +312,10 @@ function ChatThreadView(
       // swells and dissolves while the conversation opens out behind him.
       setLoader((current) => current && { ...current, settled: true, unlocking: true });
       // A little pop of joy while the conversation lays out; he leaves with it.
-      ghostScale.value = withTiming(1.06, { duration: UNLOCK_BEAT_MS, easing: Easing.bezier(0.16, 1, 0.3, 1) });
+      ghostScale.value = withTiming(1.06, {
+        duration: UNLOCK_BEAT_MS,
+        easing: Easing.bezier(0.16, 1, 0.3, 1),
+      });
       // The conversation never waits for him.
       revealDelay.current = 0;
       unlockPending.current = true;
@@ -306,7 +340,11 @@ function ChatThreadView(
     if (waiting && restore) {
       loadingSince.current ??= entranceClock();
       const { title, state, error, onRetry } = restore;
-      setLoader((current) => (current && !current.unlocking && current.title === title && current.state === state ? current : { title, state, error, onRetry }));
+      setLoader((current) =>
+        current && !current.unlocking && current.title === title && current.state === state
+          ? current
+          : { title, state, error, onRetry },
+      );
       cancelAnimation(ghostOpacity);
       cancelAnimation(ghostScale);
       ghostOpacity.value = 1;
@@ -322,7 +360,10 @@ function ChatThreadView(
     opacity: listOpacity.value,
     transform: listRise.value === 0 ? [] : [{ translateY: listRise.value * OPEN_REVEAL_RISE }],
   }));
-  const ghostStyle = useAnimatedStyle(() => ({ opacity: ghostOpacity.value, transform: [{ scale: ghostScale.value }] }));
+  const ghostStyle = useAnimatedStyle(() => ({
+    opacity: ghostOpacity.value,
+    transform: [{ scale: ghostScale.value }],
+  }));
 
   const [win, setWin] = useState<TranscriptWindow | undefined>(undefined);
   const settledWin = nextWindow(win, session, turns.length);
@@ -348,10 +389,19 @@ function ChatThreadView(
       // individually, so a container `gap` would never apply, and horizontal
       // padding on the scroll content is not part of the list's layout math.
       return (
-        <Dissolve kind={kind ?? "row"} enabled={kind !== null} dissolveKey={key} style={index === 0 ? styles.firstRow : styles.row}>
+        <Dissolve
+          kind={kind ?? "row"}
+          enabled={kind !== null}
+          dissolveKey={key}
+          style={index === 0 ? styles.firstRow : styles.row}
+        >
           <Turn
             turn={item}
-            liveIdentity={activeStream?.turnKey === keyExtractor(item) && item.role === "agent" ? streamIdentityKey(activeStream) : undefined}
+            liveIdentity={
+              activeStream?.turnKey === keyExtractor(item) && item.role === "agent"
+                ? streamIdentityKey(activeStream)
+                : undefined
+            }
             onOpenThought={onOpenThought}
             retryPrompt={keyExtractor(item) === retryKey ? retryPrompt : undefined}
             onRetry={onRetry}
@@ -425,7 +475,8 @@ function ChatThreadView(
   // so the reader's place holds while it lands above them.
   const { visible, earlier } = useMemo(() => windowTurns(turns, settledWin), [turns, settledWin]);
   const rows = useMemo<ThreadRow[]>(
-    () => (visible.length > 0 ? [...(earlier > 0 ? [EARLIER_ROW] : []), ...visible, FOOTER_ROW] : []),
+    () =>
+      visible.length > 0 ? [...(earlier > 0 ? [EARLIER_ROW] : []), ...visible, FOOTER_ROW] : [],
     [visible, earlier],
   );
 
@@ -468,10 +519,14 @@ function ChatThreadView(
   // the footer is only the finished turn's LED receipt, or a spacer as tall as
   // it so the thread does not jump when a turn starts or ends.
   const footer = useMemo(
-    () => (!working && receipt ? <LedReceipt receipt={receipt} onPress={onOpenTools} /> : <SpacerOnly />),
+    () =>
+      !working && receipt ? <LedReceipt receipt={receipt} onPress={onOpenTools} /> : <SpacerOnly />,
     [receipt, working, onOpenTools],
   );
-  const footerValue = useMemo(() => ({ content: footer, bottom: threadBottom }), [footer, threadBottom]);
+  const footerValue = useMemo(
+    () => ({ content: footer, bottom: threadBottom }),
+    [footer, threadBottom],
+  );
 
   // The composer grows when it takes focus, and the dock it lives in is an
   // overlay pinned to the bottom edge — so it expands *upwards*, over the
@@ -508,85 +563,96 @@ function ChatThreadView(
 
   return (
     <EarlierContext.Provider value={earlierValue}>
-    <FooterContext.Provider value={footerValue}>
-    <View style={styles.fill}>
-    <Animated.View style={[styles.fill, listStyle]}>
-    <FlashList
-      ref={list}
-      onLoad={reveal}
-      data={rows}
-      renderItem={renderItem}
-      keyExtractor={keyExtractor}
-      // A user turn, an agent's markdown, a thought and a system line are four
-      // different subtrees. Without this the list recycles any cell into any
-      // other, so React reconciles two unrelated trees instead of updating one:
-      // it tears the old subtree down and builds the new one — and under Fabric
-      // that mount lands on the main thread, mid-scroll. Typed, a cell is only
-      // ever reused for a turn of its own shape, which is the case
-      // reconciliation is actually cheap for.
-      getItemType={getItemType}
-      // Follow an append only while the reader is near the end. Someone reading
-      // history keeps their place while the reply streams on below.
-      maintainVisibleContentPosition={MAINTAIN_POSITION}
-      ListHeaderComponent={restore?.state === "failed" && turns.length > 0 ? <ConversationRestore {...restore} /> : SpacerOnly}
-      // The loading Pew is drawn in the overlay below (one instance for the
-      // wait and the unlock); the list shows only the other restore states.
-      ListEmptyComponent={restore && !waiting && !loader ? <ConversationRestore {...restore} /> : null}
-      ListHeaderComponentStyle={headerStyle}
-      // Kept beside the explicit dismiss above as the native backstop: it needs
-      // no JS, so a drag during a heavy streaming frame still puts the keyboard
-      // away. Whichever fires first wins and the other is a no-op. Never iOS's
-      // "interactive" — see `handleScrollBeginDrag`.
-      keyboardDismissMode="on-drag"
-      onScrollBeginDrag={handleScrollBeginDrag}
-      keyboardShouldPersistTaps="handled"
-      // The transcript gives at both ends, and springs back.
-      //
-      // It used to stop dead. The reason was real but narrower than the fix:
-      // this list's reading insets are real children, and a *short* thread is
-      // bottom-aligned by `startRenderingFromBottom`, so a downward drag there
-      // slid the newest message under the composer — the one place the inset is
-      // load-bearing, undone by a gesture, looking like a layout fault rather
-      // than a stretch. Killing the bounce outright also took the give away
-      // from every scrollable transcript, where the end of a conversation
-      // arrived like a wall and nothing distinguished "the top of the history"
-      // from "the list is stuck".
-      //
-      // `alwaysBounceVertical` is the seam between those two cases: a thread
-      // that does not fill the screen cannot be dragged at all, so the inset it
-      // depends on stays intact, while a thread long enough to scroll bounces
-      // at both ends like every other list on the platform. Nothing is under
-      // the composer to expose there — the content that moves is mid-thread,
-      // which already passes under the translucent dock while scrolling.
-      bounces
-      alwaysBounceVertical={false}
-      // Android's equivalent, and the same bargain: on 12+ this is the stretch
-      // — a spring driven by the platform, not by us — and a glow below that.
-      // "never" was the pair of `bounces={false}` and would otherwise leave the
-      // two platforms feeling different at the same edge.
-      overScrollMode="auto"
-      automaticallyAdjustsScrollIndicatorInsets={false}
-      // The whole pane is lifted by one transform instead (see `useKeyboardLift`).
-      // UIKit's own keyboard inset would be a second, differently-timed
-      // adjustment on top of it. Both props are iOS-only and inert on Android,
-      // where the library holds the window at a fixed size for the same reason.
-      automaticallyAdjustKeyboardInsets={false}
-      automaticallyAdjustContentInsets={false}
-      scrollIndicatorInsets={{ top: indicatorTop, bottom: indicatorBottom }}
-      scrollEventThrottle={16}
-      onScroll={handleScroll}
-      // Reaching the top pulls the next page in, same as tapping the row.
-      onStartReached={earlier > 0 ? reachedTop : undefined}
-      onStartReachedThreshold={0.2}
-    />
-    </Animated.View>
-    {loader && (
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { paddingTop: threadTop }, ghostStyle]}>
-        <ConversationRestore {...loader} />
-      </Animated.View>
-    )}
-    </View>
-    </FooterContext.Provider>
+      <FooterContext.Provider value={footerValue}>
+        <View style={styles.fill}>
+          <Animated.View style={[styles.fill, listStyle]}>
+            <FlashList
+              ref={list}
+              onLoad={reveal}
+              data={rows}
+              renderItem={renderItem}
+              keyExtractor={keyExtractor}
+              // A user turn, an agent's markdown, a thought and a system line are four
+              // different subtrees. Without this the list recycles any cell into any
+              // other, so React reconciles two unrelated trees instead of updating one:
+              // it tears the old subtree down and builds the new one — and under Fabric
+              // that mount lands on the main thread, mid-scroll. Typed, a cell is only
+              // ever reused for a turn of its own shape, which is the case
+              // reconciliation is actually cheap for.
+              getItemType={getItemType}
+              // Follow an append only while the reader is near the end. Someone reading
+              // history keeps their place while the reply streams on below.
+              maintainVisibleContentPosition={MAINTAIN_POSITION}
+              ListHeaderComponent={
+                restore?.state === "failed" && turns.length > 0 ? (
+                  <ConversationRestore {...restore} />
+                ) : (
+                  SpacerOnly
+                )
+              }
+              // The loading Pew is drawn in the overlay below (one instance for the
+              // wait and the unlock); the list shows only the other restore states.
+              ListEmptyComponent={
+                restore && !waiting && !loader ? <ConversationRestore {...restore} /> : null
+              }
+              ListHeaderComponentStyle={headerStyle}
+              // Kept beside the explicit dismiss above as the native backstop: it needs
+              // no JS, so a drag during a heavy streaming frame still puts the keyboard
+              // away. Whichever fires first wins and the other is a no-op. Never iOS's
+              // "interactive" — see `handleScrollBeginDrag`.
+              keyboardDismissMode="on-drag"
+              onScrollBeginDrag={handleScrollBeginDrag}
+              keyboardShouldPersistTaps="handled"
+              // The transcript gives at both ends, and springs back.
+              //
+              // It used to stop dead. The reason was real but narrower than the fix:
+              // this list's reading insets are real children, and a *short* thread is
+              // bottom-aligned by `startRenderingFromBottom`, so a downward drag there
+              // slid the newest message under the composer — the one place the inset is
+              // load-bearing, undone by a gesture, looking like a layout fault rather
+              // than a stretch. Killing the bounce outright also took the give away
+              // from every scrollable transcript, where the end of a conversation
+              // arrived like a wall and nothing distinguished "the top of the history"
+              // from "the list is stuck".
+              //
+              // `alwaysBounceVertical` is the seam between those two cases: a thread
+              // that does not fill the screen cannot be dragged at all, so the inset it
+              // depends on stays intact, while a thread long enough to scroll bounces
+              // at both ends like every other list on the platform. Nothing is under
+              // the composer to expose there — the content that moves is mid-thread,
+              // which already passes under the translucent dock while scrolling.
+              bounces
+              alwaysBounceVertical={false}
+              // Android's equivalent, and the same bargain: on 12+ this is the stretch
+              // — a spring driven by the platform, not by us — and a glow below that.
+              // "never" was the pair of `bounces={false}` and would otherwise leave the
+              // two platforms feeling different at the same edge.
+              overScrollMode="auto"
+              automaticallyAdjustsScrollIndicatorInsets={false}
+              // The whole pane is lifted by one transform instead (see `useKeyboardLift`).
+              // UIKit's own keyboard inset would be a second, differently-timed
+              // adjustment on top of it. Both props are iOS-only and inert on Android,
+              // where the library holds the window at a fixed size for the same reason.
+              automaticallyAdjustKeyboardInsets={false}
+              automaticallyAdjustContentInsets={false}
+              scrollIndicatorInsets={{ top: indicatorTop, bottom: indicatorBottom }}
+              scrollEventThrottle={16}
+              onScroll={handleScroll}
+              // Reaching the top pulls the next page in, same as tapping the row.
+              onStartReached={earlier > 0 ? reachedTop : undefined}
+              onStartReachedThreshold={0.2}
+            />
+          </Animated.View>
+          {loader && (
+            <Animated.View
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFill, { paddingTop: threadTop }, ghostStyle]}
+            >
+              <ConversationRestore {...loader} />
+            </Animated.View>
+          )}
+        </View>
+      </FooterContext.Provider>
     </EarlierContext.Provider>
   );
 }
@@ -617,10 +683,12 @@ const MAINTAIN_POSITION = {
 // `key` where the turn has one: an optimistic prompt's `id` is replaced by the
 // server's when the echo lands, and keying on that would recycle the cell out
 // from under a message that never changed.
-const keyExtractor = (row: ThreadRow) => (isFooter(row) ? FOOTER_KEY : isEarlier(row) ? EARLIER_KEY : (row.key ?? row.id));
+const keyExtractor = (row: ThreadRow) =>
+  isFooter(row) ? FOOTER_KEY : isEarlier(row) ? EARLIER_KEY : (row.key ?? row.id);
 
 /** One recycling pool per shape of turn. Reasoning at the call site. */
-const getItemType = (row: ThreadRow) => (isFooter(row) ? "footer" : isEarlier(row) ? "earlier" : row.role);
+const getItemType = (row: ThreadRow) =>
+  isFooter(row) ? "footer" : isEarlier(row) ? "earlier" : row.role;
 
 /** Carries only a `ListHeaderComponentStyle`/`ListFooterComponentStyle` inset. */
 /**
@@ -638,9 +706,7 @@ const getItemType = (row: ThreadRow) => (isFooter(row) ? "footer" : isEarlier(ro
  * scrolled rather than bottom-aligned, so the growth goes below the fold where
  * nobody sees it.
  */
-const SpacerOnly = () => (
-  <View style={[styles.footerSpacer, { height: useStatusRowHeight() }]} />
-);
+const SpacerOnly = () => <View style={[styles.footerSpacer, { height: useStatusRowHeight() }]} />;
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },

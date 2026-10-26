@@ -82,9 +82,7 @@ export function base64Bytes(data: string): number {
  * the check that matters, because a daemon cannot trust a client. Shared
  * wording means both halves say the same thing.
  */
-export function attachmentLimitError(
-  attachments: readonly PromptAttachment[],
-): string | undefined {
+export function attachmentLimitError(attachments: readonly PromptAttachment[]): string | undefined {
   if (attachments.length > MAX_ATTACHMENTS) {
     return `Too many attachments: ${attachments.length}, limit is ${MAX_ATTACHMENTS}.`;
   }

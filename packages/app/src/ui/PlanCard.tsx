@@ -13,12 +13,13 @@ import { theme } from "../theme";
 import type { PlanEntry } from "../chunks";
 import { touchSlop } from "./controls";
 
-const STATUS: Record<PlanEntry["status"], { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
-  pending: { icon: "ellipse-outline", color: theme.color.textFaint },
-  in_progress: { icon: "play-circle-outline", color: theme.color.accent },
-  completed: { icon: "checkmark-circle", color: theme.color.success },
-  cancelled: { icon: "remove-circle-outline", color: theme.color.textFaint },
-};
+const STATUS: Record<PlanEntry["status"], { icon: keyof typeof Ionicons.glyphMap; color: string }> =
+  {
+    pending: { icon: "ellipse-outline", color: theme.color.textFaint },
+    in_progress: { icon: "play-circle-outline", color: theme.color.accent },
+    completed: { icon: "checkmark-circle", color: theme.color.success },
+    cancelled: { icon: "remove-circle-outline", color: theme.color.textFaint },
+  };
 
 function PlanCardView({ plan }: { plan: readonly PlanEntry[] }) {
   const [open, setOpen] = useState(false);
@@ -42,9 +43,7 @@ function PlanCardView({ plan }: { plan: readonly PlanEntry[] }) {
         <Ionicons name="list-outline" size={14} color={theme.color.textDim} />
         <Text style={styles.summary} numberOfLines={1}>
           {summary}
-          {current && !open ? (
-            <Text style={styles.current}> · {current.content}</Text>
-          ) : null}
+          {current && !open ? <Text style={styles.current}> · {current.content}</Text> : null}
         </Text>
         <Ionicons
           name={open ? "chevron-down" : "chevron-up"}
@@ -54,8 +53,17 @@ function PlanCardView({ plan }: { plan: readonly PlanEntry[] }) {
       </Pressable>
       {open &&
         plan.map((entry, index) => (
-          <View key={index} style={styles.entry} accessible accessibilityLabel={`${entry.status.replace("_", " ")}: ${entry.content}`}>
-            <Ionicons name={STATUS[entry.status].icon} size={14} color={STATUS[entry.status].color} />
+          <View
+            key={index}
+            style={styles.entry}
+            accessible
+            accessibilityLabel={`${entry.status.replace("_", " ")}: ${entry.content}`}
+          >
+            <Ionicons
+              name={STATUS[entry.status].icon}
+              size={14}
+              color={STATUS[entry.status].color}
+            />
             <Text
               style={[
                 styles.entryText,

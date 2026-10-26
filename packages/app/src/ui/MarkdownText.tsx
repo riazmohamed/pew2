@@ -102,11 +102,7 @@ export const markdownRules: Partial<RenderRules> = {
   // Plain text, deliberately: a hold on a message opens the copy menu (`copyMenu.ts`),
   // and native selection would fight that gesture.
   textgroup: (node, children, _parents, styles) =>
-    createElement(
-      Text,
-      { ["key"]: node.key, style: styles.text as never },
-      children,
-    ),
+    createElement(Text, { ["key"]: node.key, style: styles.text as never }, children),
   // A paragraph must be one measured Text block. The library's default uses a
   // wrapping row of Text children; inside a list that row reports one-line
   // height while its text paints several lines, so following items overlap it.
@@ -115,11 +111,7 @@ export const markdownRules: Partial<RenderRules> = {
   paragraph: (node, children, _parents, styles) =>
     hasImageChild(node)
       ? createElement(View, { ["key"]: node.key, style: styles.paragraph as never }, children)
-      : createElement(
-          Text,
-          { ["key"]: node.key, style: styles.paragraph as never },
-          children,
-        ),
+      : createElement(Text, { ["key"]: node.key, style: styles.paragraph as never }, children),
   code_block: renderCodeBlock,
   fence: renderCodeBlock,
   image: renderImage,
@@ -127,11 +119,7 @@ export const markdownRules: Partial<RenderRules> = {
   // output to a web view or leaving the renderer's unstyled black fallback.
   html_block: renderCodeBlock,
   html_inline: (node, _children, _parents, styles) =>
-    createElement(
-      Text,
-      { ["key"]: node.key, style: styles.codeInline as never },
-      node.content,
-    ),
+    createElement(Text, { ["key"]: node.key, style: styles.codeInline as never }, node.content),
 };
 
 function stylesFor(
@@ -377,7 +365,16 @@ const MarkdownBlock = memo(function MarkdownBlock({
   live?: boolean;
   animate?: boolean;
 }) {
-  if (live) return <StreamingMarkdown source={source} animate={animate} rules={markdownRules as RenderRules} style={markdownStyles[tone]} onLinkPress={openLink} />;
+  if (live)
+    return (
+      <StreamingMarkdown
+        source={source}
+        animate={animate}
+        rules={markdownRules as RenderRules}
+        style={markdownStyles[tone]}
+        onLinkPress={openLink}
+      />
+    );
   return (
     <Markdown
       rules={markdownRules as RenderRules}
@@ -392,7 +389,15 @@ const MarkdownBlock = memo(function MarkdownBlock({
   );
 });
 
-function GrowingMarkdownTextView({ text, tone = "body", liveIdentity }: { text: string; tone?: MarkdownTone; liveIdentity?: string }) {
+function GrowingMarkdownTextView({
+  text,
+  tone = "body",
+  liveIdentity,
+}: {
+  text: string;
+  tone?: MarkdownTone;
+  liveIdentity?: string;
+}) {
   const [touchedIdentity, setTouchedIdentity] = useState<string>();
   const completeBlocks = useMemo(() => splitMarkdownBlocks(text), [text]);
   // A fenced block stays authoritative: characters are never paced inside it.
@@ -400,7 +405,8 @@ function GrowingMarkdownTextView({ text, tone = "body", liveIdentity }: { text: 
   // switch the whole paragraph off, which was most agent replies); a span that
   // is only half revealed is held back until it is whole (`holdOpenInlineCode`).
   const hasCode = hasFence(completeBlocks.at(-1) ?? "");
-  const live = tone === "body" && liveIdentity !== undefined && touchedIdentity !== liveIdentity && !hasCode;
+  const live =
+    tone === "body" && liveIdentity !== undefined && touchedIdentity !== liveIdentity && !hasCode;
   const smooth = useSmoothText(text, liveIdentity ?? "history", live);
   const revealed = useMemo(
     () => (live && smooth.animating ? holdOpenInlineCode(smooth.text) : smooth.text),
@@ -412,7 +418,13 @@ function GrowingMarkdownTextView({ text, tone = "body", liveIdentity }: { text: 
   const blocks = useMemo(() => splitMarkdownBlocks(revealed), [revealed]);
 
   return (
-    <View style={blockLayout.root} accessibilityLiveRegion="none" onTouchStart={() => { if (liveIdentity) setTouchedIdentity(liveIdentity); }}>
+    <View
+      style={blockLayout.root}
+      accessibilityLiveRegion="none"
+      onTouchStart={() => {
+        if (liveIdentity) setTouchedIdentity(liveIdentity);
+      }}
+    >
       {blocks.map((source, index) => (
         <MarkdownBlock
           // Index, deliberately. Blocks are an ordered decomposition of one
@@ -452,11 +464,19 @@ const blockLayout = StyleSheet.create({
  */
 function SettledMarkdownText({ text, tone }: { text: string; tone: MarkdownTone }) {
   const blocks = useMemo(() => splitMarkdownBlocks(text), [text]);
-  return <View style={blockLayout.root}>{blocks.map((source, index) => <MarkdownBlock key={index} source={source} tone={tone} />)}</View>;
+  return (
+    <View style={blockLayout.root}>
+      {blocks.map((source, index) => (
+        <MarkdownBlock key={index} source={source} tone={tone} />
+      ))}
+    </View>
+  );
 }
 function MarkdownTextView(props: { text: string; tone?: MarkdownTone; liveIdentity?: string }) {
-  return props.liveIdentity && (props.tone ?? "body") === "body"
-    ? <GrowingMarkdownTextView key={props.liveIdentity} {...props} />
-    : <SettledMarkdownText text={props.text} tone={props.tone ?? "body"} />;
+  return props.liveIdentity && (props.tone ?? "body") === "body" ? (
+    <GrowingMarkdownTextView key={props.liveIdentity} {...props} />
+  ) : (
+    <SettledMarkdownText text={props.text} tone={props.tone ?? "body"} />
+  );
 }
 export const MarkdownText = memo(MarkdownTextView);

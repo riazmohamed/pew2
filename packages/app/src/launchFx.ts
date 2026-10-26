@@ -161,7 +161,13 @@ export function fxBurstDot(s: FxScene, i: number, b: number, out: Float32Array):
  * spiralling in and vanishing as it reaches Ken. More of them, faster, the
  * fuller the charge.
  */
-export function fxChargeDot(s: FxScene, i: number, t: number, charge: number, out: Float32Array): void {
+export function fxChargeDot(
+  s: FxScene,
+  i: number,
+  t: number,
+  charge: number,
+  out: Float32Array,
+): void {
   "worklet";
   const shown = CHARGE_DOTS * Math.pow(fxClamp01(charge), 0.7);
   if (i >= shown) {
@@ -177,7 +183,8 @@ export function fxChargeDot(s: FxScene, i: number, t: number, charge: number, ou
   out[1] = s.cy + Math.sin(ang) * r;
   out[2] = 1 + fxRand(i, 14) * 1.6;
   // Fades in at the edge, out as it is swallowed; the newest arrivals fade in.
-  out[3] = fxSmooth(0, 0.25, u) * (1 - fxSmooth(0.85, 1, u)) * (0.3 + 0.7 * charge) * fxClamp01(shown - i);
+  out[3] =
+    fxSmooth(0, 0.25, u) * (1 - fxSmooth(0.85, 1, u)) * (0.3 + 0.7 * charge) * fxClamp01(shown - i);
 }
 
 /** Ken's tremble while charging, in points: nothing until halfway, violent at the end. */
@@ -194,7 +201,13 @@ export function fxKenScale(charge: number): number {
   return 1 + 0.22 * c - 0.12 * fxSmooth(0.9, 1, c);
 }
 
-export function paintCharge(s: FxScene, m: FxMoment, pal: FxPalette, p: FxPainter, SCRATCH: Float32Array): void {
+export function paintCharge(
+  s: FxScene,
+  m: FxMoment,
+  pal: FxPalette,
+  p: FxPainter,
+  SCRATCH: Float32Array,
+): void {
   "worklet";
   const c = fxClamp01(m.charge);
   // The ring is always there on the launch step: the target to hold.
@@ -224,7 +237,13 @@ export function paintCharge(s: FxScene, m: FxMoment, pal: FxPalette, p: FxPainte
   }
 }
 
-export function paintBurst(s: FxScene, m: FxMoment, pal: FxPalette, p: FxPainter, SCRATCH: Float32Array): void {
+export function paintBurst(
+  s: FxScene,
+  m: FxMoment,
+  pal: FxPalette,
+  p: FxPainter,
+  SCRATCH: Float32Array,
+): void {
   "worklet";
   const b = m.burst;
   const fade = fxClamp01(m.fade);
@@ -263,7 +282,14 @@ export function paintBurst(s: FxScene, m: FxMoment, pal: FxPalette, p: FxPainter
     const bk = b - k * 0.12;
     if (bk <= 0 || bk > SHOCK_S) continue;
     const q = bk / SHOCK_S;
-    p.ring(s.cx, s.cy, fxShock(s, bk), (k === 0 ? 16 : 7) * (1 - q) + 1.5, k === 0 ? pal.light : WHITE, Math.pow(1 - q, 1.4) * 0.9 * fade);
+    p.ring(
+      s.cx,
+      s.cy,
+      fxShock(s, bk),
+      (k === 0 ? 16 : 7) * (1 - q) + 1.5,
+      k === 0 ? pal.light : WHITE,
+      Math.pow(1 - q, 1.4) * 0.9 * fade,
+    );
   }
   // The rim of the opening, lit while it widens.
   if (m.reveal > 0 && m.reveal < 1) {
@@ -326,7 +352,14 @@ export function paintPop(s: FxScene, b: number, pal: FxPalette, p: FxPainter): v
     const bk = b - k * 0.1;
     if (bk <= 0 || bk > SHOCK_S) continue;
     const q = bk / SHOCK_S;
-    p.ring(s.cx, s.cy, fxShock(s, bk) * 0.8, (k === 0 ? 10 : 5) * (1 - q) + 1, k === 0 ? pal.light : WHITE, Math.pow(1 - q, 1.5) * 0.75);
+    p.ring(
+      s.cx,
+      s.cy,
+      fxShock(s, bk) * 0.8,
+      (k === 0 ? 10 : 5) * (1 - q) + 1,
+      k === 0 ? pal.light : WHITE,
+      Math.pow(1 - q, 1.5) * 0.75,
+    );
   }
   // His dots, flung out, each with a glint.
   for (let i = 0; i < BURST_DOTS; i++) {
@@ -357,7 +390,13 @@ export const CALLING_DOTS = 34;
  * `strength` 0..1 fades the whole thing in and out (it leaves as the call
  * connects, rather than cutting).
  */
-export function paintCalling(s: FxScene, t: number, strength: number, pal: FxPalette, p: FxPainter): void {
+export function paintCalling(
+  s: FxScene,
+  t: number,
+  strength: number,
+  pal: FxPalette,
+  p: FxPainter,
+): void {
   "worklet";
   const k = fxClamp01(strength);
   if (k <= 0.001) return;
@@ -389,6 +428,12 @@ export function paintCalling(s: FxScene, t: number, strength: number, pal: FxPal
     fxChargeDot(s, i, t * 0.55, charge, scratch);
     const a = scratch[3]! * 0.7 * k;
     if (a <= 0.01) continue;
-    p.dot(scratch[0]!, scratch[1]!, scratch[2]! * 0.85, fxRand(i, 15) < 0.4 ? pal.light : pal.base, a);
+    p.dot(
+      scratch[0]!,
+      scratch[1]!,
+      scratch[2]! * 0.85,
+      fxRand(i, 15) < 0.4 ? pal.light : pal.base,
+      a,
+    );
   }
 }

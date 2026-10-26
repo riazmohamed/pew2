@@ -8,7 +8,9 @@ test("emphasis, code and headings lose their marks, keep their words", () => {
 });
 
 test("links and images keep their text", () => {
-  expect(plainText("See [the docs](https://x.dev/a_(b)) and ![chart](c.png)")).toBe("See the docs and chart");
+  expect(plainText("See [the docs](https://x.dev/a_(b)) and ![chart](c.png)")).toBe(
+    "See the docs and chart",
+  );
 });
 
 test("lists, quotes, tasks and rules", () => {
@@ -20,7 +22,9 @@ test("code fences keep the code", () => {
 });
 
 test("tables read as cells", () => {
-  expect(plainText("| File | Status |\n|---|---|\n| a.ts | ok |")).toBe("File · Status\n\na.ts · ok");
+  expect(plainText("| File | Status |\n|---|---|\n| a.ts | ok |")).toBe(
+    "File · Status\n\na.ts · ok",
+  );
 });
 
 test("snake_case, maths and plain text are left alone", () => {

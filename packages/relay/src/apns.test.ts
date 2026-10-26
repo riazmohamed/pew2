@@ -21,7 +21,9 @@ async function keyPair(): Promise<{ pem: string; publicKey: CryptoKey }> {
     "sign",
     "verify",
   ])) as CryptoKeyPair;
-  const der = new Uint8Array((await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer);
+  const der = new Uint8Array(
+    (await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer,
+  );
   const b64 = btoa(String.fromCharCode(...der));
   const lines = b64.match(/.{1,64}/g) ?? [];
   const pem = `-----BEGIN PRIVATE KEY-----\n${lines.join("\n")}\n-----END PRIVATE KEY-----\n`;
@@ -162,7 +164,11 @@ describe("handleVoip", () => {
       await deps(apns(410, { reason: "Unregistered" })),
     );
     expect(res.status).toBe(410);
-    expect((await res.json()) as unknown).toEqual({ ok: false, status: 410, reason: "Unregistered" });
+    expect((await res.json()) as unknown).toEqual({
+      ok: false,
+      status: 410,
+      reason: "Unregistered",
+    });
   });
 
   test("APNs 400 becomes 502 with its reason", async () => {
@@ -171,7 +177,11 @@ describe("handleVoip", () => {
       await deps(apns(400, { reason: "BadDeviceToken" })),
     );
     expect(res.status).toBe(502);
-    expect((await res.json()) as unknown).toEqual({ ok: false, status: 400, reason: "BadDeviceToken" });
+    expect((await res.json()) as unknown).toEqual({
+      ok: false,
+      status: 400,
+      reason: "BadDeviceToken",
+    });
   });
 
   test("bad input is 400 and never reaches APNs", async () => {
@@ -188,7 +198,11 @@ describe("handleVoip", () => {
     ]) {
       const res = await handleVoip(req, d);
       expect(res.status).toBe(400);
-      expect((await res.json()) as unknown).toEqual({ ok: false, status: 400, reason: "bad_request" });
+      expect((await res.json()) as unknown).toEqual({
+        ok: false,
+        status: 400,
+        reason: "bad_request",
+      });
     }
     expect(called).toBe(false);
   });
@@ -197,14 +211,27 @@ describe("handleVoip", () => {
     const d = await deps(apns(200));
     expect((await handleVoip(new Request("https://relay/voip"), d)).status).toBe(405);
     const unconfigured = { ...d, config: { ...d.config, key: undefined } };
-    const r503 = await handleVoip(post({ token: TOKEN, env: "sandbox", payload: {} }), unconfigured);
+    const r503 = await handleVoip(
+      post({ token: TOKEN, env: "sandbox", payload: {} }),
+      unconfigured,
+    );
     expect(r503.status).toBe(503);
-    expect((await r503.json()) as unknown).toEqual({ ok: false, status: 503, reason: "not_configured" });
+    expect((await r503.json()) as unknown).toEqual({
+      ok: false,
+      status: 503,
+      reason: "not_configured",
+    });
     for (let i = 0; i < RATE_LIMIT; i++) {
-      expect((await handleVoip(post({ token: TOKEN, env: "sandbox", payload: {} }), d)).status).toBe(200);
+      expect(
+        (await handleVoip(post({ token: TOKEN, env: "sandbox", payload: {} }), d)).status,
+      ).toBe(200);
     }
     const r429 = await handleVoip(post({ token: TOKEN, env: "sandbox", payload: {} }), d);
     expect(r429.status).toBe(429);
-    expect((await r429.json()) as unknown).toEqual({ ok: false, status: 429, reason: "rate_limited" });
+    expect((await r429.json()) as unknown).toEqual({
+      ok: false,
+      status: 429,
+      reason: "rate_limited",
+    });
   });
 });

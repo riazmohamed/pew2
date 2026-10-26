@@ -20,8 +20,16 @@ export interface TranscriptWindow {
 }
 
 /** The window for `total` turns of `session`, carried on from `prev`. */
-export function nextWindow(prev: TranscriptWindow | undefined, session: string | undefined, total: number): TranscriptWindow {
-  const fresh = (): TranscriptWindow => ({ session, start: Math.max(0, total - TRANSCRIPT_PAGE), pages: 1 });
+export function nextWindow(
+  prev: TranscriptWindow | undefined,
+  session: string | undefined,
+  total: number,
+): TranscriptWindow {
+  const fresh = (): TranscriptWindow => ({
+    session,
+    start: Math.max(0, total - TRANSCRIPT_PAGE),
+    pages: 1,
+  });
   if (!prev || prev.session !== session) return fresh();
   // Turns shrank under us (a reload): start again rather than point past the end.
   if (prev.start > total) return fresh();
@@ -39,7 +47,10 @@ export function loadEarlier(window: TranscriptWindow): TranscriptWindow {
 }
 
 /** The visible tail and how many turns sit above it. */
-export function windowTurns<T>(turns: readonly T[], window: TranscriptWindow): { visible: T[]; earlier: number } {
+export function windowTurns<T>(
+  turns: readonly T[],
+  window: TranscriptWindow,
+): { visible: T[]; earlier: number } {
   const start = Math.min(window.start, turns.length);
   return { visible: turns.slice(start), earlier: start };
 }

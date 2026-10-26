@@ -9,9 +9,23 @@ import { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { BlurView } from "expo-blur";
 import { EASE } from "../motion";
-import Animated, { Easing, cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { theme } from "../theme";
-import { DOT_CODE, INSTALL_TYPE, PAIR_TYPE, SETUP_REPLY, alertsAt, installAt } from "../onboardingScenes";
+import {
+  DOT_CODE,
+  INSTALL_TYPE,
+  PAIR_TYPE,
+  SETUP_REPLY,
+  alertsAt,
+  installAt,
+} from "../onboardingScenes";
 import { Dissolve } from "./motion/Dissolve";
 import { codeBlockStyles } from "./codeBlock";
 import { ListeningWave } from "./ListeningWave";
@@ -51,13 +65,31 @@ export function AlertsScene({ ms }: { ms: number }) {
       {/* Oldest first, so the newest draws on top. */}
       {[...shown].reverse().map((entry) => {
         const depth = entry.index === shown[0]!.index ? 0 : entry.index === shown[1]?.index ? 1 : 2;
-        return <Banner key={entry.index} title={entry.alert.title} body={entry.alert.body} depth={depth} width={bannerW} />;
+        return (
+          <Banner
+            key={entry.index}
+            title={entry.alert.title}
+            body={entry.alert.body}
+            depth={depth}
+            width={bannerW}
+          />
+        );
       })}
     </View>
   );
 }
 
-function Banner({ title, body, depth, width }: { title: string; body: string; depth: number; width: number }) {
+function Banner({
+  title,
+  body,
+  depth,
+  width,
+}: {
+  title: string;
+  body: string;
+  depth: number;
+  width: number;
+}) {
   const [a, b, c, d] = EASE.out;
   const ease = Easing.bezier(a, b, c, d);
   // 0 → 1 as it arrives; `place` follows its depth in the stack.
@@ -134,11 +166,16 @@ export function InstallScene({ ms, color }: { ms: number; color: string }) {
             <Text style={[CODE.text, styles.termLine]} numberOfLines={1}>
               <Text style={{ color }}>$ </Text>
               {INSTALL_TYPE.slice(0, frame.typed)}
-              {!frame.setupDone ? <Text style={{ color: cursorOn ? color : "transparent" }}>▍</Text> : null}
+              {!frame.setupDone ? (
+                <Text style={{ color: cursorOn ? color : "transparent" }}>▍</Text>
+              ) : null}
             </Text>
             {frame.setupDone ? (
               <Dissolve kind="row" dissolveKey="setup">
-                <Text style={[CODE.text, styles.termLine, { color: theme.color.success }]} numberOfLines={1}>
+                <Text
+                  style={[CODE.text, styles.termLine, { color: theme.color.success }]}
+                  numberOfLines={1}
+                >
                   {SETUP_REPLY}
                 </Text>
               </Dissolve>
@@ -147,7 +184,9 @@ export function InstallScene({ ms, color }: { ms: number; color: string }) {
               <Text style={[CODE.text, styles.termLine]} numberOfLines={1}>
                 <Text style={{ color }}>$ </Text>
                 {PAIR_TYPE.slice(0, frame.pairTyped)}
-                {!frame.qr ? <Text style={{ color: cursorOn ? color : "transparent" }}>▍</Text> : null}
+                {!frame.qr ? (
+                  <Text style={{ color: cursorOn ? color : "transparent" }}>▍</Text>
+                ) : null}
               </Text>
             ) : null}
           </View>
@@ -158,7 +197,13 @@ export function InstallScene({ ms, color }: { ms: number; color: string }) {
                   {DOT_CODE.map((row, r) => (
                     <View key={r} style={styles.qrRow}>
                       {row.map((on, c) => (
-                        <View key={c} style={[styles.qrDot, { backgroundColor: on ? theme.color.text : "transparent" }]} />
+                        <View
+                          key={c}
+                          style={[
+                            styles.qrDot,
+                            { backgroundColor: on ? theme.color.text : "transparent" },
+                          ]}
+                        />
                       ))}
                     </View>
                   ))}
@@ -197,7 +242,9 @@ function Wire({ color, live }: { color: string; live: boolean }) {
   return (
     <View style={styles.wire}>
       <View style={styles.wireLine} />
-      <Animated.View style={[styles.packet, { backgroundColor: color, shadowColor: color }, packet]} />
+      <Animated.View
+        style={[styles.packet, { backgroundColor: color, shadowColor: color }, packet]}
+      />
     </View>
   );
 }
@@ -232,10 +279,22 @@ const styles = StyleSheet.create({
   bannerTint: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(52, 52, 56, 0.78)" },
   // pew2's real icon (dark, like iOS shows it), with iOS's hairline rim so it
   // reads against the dark card.
-  appIcon: { width: 40, height: 40, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: "rgba(255,255,255,0.22)" },
+  appIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderColor: "rgba(255,255,255,0.22)",
+  },
   bannerText: { flex: 1, minWidth: 0, gap: 1 },
   bannerHead: { flexDirection: "row", alignItems: "baseline", gap: theme.space(2) },
-  bannerTitle: { flex: 1, minWidth: 0, color: theme.color.text, fontSize: theme.font.body, fontWeight: "600" },
+  bannerTitle: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.color.text,
+    fontSize: theme.font.body,
+    fontWeight: "600",
+  },
   bannerTime: { color: theme.color.textDim, fontSize: theme.font.small },
   bannerBody: { color: theme.color.text, fontSize: theme.font.body, lineHeight: 19 },
   // Install: the computer at the top of the stage, the wire down to Pew.
@@ -251,18 +310,50 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.color.border,
   },
   termDot: { width: 9, height: 9, borderRadius: 4.5, opacity: 0.8 },
-  termTitle: { flex: 1, textAlign: "center", marginRight: 27 + 12, color: theme.color.textDim, fontSize: theme.font.tiny },
-  termBody: { flexDirection: "row", alignItems: "center", gap: theme.space(3), ...CODE.padding, minHeight: 84 },
+  termTitle: {
+    flex: 1,
+    textAlign: "center",
+    marginRight: 27 + 12,
+    color: theme.color.textDim,
+    fontSize: theme.font.tiny,
+  },
+  termBody: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(3),
+    ...CODE.padding,
+    minHeight: 84,
+  },
   termLines: { flex: 1, minWidth: 0, gap: 2 },
   termLine: { flexShrink: 1 },
   termDim: { color: theme.color.textDim },
-  qrHold: { width: 7 * 5 + 6 * 2, height: 7 * 5 + 6 * 2, alignItems: "center", justifyContent: "center" },
+  qrHold: {
+    width: 7 * 5 + 6 * 2,
+    height: 7 * 5 + 6 * 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   qr: { gap: 2 },
   qrRow: { flexDirection: "row", gap: 2 },
   qrDot: { width: QR_DOT, height: QR_DOT, borderRadius: QR_DOT / 2 },
   wire: { width: 6, height: WIRE, alignItems: "center", marginTop: theme.space(1) },
-  wireLine: { position: "absolute", top: 0, bottom: 0, width: 0, borderLeftWidth: 2, borderStyle: "dotted", borderColor: theme.stage.dash },
-  packet: { width: 6, height: 6, borderRadius: 3, shadowOpacity: 1, shadowRadius: theme.stage.glow, shadowOffset: { width: 0, height: 0 } },
+  wireLine: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 0,
+    borderLeftWidth: 2,
+    borderStyle: "dotted",
+    borderColor: theme.stage.dash,
+  },
+  packet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    shadowOpacity: 1,
+    shadowRadius: theme.stage.glow,
+    shadowOffset: { width: 0, height: 0 },
+  },
   // Voice: the wave under Pew.
   voice: { position: "absolute", bottom: theme.space(4), left: 0, right: 0, alignItems: "center" },
 });

@@ -61,14 +61,25 @@ test("the mirror emits only what is appended after the baseline, as history rend
     file,
     line({ type: "custom", kind: "run_started", id: "r1" }) +
       msg("u1", "user", "typed at the Mac") +
-      msg("a1", "assistant", [{ type: "text", text: "Looking" }, { type: "tool_call", id: "t1", name: "ls", args: { path: "." } }], "u1") +
+      msg(
+        "a1",
+        "assistant",
+        [
+          { type: "text", text: "Looking" },
+          { type: "tool_call", id: "t1", name: "ls", args: { path: "." } },
+        ],
+        "u1",
+      ) +
       msg("tr1", "tool", [{ type: "tool_result", toolCallId: "t1", content: "a b" }], "a1") +
       msg("a2", "assistant", [{ type: "text", text: "Done" }], "tr1") +
       // Half a line: not read until it is finished.
       '{"type":"custom","kind":"run_fin',
   );
   await until(() => events.length >= 6, "the turn");
-  await appendFile(file, 'ished","id":"r2"}\n' + msg("u2", "user", "from the phone with /tmp/x.png"));
+  await appendFile(
+    file,
+    'ished","id":"r2"}\n' + msg("u2", "user", "from the phone with /tmp/x.png"),
+  );
   await until(() => events.includes("end"), "the turn end");
   await Bun.sleep(60);
   mirror.stop();
@@ -77,7 +88,13 @@ test("the mirror emits only what is appended after the baseline, as history rend
     { user: "typed at the Mac" },
     "start",
     { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Looking" } },
-    { sessionUpdate: "tool_call", toolCallId: "t1", title: "ls", status: "in_progress", rawInput: { path: "." } },
+    {
+      sessionUpdate: "tool_call",
+      toolCallId: "t1",
+      title: "ls",
+      status: "in_progress",
+      rawInput: { path: "." },
+    },
     { sessionUpdate: "tool_call_update", toolCallId: "t1", status: "completed" },
     { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Done" } },
     "end",
@@ -109,7 +126,11 @@ test("a conversation OG Coder compacts into a new, unlinked session is followed 
   });
   await mirror.baseline();
   mirror.start();
-  await appendFile(file, msg("u1", "user", "Call me") + msg("a1", "assistant", [{ type: "text", text: "Calling" }], "u1"));
+  await appendFile(
+    file,
+    msg("u1", "user", "Call me") +
+      msg("a1", "assistant", [{ type: "text", text: "Calling" }], "u1"),
+  );
   await until(() => events.length >= 2, "the turn in the first file");
 
   const old = new Date(Date.now() - 5_000).toISOString();
@@ -118,23 +139,57 @@ test("a conversation OG Coder compacts into a new, unlinked session is followed 
   await writeFile(
     other,
     stamp({ type: "session", id: "99999999-0000", conversationId: "99999999-0000" }) +
-      stamp({ type: "message", id: "o1", parentId: null, message: { role: "user", content: "Someone else's chat" } }),
+      stamp({
+        type: "message",
+        id: "o1",
+        parentId: null,
+        message: { role: "user", content: "Someone else's chat" },
+      }),
   );
   const checkpoint = path.join(directory, "2026-10-13T11-00-01-000Z_cccccccc.jsonl");
   await writeFile(
     checkpoint,
-    stamp({ type: "session", id: "cccccccc-0000", conversationId: "cccccccc-0000", preview: "Earlier question" }) +
-      stamp({ type: "message", id: "s1", parentId: null, message: { role: "user", content: "[Previous conversation summary]\n\nIt went well." } }) +
-      stamp({ type: "message", id: "c1", parentId: null, message: { role: "user", content: "Earlier question" } }) +
-      stamp({ type: "message", id: "c2", parentId: null, message: { role: "user", content: "Call me" } }) +
-      stamp({ type: "message", id: "c3", parentId: null, message: { role: "assistant", content: [{ type: "text", text: "Calling" }] } }),
+    stamp({
+      type: "session",
+      id: "cccccccc-0000",
+      conversationId: "cccccccc-0000",
+      preview: "Earlier question",
+    }) +
+      stamp({
+        type: "message",
+        id: "s1",
+        parentId: null,
+        message: { role: "user", content: "[Previous conversation summary]\n\nIt went well." },
+      }) +
+      stamp({
+        type: "message",
+        id: "c1",
+        parentId: null,
+        message: { role: "user", content: "Earlier question" },
+      }) +
+      stamp({
+        type: "message",
+        id: "c2",
+        parentId: null,
+        message: { role: "user", content: "Call me" },
+      }) +
+      stamp({
+        type: "message",
+        id: "c3",
+        parentId: null,
+        message: { role: "assistant", content: [{ type: "text", text: "Calling" }] },
+      }),
   );
   await Bun.sleep(80);
   await appendFile(
     checkpoint,
-    msg("n1", "user", "Hi") + msg("n2", "assistant", [{ type: "text", text: "Hello from the new file" }], "n1"),
+    msg("n1", "user", "Hi") +
+      msg("n2", "assistant", [{ type: "text", text: "Hello from the new file" }], "n1"),
   );
-  await until(() => JSON.stringify(events).includes("Hello from the new file"), "the reply in the compacted file");
+  await until(
+    () => JSON.stringify(events).includes("Hello from the new file"),
+    "the reply in the compacted file",
+  );
   await appendFile(other, msg("o2", "assistant", [{ type: "text", text: "Not ours" }], "o1"));
   await Bun.sleep(80);
   mirror.stop();
@@ -142,7 +197,10 @@ test("a conversation OG Coder compacts into a new, unlinked session is followed 
     { user: "Call me" },
     { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Calling" } },
     { user: "Hi" },
-    { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Hello from the new file" } },
+    {
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: "Hello from the new file" },
+    },
   ]);
 });
 
@@ -176,23 +234,39 @@ test("OG Coder's own turns end on its final turn_metric, in the order its file r
   });
   await mirror.baseline();
   mirror.start();
-  const metric = (id: string, stopReason: string) => line({ type: "custom", kind: "turn_metric", id, data: { stopReason } });
+  const metric = (id: string, stopReason: string) =>
+    line({ type: "custom", kind: "turn_metric", id, data: { stopReason } });
   const ends = () => events.filter((e) => e === "end").length;
 
   // 1. Tools, final metric, then the batch.
   await appendFile(file, metric("m1", "tool_use"));
   await until(() => events.includes("start"), "work under way");
-  await appendFile(file, metric("m2", "end_turn") + msg("u1", "user", "q1") + msg("a1", "assistant", [{ type: "text", text: "r1" }], "u1"));
+  await appendFile(
+    file,
+    metric("m2", "end_turn") +
+      msg("u1", "user", "q1") +
+      msg("a1", "assistant", [{ type: "text", text: "r1" }], "u1"),
+  );
   await until(() => ends() === 1, "turn 1 end");
 
   // 2. Tools, then the batch's user line just before the final metric.
   await appendFile(file, metric("m3", "tool_use"));
   await until(() => events.filter((e) => e === "start").length === 2, "turn 2 start");
-  await appendFile(file, msg("u2", "user", "q2") + metric("m4", "end_turn") + msg("a2", "assistant", [{ type: "text", text: "r2" }], "u2"));
+  await appendFile(
+    file,
+    msg("u2", "user", "q2") +
+      metric("m4", "end_turn") +
+      msg("a2", "assistant", [{ type: "text", text: "r2" }], "u2"),
+  );
   await until(() => ends() === 2, "turn 2 end");
 
   // 3. No tools: user, final metric, reply.
-  await appendFile(file, msg("u3", "user", "Hello") + metric("m5", "end_turn") + msg("a3", "assistant", [{ type: "text", text: "Hi" }], "u3"));
+  await appendFile(
+    file,
+    msg("u3", "user", "Hello") +
+      metric("m5", "end_turn") +
+      msg("a3", "assistant", [{ type: "text", text: "Hi" }], "u3"),
+  );
   await until(() => ends() === 3, "turn 3 end");
 
   // 4. A user line with no metric at all still settles rather than hang.
@@ -213,15 +287,25 @@ async function handoverRig(options: { alive?: () => boolean } = {}) {
   const scripts: string[] = [];
   // A fake OG Coder screen: keystrokes written in move its input and status
   // line the way the real one does, and a read returns its text.
-  const desk = { input: "", model: "Opus", thinking: "high", plan: false, status: " ⠿ Ready to go.. " };
+  const desk = {
+    input: "",
+    model: "Opus",
+    thinking: "high",
+    plan: false,
+    status: " ⠿ Ready to go.. ",
+  };
   const cycle = ["low", "medium", "high", "xhigh", "max", "off"];
   const typeInto = (script: string) => {
     for (const [, raw] of script.matchAll(/write text (.+) newline NO/g)) {
-      const text = raw!.replace(/\(character id (\d+)\)/g, (_, code) => String.fromCharCode(Number(code)))
-        .split(" & ").map((part) => part.replace(/^"|"$/g, "").replace(/\\"/g, '"')).join("");
+      const text = raw!
+        .replace(/\(character id (\d+)\)/g, (_, code) => String.fromCharCode(Number(code)))
+        .split(" & ")
+        .map((part) => part.replace(/^"|"$/g, "").replace(/\\"/g, '"'))
+        .join("");
       if (text === "\u0015") desk.input = "";
       else if (text === "\u007f") desk.input = desk.input.slice(0, -1);
-      else if (text === "\u001b[Z") desk.thinking = cycle[(cycle.indexOf(desk.thinking) + 1) % cycle.length]!;
+      else if (text === "\u001b[Z")
+        desk.thinking = cycle[(cycle.indexOf(desk.thinking) + 1) % cycle.length]!;
       else if (text === "\r") {
         const model = /^\/model (\S+)$/.exec(desk.input);
         if (model) desk.model = model[1]![0]!.toUpperCase() + model[1]!.slice(1);
@@ -241,11 +325,18 @@ async function handoverRig(options: { alive?: () => boolean } = {}) {
     ].join("\n");
   const osa = async (script: string): Promise<OsaResult> => {
     scripts.push(script);
-    if (script.includes("contents of aSession")) return { code: 0, stdout: screenText(), stderr: "", timedOut: false };
+    if (script.includes("contents of aSession"))
+      return { code: 0, stdout: screenText(), stderr: "", timedOut: false };
     if (script.includes("write text")) typeInto(script);
-    if (script.includes("create window")) return { code: 0, stdout: "ITERM-1\n", stderr: "", timedOut: false };
+    if (script.includes("create window"))
+      return { code: 0, stdout: "ITERM-1\n", stderr: "", timedOut: false };
     if (script.includes("return tty")) {
-      return { code: 0, stdout: (options.alive?.() ?? true) ? "/dev/ttys009" : "gone", stderr: "", timedOut: false };
+      return {
+        code: 0,
+        stdout: (options.alive?.() ?? true) ? "/dev/ttys009" : "gone",
+        stderr: "",
+        timedOut: false,
+      };
     }
     return { code: 0, stdout: "ok", stderr: "", timedOut: false };
   };
@@ -289,7 +380,11 @@ async function handoverRig(options: { alive?: () => boolean } = {}) {
   };
   (daemon as any).sessions.set("ggcoder-old", session);
   const replies: any[] = [];
-  const ctx = { daemon, reply: (m: unknown) => replies.push(m), broadcast: (m: unknown) => sent.push(m) };
+  const ctx = {
+    daemon,
+    reply: (m: unknown) => replies.push(m),
+    broadcast: (m: unknown) => sent.push(m),
+  };
   const send = (message: unknown) => handleMessage(JSON.stringify(message), ctx);
   return { daemon, sent, replies, scripts, session, send, file, desk, closedCount: () => closed };
 }
@@ -298,7 +393,11 @@ test("the announcement names ggcoder as native", async () => {
   const { daemon, sent } = await handoverRig();
   (daemon as any).announceProviders();
   // Where windows can open (macOS), the screen can be sent too.
-  expect(sent.findLast((m) => m.t === "providers").desk).toEqual({ available: true, capture: true, native: ["ggcoder"] });
+  expect(sent.findLast((m) => m.t === "providers").desk).toEqual({
+    available: true,
+    capture: true,
+    native: ["ggcoder"],
+  });
   daemon.closeAll();
 });
 
@@ -332,15 +431,24 @@ test("handover, routing and teardown", async () => {
   expect(rig.closedCount()).toBe(1);
 
   const started = sent.find((m) => m.t === "session.started");
-  expect(started).toMatchObject({ providerId: "ggcoder", resumed: true, cwd: CWD, agentSessionId: AGENT_ID });
+  expect(started).toMatchObject({
+    providerId: "ggcoder",
+    resumed: true,
+    cwd: CWD,
+    agentSessionId: AGENT_ID,
+  });
   const id: string = started.sessionId;
   expect(id).toMatch(/^ggcoder-[0-9a-z]+$/);
   expect(id).not.toBe("ggcoder-old");
   expect(sent.findLast((m) => m.t === "providers").activeSessions).toEqual([id]);
   // The transcript is painted from the file, as a resume is.
-  const replay = sent.filter((m) => m.t === "session.replay" && m.sessionId === id).flatMap((m) => m.events);
+  const replay = sent
+    .filter((m) => m.t === "session.replay" && m.sessionId === id)
+    .flatMap((m) => m.events);
   expect(JSON.stringify(replay)).toContain("Earlier answer");
-  expect(sent.some((m) => m.t === "session.replay" && m.sessionId === id && m.complete === true)).toBe(true);
+  expect(
+    sent.some((m) => m.t === "session.replay" && m.sessionId === id && m.complete === true),
+  ).toBe(true);
 
   // Draft: clear + text, no Enter, throttled; still mirrored to other clients.
   const before = scripts.length;
@@ -353,12 +461,22 @@ test("handover, routing and teardown", async () => {
   // Key by key: a multi-character write would read as a paste in OG Coder.
   for (const ch of "hello") expect(drafts[0]).toContain(`write text "${ch}" newline NO`);
   expect(drafts[0]).not.toContain("character id 13");
-  expect(sent.filter((m) => m.t === "session.draft" && m.sessionId === id).map((m) => m.text)).toEqual(["hel", "hello"]);
+  expect(
+    sent.filter((m) => m.t === "session.draft" && m.sessionId === id).map((m) => m.text),
+  ).toEqual(["hel", "hello"]);
 
   // Prompt: echoed, typed, Enter. No immediate idle: the file ends the turn.
   await send({ t: "session.prompt", sessionId: id, text: "do it" });
-  await until(() => scripts.some((s) => s.includes('"do it" newline NO') && s.includes("character id 13")), "prompt typed");
-  expect(sent.some((m) => m.t === "session.event" && m.payload?.kind === "user_message" && m.payload.text === "do it")).toBe(true);
+  await until(
+    () => scripts.some((s) => s.includes('"do it" newline NO') && s.includes("character id 13")),
+    "prompt typed",
+  );
+  expect(
+    sent.some(
+      (m) =>
+        m.t === "session.event" && m.payload?.kind === "user_message" && m.payload.text === "do it",
+    ),
+  ).toBe(true);
   expect(daemon.sessionView(id)?.working).toBe(true);
   expect(sent.some((m) => m.t === "session.idle")).toBe(false);
 
@@ -371,7 +489,9 @@ test("handover, routing and teardown", async () => {
       line({ type: "custom", kind: "run_finished", id: "r2" }),
   );
   await until(() => sent.find((m) => m.t === "session.idle" && m.sessionId === id), "idle");
-  const live = sent.filter((m) => m.t === "session.event" && m.sessionId === id).map((m) => m.payload);
+  const live = sent
+    .filter((m) => m.t === "session.event" && m.sessionId === id)
+    .map((m) => m.payload);
   expect(live.filter((p) => p.kind === "user_message")).toHaveLength(1);
   expect(live.some((p) => p.update?.content?.text === "Did it")).toBe(true);
   expect(sent.find((m) => m.t === "session.idle").providerId).toBe("ggcoder");
@@ -385,10 +505,42 @@ test("handover, routing and teardown", async () => {
 
   // The phone's pills drive OG Coder: model by its /model command, thinking by
   // Shift+Tab presses, plan mode refused.
-  (daemon as unknown as { sessions: Map<string, { native: { configOptions: unknown[] } }> }).sessions.get(id)!.native.configOptions = [
-    { id: "model", name: "Model", category: "model", type: "select", currentValue: "opus", options: [{ value: "opus", name: "Opus" }, { value: "sonnet", name: "Sonnet" }] },
-    { id: "thinking", name: "Thinking", category: "thought_level", type: "select", currentValue: "high", options: ["off", "low", "medium", "high", "xhigh", "max"].map((value) => ({ value, name: value })) },
-    { id: "mode", name: "Mode", category: "mode", type: "select", currentValue: "default", options: [{ value: "default", name: "Default" }, { value: "plan", name: "Plan" }] },
+  (
+    daemon as unknown as { sessions: Map<string, { native: { configOptions: unknown[] } }> }
+  ).sessions.get(id)!.native.configOptions = [
+    {
+      id: "model",
+      name: "Model",
+      category: "model",
+      type: "select",
+      currentValue: "opus",
+      options: [
+        { value: "opus", name: "Opus" },
+        { value: "sonnet", name: "Sonnet" },
+      ],
+    },
+    {
+      id: "thinking",
+      name: "Thinking",
+      category: "thought_level",
+      type: "select",
+      currentValue: "high",
+      options: ["off", "low", "medium", "high", "xhigh", "max"].map((value) => ({
+        value,
+        name: value,
+      })),
+    },
+    {
+      id: "mode",
+      name: "Mode",
+      category: "mode",
+      type: "select",
+      currentValue: "default",
+      options: [
+        { value: "default", name: "Default" },
+        { value: "plan", name: "Plan" },
+      ],
+    },
   ];
   await send({ t: "session.config", sessionId: id, configId: "model", value: "sonnet" });
   expect(scripts.some((script) => script.includes('"/model sonnet" newline NO'))).toBe(true);
@@ -406,13 +558,30 @@ test("handover, routing and teardown", async () => {
   // The desk talks back: typing in OG Coder becomes a draft from "desk", a
   // clear clears the phone, and a status-line change moves the phone's pills.
   desk.input = "typed at the desk";
-  await until(() => sent.find((m) => m.t === "session.draft" && m.from === DESK_DRAFT_FROM && m.text === "typed at the desk"), "desk draft");
+  await until(
+    () =>
+      sent.find(
+        (m) =>
+          m.t === "session.draft" && m.from === DESK_DRAFT_FROM && m.text === "typed at the desk",
+      ),
+    "desk draft",
+  );
   desk.input = "";
-  await until(() => sent.find((m) => m.t === "session.draft" && m.from === DESK_DRAFT_FROM && m.text === ""), "desk clear");
+  await until(
+    () => sent.find((m) => m.t === "session.draft" && m.from === DESK_DRAFT_FROM && m.text === ""),
+    "desk clear",
+  );
   desk.thinking = "max";
   desk.plan = true;
   await until(
-    () => sent.find((m) => m.t === "session.config" && m.sessionId === id && m.configOptions[1]?.currentValue === "max" && m.configOptions[2]?.currentValue === "plan"),
+    () =>
+      sent.find(
+        (m) =>
+          m.t === "session.config" &&
+          m.sessionId === id &&
+          m.configOptions[1]?.currentValue === "max" &&
+          m.configOptions[2]?.currentValue === "plan",
+      ),
     "desk pills",
   );
 
@@ -425,7 +594,11 @@ test("handover, routing and teardown", async () => {
   // instead of skipping every one as already seen (the empty-screen bug).
   const reopened = again.at(-1);
   expect(reopened.sessionId).not.toBe(id);
-  expect(reopened).toMatchObject({ resumed: true, agentSessionId: AGENT_ID, providerId: "ggcoder" });
+  expect(reopened).toMatchObject({
+    resumed: true,
+    agentSessionId: AGENT_ID,
+    providerId: "ggcoder",
+  });
   expect(reopened.configOptions.length).toBeGreaterThan(0);
   expect(daemon.isNative(id)).toBe(false);
   expect(daemon.isNative(reopened.sessionId)).toBe(true);
@@ -438,12 +611,18 @@ test("handover, routing and teardown", async () => {
   // Still the same window: typing reaches it under the new id.
   const sinceReopen = scripts.length;
   await send({ t: "session.draft", sessionId: newId, text: "x" });
-  await until(() => scripts.slice(sinceReopen).some((s) => s.includes('write text "x"')), "draft after reopen");
+  await until(
+    () => scripts.slice(sinceReopen).some((s) => s.includes('write text "x"')),
+    "draft after reopen",
+  );
 
   // The window closes: the mirror is dropped and re-announced, nothing typed.
   const typed = scripts.filter((s) => s.includes("write text")).length;
   alive = false;
-  await until(() => sent.findLast((m) => m.t === "providers").activeSessions.length === 0, "teardown");
+  await until(
+    () => sent.findLast((m) => m.t === "providers").activeSessions.length === 0,
+    "teardown",
+  );
   expect(daemon.isNative(newId)).toBe(false);
   expect(scripts.filter((s) => s.includes("write text")).length).toBe(typed);
   daemon.closeAll();
@@ -464,20 +643,47 @@ test("closing the session only stops mirroring: no keys go to the window", async
 test("a new conversation opens the app plain in the project and mirrors what it writes", async () => {
   const { daemon, sent, scripts, send, file } = await handoverRig();
   const directory = path.dirname(file);
-  (daemon as any).probes.set("ggcoder", Promise.resolve({ configOptions: [{ id: "model", name: "Model", category: "model", type: "select", currentValue: "opus", options: [{ value: "opus", name: "Opus" }] }], sessions: [] }));
+  (daemon as any).probes.set(
+    "ggcoder",
+    Promise.resolve({
+      configOptions: [
+        {
+          id: "model",
+          name: "Model",
+          category: "model",
+          type: "select",
+          currentValue: "opus",
+          options: [{ value: "opus", name: "Opus" }],
+        },
+      ],
+      sessions: [],
+    }),
+  );
   (daemon as any).knownProject = async (_p: string, cwd: string) => cwd;
   (daemon as any).nativeOptions.pollMs = 10;
   const NEW_ID = "new-conversation-id";
   // OG Coder writes its header moments after it starts.
   setTimeout(() => {
-    void writeFile(path.join(directory, "2026-10-13T20-00-00-000Z_newconv.jsonl"), line({ type: "session", id: NEW_ID, cwd: CWD, timestamp: new Date().toISOString() }));
+    void writeFile(
+      path.join(directory, "2026-10-13T20-00-00-000Z_newconv.jsonl"),
+      line({ type: "session", id: NEW_ID, cwd: CWD, timestamp: new Date().toISOString() }),
+    );
   }, 30);
   const replies: any[] = [];
-  await handleMessage(JSON.stringify({ t: "desk.open", requestId: "n1", target: "native", providerId: "ggcoder", cwd: CWD }), {
-    daemon,
-    reply: (m: unknown) => replies.push(m),
-    broadcast: (m: unknown) => sent.push(m),
-  });
+  await handleMessage(
+    JSON.stringify({
+      t: "desk.open",
+      requestId: "n1",
+      target: "native",
+      providerId: "ggcoder",
+      cwd: CWD,
+    }),
+    {
+      daemon,
+      reply: (m: unknown) => replies.push(m),
+      broadcast: (m: unknown) => sent.push(m),
+    },
+  );
   expect(replies.at(-1)).toMatchObject({ t: "desk.opened", ok: true });
   const open = scripts.find((s) => s.includes("create window"))!;
   expect(open).toMatch(/exec (\S*\/)?ogcoder'/);
@@ -564,10 +770,13 @@ test("a pew2 chat window opened from the phone is remembered, offered, and close
   await send({ t: "desk.open", requestId: "o1", sessionId: "ggcoder-old" });
   // The iTerm id stays in the daemon.
   expect(rig.replies.at(-1)).toEqual({ t: "desk.opened", requestId: "o1", ok: true, app: "iTerm" });
-  expect(sent.findLast((m) => m.t === "providers").desk.windows).toEqual([{ agentSessionId: AGENT_ID, kind: "chat" }]);
+  expect(sent.findLast((m) => m.t === "providers").desk.windows).toEqual([
+    { agentSessionId: AGENT_ID, kind: "chat" },
+  ]);
 
   const watch = setInterval(() => {
-    if (scripts.some((s) => s.includes('"ITERM-CHAT"') && s.includes("character id 3"))) interrupted = true;
+    if (scripts.some((s) => s.includes('"ITERM-CHAT"') && s.includes("character id 3")))
+      interrupted = true;
   }, 5);
   await send({ t: "desk.close", requestId: "c1", sessionId: "ggcoder-old" });
   clearInterval(watch);
@@ -576,7 +785,10 @@ test("a pew2 chat window opened from the phone is remembered, offered, and close
 
   // Nothing left to close: said so.
   await send({ t: "desk.close", requestId: "c2", sessionId: "ggcoder-old" });
-  expect(rig.replies.at(-1)).toMatchObject({ ok: false, message: expect.stringContaining("no terminal open") });
+  expect(rig.replies.at(-1)).toMatchObject({
+    ok: false,
+    message: expect.stringContaining("no terminal open"),
+  });
   daemon.closeAll();
 });
 
@@ -589,7 +801,13 @@ test("the old id still reaches the window after the handover, and re-announces i
 
   // Tapped again with the old id: not "isn't open", but already open, and re-announced.
   await send({ t: "desk.open", requestId: "r2", sessionId: "ggcoder-old", target: "native" });
-  expect(replies.at(-1)).toEqual({ t: "desk.opened", requestId: "r2", ok: true, app: "iTerm", message: "It's already open in OG Coder on the computer." });
+  expect(replies.at(-1)).toEqual({
+    t: "desk.opened",
+    requestId: "r2",
+    ok: true,
+    app: "iTerm",
+    message: "It's already open in OG Coder on the computer.",
+  });
   const again = sent.filter((m) => m.t === "session.started").at(-1);
   expect(again).toMatchObject({ resumed: true, agentSessionId: AGENT_ID });
   expect(again.sessionId).not.toBe(moved);
@@ -597,7 +815,12 @@ test("the old id still reaches the window after the handover, and re-announces i
   // A prompt with the old id is typed into the window, not answered "Unknown session".
   const before = scripts.length;
   await send({ t: "session.prompt", sessionId: "ggcoder-old", text: "still here" });
-  await until(() => scripts.slice(before).some((s) => s.includes('"still here" newline NO')), "prompt typed");
-  expect(replies.some((m) => m.t === "error" && /Unknown session/.test(m.message ?? ""))).toBe(false);
+  await until(
+    () => scripts.slice(before).some((s) => s.includes('"still here" newline NO')),
+    "prompt typed",
+  );
+  expect(replies.some((m) => m.t === "error" && /Unknown session/.test(m.message ?? ""))).toBe(
+    false,
+  );
   rig.daemon.closeAll();
 });

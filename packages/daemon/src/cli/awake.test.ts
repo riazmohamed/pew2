@@ -8,7 +8,8 @@ test("only pew2's caffeinate, and only when pmset lists it", () => {
     "  300     1 /usr/bin/caffeinate -d",
     "  400    50 /usr/bin/caffeinate -i -w 50",
   ].join("\n");
-  const pmset = "   pid 200(caffeinate): [0x1] 00:01:00 PreventUserIdleSystemSleep named: \"caffeinate command-line tool\"";
+  const pmset =
+    '   pid 200(caffeinate): [0x1] 00:01:00 PreventUserIdleSystemSleep named: "caffeinate command-line tool"';
   expect(pew2Assertions(ps, pmset)).toEqual([200]);
   expect(pew2Assertions(ps, "")).toEqual([]);
 });

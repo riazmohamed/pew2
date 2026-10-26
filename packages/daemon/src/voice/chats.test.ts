@@ -1,12 +1,30 @@
 import { expect, test } from "bun:test";
-import { REACH_PROJECTS, matchAgent, matchProjects, pickAgent, pickChat, recentProjects, runChatTool, withinReach, type ChatPort, type VoiceChat } from "./chats.js";
+import {
+  REACH_PROJECTS,
+  matchAgent,
+  matchProjects,
+  pickAgent,
+  pickChat,
+  recentProjects,
+  runChatTool,
+  withinReach,
+  type ChatPort,
+  type VoiceChat,
+} from "./chats.js";
 
 const agents = [
   { providerId: "claude", agentName: "Claude Code" },
   { providerId: "codex", agentName: "Codex" },
 ];
 
-const chat = (providerId: string, cwd: string, agentSessionId: string, updatedAt: string, title?: string, liveSessionId?: string): VoiceChat => ({
+const chat = (
+  providerId: string,
+  cwd: string,
+  agentSessionId: string,
+  updatedAt: string,
+  title?: string,
+  liveSessionId?: string,
+): VoiceChat => ({
   providerId,
   agentName: agents.find((a) => a.providerId === providerId)!.agentName,
   agentSessionId,
@@ -47,7 +65,10 @@ test("open_chat picks the newest chat in the project, or the one whose title fit
   const byTitle = pickChat(chats, agents, { about: "checkout" });
   expect(byTitle.kind === "found" && byTitle.chat.agentSessionId).toBe("s1");
   expect(pickChat(chats, agents, { project: "billing", agent: "codex" }).kind).toBe("none");
-  expect(pickChat(chats, agents, { project: "nope" })).toMatchObject({ kind: "none", say: "I can't find a chat in nope." });
+  expect(pickChat(chats, agents, { project: "nope" })).toMatchObject({
+    kind: "none",
+    say: "I can't find a chat in nope.",
+  });
 });
 
 test("two projects sharing a spoken name are asked about, not guessed", () => {
@@ -56,10 +77,18 @@ test("two projects sharing a spoken name are asked about, not guessed", () => {
 });
 
 test("start_chat's agent: the one named, else the last used there, else the calling chat's", () => {
-  expect(pickAgent(chats, agents, "/w/storefront", undefined, "claude")).toMatchObject({ providerId: "codex" });
-  expect(pickAgent(chats, agents, "/w/storefront", "claude", undefined)).toMatchObject({ providerId: "claude" });
-  expect(pickAgent(chats, agents, "/w/new", undefined, "codex")).toMatchObject({ providerId: "codex" });
-  expect(pickAgent(chats, agents, "/w/new", undefined, undefined)).toEqual({ say: "Which agent should I start?" });
+  expect(pickAgent(chats, agents, "/w/storefront", undefined, "claude")).toMatchObject({
+    providerId: "codex",
+  });
+  expect(pickAgent(chats, agents, "/w/storefront", "claude", undefined)).toMatchObject({
+    providerId: "claude",
+  });
+  expect(pickAgent(chats, agents, "/w/new", undefined, "codex")).toMatchObject({
+    providerId: "codex",
+  });
+  expect(pickAgent(chats, agents, "/w/new", undefined, undefined)).toEqual({
+    say: "Which agent should I start?",
+  });
 });
 
 test("the briefing's projects are newest first, each once", () => {
@@ -92,15 +121,26 @@ function port(overrides: Partial<ChatPort> = {}) {
 
 test("open_chat reopens the stored chat and marks it on the board", async () => {
   const { port: p, calls } = port();
-  const result = JSON.parse((await runChatTool("open_chat", JSON.stringify({ project: "billing" }), p)).output);
-  expect(result).toMatchObject({ ok: true, session_id: "live-1", project: "billing-api", already_open: false });
+  const result = JSON.parse(
+    (await runChatTool("open_chat", JSON.stringify({ project: "billing" }), p)).output,
+  );
+  expect(result).toMatchObject({
+    ok: true,
+    session_id: "live-1",
+    project: "billing-api",
+    already_open: false,
+  });
   expect(calls).toEqual(["resume b2 /w/billing-api", "mark live-1"]);
 });
 
 test("open_chat on a chat that is already open hands it straight back", async () => {
-  const open = chats.map((c) => (c.agentSessionId === "b2" ? { ...c, liveSessionId: "s-live" } : c));
+  const open = chats.map((c) =>
+    c.agentSessionId === "b2" ? { ...c, liveSessionId: "s-live" } : c,
+  );
   const { port: p, calls } = port({ chats: async () => open });
-  const result = JSON.parse((await runChatTool("open_chat", JSON.stringify({ project: "billing" }), p)).output);
+  const result = JSON.parse(
+    (await runChatTool("open_chat", JSON.stringify({ project: "billing" }), p)).output,
+  );
   expect(result).toMatchObject({ ok: true, session_id: "s-live", already_open: true });
   expect(calls).toEqual(["mark s-live"]);
 });
@@ -108,37 +148,84 @@ test("open_chat on a chat that is already open hands it straight back", async ()
 test("start_chat starts the agent last used in the project and sends the first message", async () => {
   const { port: p, calls } = port();
   const result = JSON.parse(
-    (await runChatTool("start_chat", JSON.stringify({ project: "storefront", text: "Fix the checkout bug" }), p)).output,
+    (
+      await runChatTool(
+        "start_chat",
+        JSON.stringify({ project: "storefront", text: "Fix the checkout bug" }),
+        p,
+      )
+    ).output,
   );
   expect(result).toMatchObject({ ok: true, session_id: "live-2", agent: "Codex", sent: true });
-  expect(calls).toEqual(["start codex /w/storefront", "tell live-2 Fix the checkout bug", "mark live-2"]);
+  expect(calls).toEqual([
+    "start codex /w/storefront",
+    "tell live-2 Fix the checkout bug",
+    "mark live-2",
+  ]);
 });
 
 test("start_chat in a project with an open chat sends it there instead of starting another", async () => {
-  const open = [{ sessionId: "s-open", folder: "storefront", agentName: "Codex", working: false, lastLines: [] }];
+  const open = [
+    {
+      sessionId: "s-open",
+      folder: "storefront",
+      agentName: "Codex",
+      working: false,
+      lastLines: [],
+    },
+  ];
   const { port: p, calls } = port({ statuses: () => open });
-  const result = JSON.parse((await runChatTool("start_chat", JSON.stringify({ project: "storefront", text: "Which projects are active?" }), p)).output);
-  expect(result).toMatchObject({ ok: true, session_id: "s-open", reused_open_chat: true, say: "Sent to storefront." });
+  const result = JSON.parse(
+    (
+      await runChatTool(
+        "start_chat",
+        JSON.stringify({ project: "storefront", text: "Which projects are active?" }),
+        p,
+      )
+    ).output,
+  );
+  expect(result).toMatchObject({
+    ok: true,
+    session_id: "s-open",
+    reused_open_chat: true,
+    say: "Sent to storefront.",
+  });
   expect(calls).toEqual(["tell s-open Which projects are active?", "mark s-open"]);
   // Asked for a fresh chat: a new one.
   const fresh = port({ statuses: () => open });
-  const started = JSON.parse((await runChatTool("start_chat", JSON.stringify({ project: "storefront", text: "hi", new_chat: true }), fresh.port)).output);
+  const started = JSON.parse(
+    (
+      await runChatTool(
+        "start_chat",
+        JSON.stringify({ project: "storefront", text: "hi", new_chat: true }),
+        fresh.port,
+      )
+    ).output,
+  );
   expect(started).toMatchObject({ ok: true, session_id: "live-2" });
 });
 
 test("failures are something Pew can say, never a throw", async () => {
   const { port: failing } = port({ resume: async () => undefined });
-  expect(JSON.parse((await runChatTool("open_chat", '{"project":"docs"}', failing)).output)).toMatchObject({ ok: false, say: "I couldn't reopen that chat." });
+  expect(
+    JSON.parse((await runChatTool("open_chat", '{"project":"docs"}', failing)).output),
+  ).toMatchObject({ ok: false, say: "I couldn't reopen that chat." });
   const { port: broken } = port({
     start: async () => {
       throw new Error("spawn failed");
     },
   });
-  expect(JSON.parse((await runChatTool("start_chat", '{"project":"docs"}', broken)).output)).toMatchObject({ ok: false });
-  expect(JSON.parse((await runChatTool("start_chat", '{"project":"mars"}', broken)).output)).toMatchObject({
+  expect(
+    JSON.parse((await runChatTool("start_chat", '{"project":"docs"}', broken)).output),
+  ).toMatchObject({ ok: false });
+  expect(
+    JSON.parse((await runChatTool("start_chat", '{"project":"mars"}', broken)).output),
+  ).toMatchObject({
     say: "I don't know a project called mars.",
   });
-  expect(JSON.parse((await runChatTool("open_chat", "not json", broken)).output)).toMatchObject({ say: "Which project?" });
+  expect(JSON.parse((await runChatTool("open_chat", "not json", broken)).output)).toMatchObject({
+    say: "Which project?",
+  });
 });
 
 test("Pew's reach: open chats, plus the newest projects of the last two weeks, never the whole history", () => {
@@ -148,11 +235,17 @@ test("Pew's reach: open chats, plus the newest projects of the last two weeks, n
   expect(reach.map((c) => c.agentSessionId)).toEqual(["b2", "s1", "b1", "d1"]);
   const later = Date.parse("2026-10-30T00:00:00Z");
   // Ten days on, only billing and storefront are inside the window.
-  expect(withinReach(chats, later).map((c) => c.cwd)).toEqual(["/w/billing-api", "/w/storefront", "/w/billing-api"]);
+  expect(withinReach(chats, later).map((c) => c.cwd)).toEqual([
+    "/w/billing-api",
+    "/w/storefront",
+    "/w/billing-api",
+  ]);
   // An old chat that is open right now stays reachable.
   const open = chats.map((c) => (c.agentSessionId === "d1" ? { ...c, liveSessionId: "live" } : c));
   expect(withinReach(open, later).map((c) => c.agentSessionId)).toContain("d1");
   // Many recent projects: only the newest few.
-  const many = Array.from({ length: 20 }, (_, i) => chat("claude", `/w/p${i}`, `x${i}`, `2026-10-19T${String(23 - i).padStart(2, "0")}:00:00Z`));
+  const many = Array.from({ length: 20 }, (_, i) =>
+    chat("claude", `/w/p${i}`, `x${i}`, `2026-10-19T${String(23 - i).padStart(2, "0")}:00:00Z`),
+  );
   expect(new Set(withinReach(many, now).map((c) => c.cwd)).size).toBe(REACH_PROJECTS);
 });

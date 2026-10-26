@@ -75,7 +75,7 @@ function StageButtonView({
 }: StageButtonProps) {
   const agent = useAgentColor();
   const reduce = useReducedMotion();
-  const ink = kind === "danger" ? theme.color.danger : color ?? agent;
+  const ink = kind === "danger" ? theme.color.danger : (color ?? agent);
   const lit = kind === "primary" && !disabled;
 
   const scale = useSharedValue(1);
@@ -88,7 +88,10 @@ function StageButtonView({
   useEffect(() => {
     if (lit && !wasLit.current && !reduce) {
       sweep.value = -1;
-      sweep.value = withSequence(withTiming(-1, { duration: 120 }), withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }));
+      sweep.value = withSequence(
+        withTiming(-1, { duration: 120 }),
+        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }),
+      );
     }
     wasLit.current = lit;
   }, [lit, reduce, sweep]);
@@ -121,7 +124,10 @@ function StageButtonView({
   const wash = useAnimatedStyle(() => ({ opacity: 0.14 + pressed.value * 0.16 }));
   const band = useAnimatedStyle(() => ({
     opacity: sweep.value <= -1 || sweep.value >= 1 ? 0 : 1,
-    transform: [{ translateX: ((sweep.value + 1) / 2) * (width.value + 80) - 80 }, { skewX: "-20deg" }],
+    transform: [
+      { translateX: ((sweep.value + 1) / 2) * (width.value + 80) - 80 },
+      { skewX: "-20deg" },
+    ],
   }));
 
   const height = compact ? COMPACT : HEIGHT;
@@ -160,7 +166,10 @@ function StageButtonView({
       ]}
     >
       {/* Clipped panel: dot texture, the colour wash, and the light sweep. */}
-      <View style={[StyleSheet.absoluteFill, styles.clip, { borderRadius: height / 2 }]} pointerEvents="none">
+      <View
+        style={[StyleSheet.absoluteFill, styles.clip, { borderRadius: height / 2 }]}
+        pointerEvents="none"
+      >
         <DotGrid fine />
         {lit ? <Animated.View style={[StyleSheet.absoluteFill, liveWash, wash]} /> : null}
         {lit ? <Animated.View style={[styles.band, band]} /> : null}
@@ -201,7 +210,13 @@ const styles = StyleSheet.create({
   unlit: { borderStyle: "dashed", borderColor: theme.stage.dash },
   disabled: { opacity: 0.55 },
   clip: { overflow: "hidden" },
-  band: { position: "absolute", top: -10, bottom: -10, width: 46, backgroundColor: "rgba(255,255,255,0.16)" },
+  band: {
+    position: "absolute",
+    top: -10,
+    bottom: -10,
+    width: 46,
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
   row: { flexDirection: "row", alignItems: "center", gap: theme.space(2), maxWidth: "100%" },
   label: {
     fontFamily: theme.display.regular,

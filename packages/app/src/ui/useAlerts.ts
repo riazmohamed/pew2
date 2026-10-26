@@ -5,7 +5,13 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Linking } from "react-native";
-import { askDecision, cardMode, type AlertStatus, type AskTrigger, type CardMode } from "../notificationAsk";
+import {
+  askDecision,
+  cardMode,
+  type AlertStatus,
+  type AskTrigger,
+  type CardMode,
+} from "../notificationAsk";
 import { loadAlertsDismissedAt, saveAlertsDismissedAt } from "../preferences";
 import { ensureNotificationPermission, notificationStatus } from "./notifier";
 
@@ -23,7 +29,10 @@ export interface Alerts {
 }
 
 /** `registered` is true once the daemon already holds this phone's push address. */
-export function useAlerts(registerPush: () => void, registered: { readonly current: boolean | undefined }): Alerts {
+export function useAlerts(
+  registerPush: () => void,
+  registered: { readonly current: boolean | undefined },
+): Alerts {
   const [status, setStatus] = useState<AlertStatus | undefined>(undefined);
   const [card, setCard] = useState<CardMode | undefined>(() =>
     __DEV__ && process.env.EXPO_PUBLIC_DEV_ASK_ALERTS === "1" ? "allow" : undefined,
@@ -57,25 +66,33 @@ export function useAlerts(registerPush: () => void, registered: { readonly curre
     resolve?.(allowed);
   }, []);
 
-  const ask = useCallback(async (trigger: AskTrigger): Promise<boolean> => {
-    const current = await notificationStatus();
-    setStatus(current);
-    const decision = askDecision({ status: current, trigger, dismissedAt: await loadAlertsDismissedAt(), now: Date.now() });
-    if (decision === "register") {
-      handOver();
-      return true;
-    }
-    if (decision === "none") return false;
-    // A card already up answers for both askers.
-    const previous = pending.current;
-    return new Promise<boolean>((resolve) => {
-      pending.current = (allowed) => {
-        previous?.(allowed);
-        resolve(allowed);
-      };
-      setCard(cardMode(current));
-    });
-  }, [handOver]);
+  const ask = useCallback(
+    async (trigger: AskTrigger): Promise<boolean> => {
+      const current = await notificationStatus();
+      setStatus(current);
+      const decision = askDecision({
+        status: current,
+        trigger,
+        dismissedAt: await loadAlertsDismissedAt(),
+        now: Date.now(),
+      });
+      if (decision === "register") {
+        handOver();
+        return true;
+      }
+      if (decision === "none") return false;
+      // A card already up answers for both askers.
+      const previous = pending.current;
+      return new Promise<boolean>((resolve) => {
+        pending.current = (allowed) => {
+          previous?.(allowed);
+          resolve(allowed);
+        };
+        setCard(cardMode(current));
+      });
+    },
+    [handOver],
+  );
 
   const allow = useCallback(() => {
     if (card === "settings") {

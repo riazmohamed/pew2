@@ -11,7 +11,12 @@
  * key on an agent that has its own login flow is a warning, not a failure, and
  * must not trap an agent in a loop it cannot escape.
  */
-import { loadProviders, isAvailable, unavailableReason, providerDirs } from "../providers/registry.js";
+import {
+  loadProviders,
+  isAvailable,
+  unavailableReason,
+  providerDirs,
+} from "../providers/registry.js";
 import { readDisabled } from "../providers/enabled.js";
 import {
   lanAddresses,
@@ -244,8 +249,7 @@ export async function doctor(options: DoctorOptions = {}): Promise<DoctorReport>
     // `PEW2_TOKEN` wins over anything on disk, so when it is set and unusable,
     // "run pew2 pair" is advice that cannot work — the minted token would be
     // ignored in favour of the env var that caused this.
-    const weakEnvToken =
-      env.PEW2_TOKEN !== undefined && env.PEW2_TOKEN.length < MIN_TOKEN_LENGTH;
+    const weakEnvToken = env.PEW2_TOKEN !== undefined && env.PEW2_TOKEN.length < MIN_TOKEN_LENGTH;
     problems.push({
       id: "not-paired",
       severity: "error",

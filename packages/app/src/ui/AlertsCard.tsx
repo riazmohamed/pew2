@@ -13,10 +13,21 @@ interface Props {
 
 export function AlertsCard({ card, onAllow, onNotNow }: Props) {
   return (
-    <Sheet visible={card !== undefined} label="Alerts" pewMood="happy" title={ALERTS_TITLE} onClose={onNotNow} dismissLabel="Not now">
+    <Sheet
+      visible={card !== undefined}
+      label="Alerts"
+      pewMood="happy"
+      title={ALERTS_TITLE}
+      onClose={onNotNow}
+      dismissLabel="Not now"
+    >
       <View style={styles.content}>
         <Text style={styles.line}>{ALERTS_LINE}</Text>
-        <StageButton label={card === "settings" ? "Open Settings" : "Allow"} feel="chosen" onPress={onAllow} />
+        <StageButton
+          label={card === "settings" ? "Open Settings" : "Allow"}
+          feel="chosen"
+          onPress={onAllow}
+        />
         <StageButton kind="secondary" label="Not now" onPress={onNotNow} />
       </View>
     </Sheet>

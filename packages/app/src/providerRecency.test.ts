@@ -63,9 +63,10 @@ test("GG Coder and GG Goals always lead, in that order, whatever was used last",
     "claude-code",
   ]);
   // Missing pinned agents leave no gap.
-  expect(orderProvidersByRecency(providers.filter((p) => p.id !== "ggcoder"), sessions).map((p) => p.id)).toEqual([
-    "gg-goals",
-    "opencode",
-    "claude-code",
-  ]);
+  expect(
+    orderProvidersByRecency(
+      providers.filter((p) => p.id !== "ggcoder"),
+      sessions,
+    ).map((p) => p.id),
+  ).toEqual(["gg-goals", "opencode", "claude-code"]);
 });

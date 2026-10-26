@@ -10,7 +10,12 @@ test("one message is shown itself, several as a count", () => {
   expect(summariseQueue([])).toEqual({ kind: "none" });
   const one = summariseQueue([{ id: "q_1", text: "fix it\nplease" }]);
   expect(one.kind === "single" && one.preview).toBe("fix it");
-  expect(summariseQueue([{ id: "a", text: "a" }, { id: "b", text: "b" }])).toEqual({
+  expect(
+    summariseQueue([
+      { id: "a", text: "a" },
+      { id: "b", text: "b" },
+    ]),
+  ).toEqual({
     kind: "several",
     count: 2,
     label: "2 messages queued for the next turn",
@@ -18,7 +23,10 @@ test("one message is shown itself, several as a count", () => {
 });
 
 test("returned messages fill only an empty draft", () => {
-  const returned = [{ id: "a", text: "one" }, { id: "b", text: " two " }];
+  const returned = [
+    { id: "a", text: "one" },
+    { id: "b", text: " two " },
+  ];
   expect(returnedDraft(returned, "")).toBe("one\n\ntwo");
   expect(returnedDraft(returned, "  ")).toBe("one\n\ntwo");
   expect(returnedDraft(returned, "typing")).toBeUndefined();

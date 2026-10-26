@@ -34,7 +34,9 @@ export function beginAndroidCall(): void {
   speakerOn = false;
   void (async () => {
     if (Number(Platform.Version) >= 31) {
-      await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT).catch(() => undefined);
+      await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT).catch(
+        () => undefined,
+      );
     }
     // Ended while the permission was being asked: nothing to route.
     if (!routed) return;

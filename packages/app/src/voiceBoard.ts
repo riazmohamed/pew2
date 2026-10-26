@@ -14,7 +14,13 @@
  * See CLAUDE.md "Pure modules stay Expo-free".
  */
 import { plainText, type wire } from "@pew2/protocol";
-import { toolTarget, type CallCaption, type CallState, type CompletedTool, type VoiceInboxItem } from "./voiceCall";
+import {
+  toolTarget,
+  type CallCaption,
+  type CallState,
+  type CompletedTool,
+  type VoiceInboxItem,
+} from "./voiceCall";
 import type { PewMood } from "./pew/engineBody";
 
 export type BoardLine = wire.VoiceBoardLine;
@@ -72,7 +78,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const STATUSES: readonly BoardStatus[] = ["working", "asks", "needs", "done", "idle"];
-const LINE_KINDS: readonly BoardLine["kind"][] = ["text", "tool", "result", "ask", "perm", "pew", "note"];
+const LINE_KINDS: readonly BoardLine["kind"][] = [
+  "text",
+  "tool",
+  "result",
+  "ask",
+  "perm",
+  "pew",
+  "note",
+];
 
 function int(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -84,7 +98,8 @@ export function readBoardSessions(value: unknown): BoardSession[] | undefined {
   const out: BoardSession[] = [];
   const ids = new Set<string>();
   for (const entry of value) {
-    if (!isRecord(entry) || typeof entry.sessionId !== "string" || ids.has(entry.sessionId)) continue;
+    if (!isRecord(entry) || typeof entry.sessionId !== "string" || ids.has(entry.sessionId))
+      continue;
     const status = STATUSES.find((s) => s === entry.status) ?? "idle";
     const lines: BoardLine[] = [];
     if (Array.isArray(entry.lines)) {
@@ -115,7 +130,11 @@ export function readBoardSessions(value: unknown): BoardSession[] | undefined {
 export function sessionsFromInbox(items: readonly VoiceInboxItem[]): BoardSession[] {
   const bySession = new Map<string, BoardSession>();
   for (const item of items) {
-    const line: BoardLine = { kind: item.kind === "approval" ? "perm" : "ask", text: item.title, at: item.since };
+    const line: BoardLine = {
+      kind: item.kind === "approval" ? "perm" : "ask",
+      text: item.title,
+      at: item.since,
+    };
     const status: BoardStatus = item.kind === "approval" ? "needs" : "asks";
     const known = bySession.get(item.sessionId);
     if (known) {
@@ -198,9 +217,16 @@ export function placeLanes(
   return { slots: next, evicted };
 }
 
-function foldSessions(state: BoardState, sessions: BoardSession[], now: number, fromBoard: boolean): BoardState {
+function foldSessions(
+  state: BoardState,
+  sessions: BoardSession[],
+  now: number,
+  fromBoard: boolean,
+): BoardState {
   // The first frame (or the first real board after inbox-built lanes) is history: nothing types out or evicts.
-  const first = (fromBoard && !state.fromBoard) || (state.sessions.length === 0 && state.slots.every((id) => id === undefined));
+  const first =
+    (fromBoard && !state.fromBoard) ||
+    (state.sessions.length === 0 && state.slots.every((id) => id === undefined));
   const known = new Set(state.sessions.map((s) => s.sessionId));
   const { slots, evicted } = placeLanes(state.slots, sessions, (id) => !first && !known.has(id));
   const seen: Record<string, number> = {};
@@ -210,7 +236,8 @@ function foldSessions(state: BoardState, sessions: BoardSession[], now: number, 
       const key = lineKey(session.sessionId, line);
       const known = state.seen[key];
       seen[key] = known ?? (first ? 0 : now);
-      if (known === undefined && !first && line.kind === "tool") steps[session.sessionId] = (steps[session.sessionId] ?? 0) + 1;
+      if (known === undefined && !first && line.kind === "tool")
+        steps[session.sessionId] = (steps[session.sessionId] ?? 0) + 1;
     }
   }
   const present = new Set(sessions.map((s) => s.sessionId));
@@ -220,7 +247,9 @@ function foldSessions(state: BoardState, sessions: BoardSession[], now: number, 
   );
   // Anything off screen that never held a lane folds too, in board order, before the evicted.
   // Reverse board order, so the most relevant of them is the one the chip names.
-  const never = sessions.filter((s) => !onScreen.has(s.sessionId) && !folded.includes(s.sessionId)).map((s) => s.sessionId);
+  const never = sessions
+    .filter((s) => !onScreen.has(s.sessionId) && !folded.includes(s.sessionId))
+    .map((s) => s.sessionId);
   folded.unshift(...never.reverse());
   return { fromBoard, sessions, slots, seen, folded, steps };
 }
@@ -235,7 +264,10 @@ export function foldBoard(state: BoardState, message: unknown, now: number): Boa
   if (message.t === "voice.inbox" && !state.fromBoard && Array.isArray(message.items)) {
     const items = message.items.filter(
       (i): i is VoiceInboxItem =>
-        isRecord(i) && typeof i.id === "string" && typeof i.sessionId === "string" && typeof i.title === "string" &&
+        isRecord(i) &&
+        typeof i.id === "string" &&
+        typeof i.sessionId === "string" &&
+        typeof i.title === "string" &&
         (i.kind === "approval" || i.kind === "question" || i.kind === "plan"),
     );
     return foldSessions(state, sessionsFromInbox(items), now, false);
@@ -326,7 +358,9 @@ export function lineView(key: string, line: BoardLine, seenAt: number, now: numb
 
 /** How long a line holds the lane once it is showing. */
 function dwellOf(line: BoardLine): number {
-  return line.kind === "pew" ? Math.max(DWELL_MS, typeDuration(line) + PEW_DWELL_EXTRA_MS) : DWELL_MS;
+  return line.kind === "pew"
+    ? Math.max(DWELL_MS, typeDuration(line) + PEW_DWELL_EXTRA_MS)
+    : DWELL_MS;
 }
 
 /**
@@ -351,7 +385,8 @@ export function currentLine(
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i]!;
       if (line.kind === "pew" || line.kind === "note") break;
-      if (line.kind === "ask" || line.kind === "perm") return { line, at: seen[lineKey(session.sessionId, line)] ?? 0 };
+      if (line.kind === "ask" || line.kind === "perm")
+        return { line, at: seen[lineKey(session.sessionId, line)] ?? 0 };
     }
   }
   const arrival = lines.map((line) => {
@@ -367,7 +402,10 @@ export function currentLine(
     // waits out the current line's dwell.
     let ready = Number.POSITIVE_INFINITY;
     for (let k = i; k < lines.length; k++) {
-      const at = cur < 0 || lines[k]!.kind === "pew" ? arrival[k]! : Math.max(arrival[k]!, curAt + dwellOf(lines[cur]!));
+      const at =
+        cur < 0 || lines[k]!.kind === "pew"
+          ? arrival[k]!
+          : Math.max(arrival[k]!, curAt + dwellOf(lines[cur]!));
       if (at < ready) ready = at;
     }
     if (ready > now) break;
@@ -409,7 +447,12 @@ function pewTyping(state: BoardState, session: BoardSession, now: number): boole
 }
 
 /** The status word, with Pew's overlay: typing into it, or a tool on it. */
-export function statusOf(state: BoardState, session: BoardSession, targets: readonly string[], now: number): StatusView {
+export function statusOf(
+  state: BoardState,
+  session: BoardSession,
+  targets: readonly string[],
+  now: number,
+): StatusView {
   if (pewTyping(state, session, now)) return { word: "Pew typing", tone: "pew", pulse: true };
   if (targets.includes(session.sessionId)) return { word: "With Pew", tone: "pew", pulse: true };
   const base = BASE_STATUS[session.status];
@@ -450,7 +493,10 @@ function focusSession(call: Pick<CallState, "focus" | "inbox">): string | undefi
  * Which lane is open: the session of an in-flight voice tool, else the one
  * Pew touched most recently, else the session of the call's focus item.
  */
-export function spotlightOf(state: BoardState, call: Pick<CallState, "tools" | "inbox" | "focus">): string | undefined {
+export function spotlightOf(
+  state: BoardState,
+  call: Pick<CallState, "tools" | "inbox" | "focus">,
+): string | undefined {
   const lanes = new Set(state.slots.filter((id): id is string => id !== undefined));
   const tool = toolTargets(call).find((id) => lanes.has(id));
   if (tool) return tool;
@@ -476,8 +522,14 @@ export function onProject(
 ): { folder: string; agentName?: string } | undefined {
   const id = spotlightOf(state, call);
   const session = id ? state.sessions.find((entry) => entry.sessionId === id) : undefined;
-  if (session?.folder) return { folder: session.folder, ...(session.agentName ? { agentName: session.agentName } : {}) };
-  return place?.folder ? { folder: place.folder, ...(place.agentName ? { agentName: place.agentName } : {}) } : undefined;
+  if (session?.folder)
+    return {
+      folder: session.folder,
+      ...(session.agentName ? { agentName: session.agentName } : {}),
+    };
+  return place?.folder
+    ? { folder: place.folder, ...(place.agentName ? { agentName: place.agentName } : {}) }
+    : undefined;
 }
 
 /** Everything the screen draws from the board, `now`. */
@@ -505,7 +557,9 @@ export function boardView(
       mood: moodOf(session, status, now),
       spotlight: session.sessionId === spotlight,
       // Typing and the fresh flash start when the line takes the lane, not when it arrived.
-      current: shown ? lineView(lineKey(session.sessionId, shown.line), shown.line, shown.at, now) : undefined,
+      current: shown
+        ? lineView(lineKey(session.sessionId, shown.line), shown.line, shown.at, now)
+        : undefined,
       steps: state.steps?.[session.sessionId] ?? 0,
     });
   });
@@ -513,7 +567,11 @@ export function boardView(
   const foldedSession = foldedId === undefined ? undefined : byId.get(foldedId);
   const fold: FoldView | undefined =
     foldedSession && state.folded.length > 0
-      ? { count: state.folded.length, folder: foldedSession.folder || "Session", status: statusOf(state, foldedSession, targets, now) }
+      ? {
+          count: state.folded.length,
+          folder: foldedSession.folder || "Session",
+          status: statusOf(state, foldedSession, targets, now),
+        }
       : undefined;
   const sending = targets.find((id) => state.slots.includes(id));
   const waiting = state.sessions.filter((s) => s.status === "asks" || s.status === "needs").length;
@@ -545,7 +603,10 @@ function clip(text: string, max = 60): string {
 }
 
 /** What this call did, from its finished tools, for the end card. Failed ones are left out. */
-export function callActions(completed: readonly CompletedTool[], sessions: readonly BoardSession[]): CallAction[] {
+export function callActions(
+  completed: readonly CompletedTool[],
+  sessions: readonly BoardSession[],
+): CallAction[] {
   const out: CallAction[] = [];
   for (const tool of completed) {
     if (!tool.ok) continue;
@@ -555,32 +616,54 @@ export function callActions(completed: readonly CompletedTool[], sessions: reado
     let later = false;
     switch (tool.name) {
       case "answer_permission":
-        text = a.decision === "deny" ? `Denied ${title ?? "a request"}` : `Approved ${title ?? "a request"}`;
+        text =
+          a.decision === "deny"
+            ? `Denied ${title ?? "a request"}`
+            : `Approved ${title ?? "a request"}`;
         break;
       case "answer_question":
         text = a.cancel === true ? "Cancelled a question" : `Answered: ${title ?? "a question"}`;
         break;
       case "decide_plan":
-        text = a.action === "reject" ? "Rejected the plan" : a.action === "feedback" ? "Sent feedback on the plan" : "Accepted the plan";
+        text =
+          a.action === "reject"
+            ? "Rejected the plan"
+            : a.action === "feedback"
+              ? "Sent feedback on the plan"
+              : "Accepted the plan";
         break;
       case "tell_agent":
-        text = typeof a.text === "string" && a.text.trim() ? `Sent: “${clip(a.text, 48)}”` : "Sent a message";
+        text =
+          typeof a.text === "string" && a.text.trim()
+            ? `Sent: “${clip(a.text, 48)}”`
+            : "Sent a message";
         break;
       case "call_me_back":
-        text = typeof a.minutes === "number" ? `Pew calls back in ${a.minutes} min` : "Pew calls back later";
+        text =
+          typeof a.minutes === "number"
+            ? `Pew calls back in ${a.minutes} min`
+            : "Pew calls back later";
         later = true;
         break;
       case "open_chat":
-        text = typeof a.project === "string" && a.project.trim() ? `Opened ${clip(a.project, 32)}` : "Opened a chat";
+        text =
+          typeof a.project === "string" && a.project.trim()
+            ? `Opened ${clip(a.project, 32)}`
+            : "Opened a chat";
         break;
       case "start_chat":
-        text = typeof a.project === "string" && a.project.trim() ? `Started ${clip(a.project, 32)}` : "Started a chat";
+        text =
+          typeof a.project === "string" && a.project.trim()
+            ? `Started ${clip(a.project, 32)}`
+            : "Started a chat";
         break;
       default:
         break;
     }
     if (!text) continue;
-    const session = tool.sessionId ? sessions.find((s) => s.sessionId === tool.sessionId) : undefined;
+    const session = tool.sessionId
+      ? sessions.find((s) => s.sessionId === tool.sessionId)
+      : undefined;
     const folder = session?.folder ?? tool.item?.folder;
     const agent = session?.agentName ?? tool.item?.agentName;
     const detail = [folder, agent].filter(Boolean).join(" · ") || undefined;
@@ -608,7 +691,12 @@ export interface CaptionView {
 export function captionView(caption: CallCaption | undefined, busy?: string): CaptionView {
   if (busy) return { who: "busy", text: busy, key: `busy:${busy}`, streaming: false };
   if (!caption) return { who: "none", text: "", key: "none", streaming: false };
-  return { who: caption.who, text: caption.text.trim(), key: `${caption.who}:${caption.serial}`, streaming: true };
+  return {
+    who: caption.who,
+    text: caption.text.trim(),
+    key: `${caption.who}:${caption.serial}`,
+    streaming: true,
+  };
 }
 
 export type VoiceMood = PewMood;
@@ -626,7 +714,8 @@ const READING_TOOLS = new Set(["get_status", "list_waiting"]);
  * it did something, then the conversation (muted, hearing you, talking).
  */
 export function voiceMood(
-  call: Pick<CallState, "phase" | "activity" | "tools"> & Partial<Pick<CallState, "muted" | "userSpeaking">>,
+  call: Pick<CallState, "phase" | "activity" | "tools"> &
+    Partial<Pick<CallState, "muted" | "userSpeaking">>,
   now: number,
   lastActionAt: number,
 ): VoiceMood {
@@ -649,7 +738,10 @@ export function voiceMood(
 }
 
 /** "Calling Pew…", "Looking at storefront…": the caption while Pew can't talk. */
-export function busyLine(call: Pick<CallState, "phase" | "tools" | "inbox">, sessions: readonly BoardSession[]): string | undefined {
+export function busyLine(
+  call: Pick<CallState, "phase" | "tools" | "inbox">,
+  sessions: readonly BoardSession[],
+): string | undefined {
   if (call.phase === "connecting") return "Calling Pew…";
   const tool = call.tools[0];
   if (!tool) return undefined;
@@ -671,8 +763,11 @@ export function toolFloat(
 ): string {
   const a = args({ arguments: rawArgs });
   const id = toolTarget(name, rawArgs, inbox);
-  const named = (value: unknown) => (typeof value === "string" && value.trim() ? clip(value.trim(), 18) : undefined);
-  const folder = named((id && sessions.find((s) => s.sessionId === id)?.folder) || undefined) ?? named(a.project);
+  const named = (value: unknown) =>
+    typeof value === "string" && value.trim() ? clip(value.trim(), 18) : undefined;
+  const folder =
+    named((id && sessions.find((s) => s.sessionId === id)?.folder) || undefined) ??
+    named(a.project);
   switch (name) {
     case "tell_agent":
       return folder ? `Passing ${folder} a note` : "Passing a note";
@@ -714,7 +809,10 @@ const SURVEY_TOOLS = new Set(["get_status", "list_waiting"]);
  * The screen keeps it once true: a board that came and went with each tool
  * would flicker the whole layout.
  */
-export function boardEngaged(board: Pick<BoardState, "sessions">, call: Pick<CallState, "tools" | "inbox">): boolean {
+export function boardEngaged(
+  board: Pick<BoardState, "sessions">,
+  call: Pick<CallState, "tools" | "inbox">,
+): boolean {
   if (board.sessions.some((s) => s.touchedAt > 0)) return true;
   if ((call.inbox ?? []).length > 0) return true;
   if (toolTargets(call).length > 0) return true;
@@ -759,7 +857,11 @@ export function captionPageStarts(text: string, maxChars: number): number[] {
  * `text` is the whole page (the screen lays the unrevealed part out unseen,
  * so wraps never move); `start` is where it begins in the line.
  */
-export function captionPageAt(text: string, maxChars: number, upTo: number): { text: string; start: number } {
+export function captionPageAt(
+  text: string,
+  maxChars: number,
+  upTo: number,
+): { text: string; start: number } {
   const starts = captionPageStarts(text, maxChars);
   let index = 0;
   for (let i = 0; i < starts.length; i++) if (starts[i]! < Math.max(1, upTo)) index = i;

@@ -54,7 +54,9 @@ function environmentLine(key: string, value: string): string {
 
 /** ExecStart takes a command line, so an installed-with-spaces path needs quotes. */
 function execStart(parts: string[]): string {
-  return parts.map((part) => (/[\s"]/.test(part) ? `"${part.replace(/"/g, '\\"')}"` : part)).join(" ");
+  return parts
+    .map((part) => (/[\s"]/.test(part) ? `"${part.replace(/"/g, '\\"')}"` : part))
+    .join(" ");
 }
 
 export function buildUnit(options: InstallOptions = {}): string {

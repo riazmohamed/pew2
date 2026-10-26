@@ -10,7 +10,12 @@
  */
 import { homedir } from "node:os";
 import path from "node:path";
-import { loadProviders, isAvailable, commandPath, unavailableReason } from "./providers/registry.js";
+import {
+  loadProviders,
+  isAvailable,
+  commandPath,
+  unavailableReason,
+} from "./providers/registry.js";
 import { catalogEnabled, catalogEntries, idsToToggle } from "./providers/catalog.js";
 import type { AskAnswer, ConfigOption } from "./acp/connect.js";
 import { encodeCwd, loadGgCoderDisplayHistory } from "./acp/ggcoder-history.js";
@@ -169,7 +174,8 @@ export class Daemon extends DaemonConnectSession {
         for (const session of this.sessions.values()) {
           if (session.working) working = true;
           // An open ask_user question is the same kind of wait as an approval.
-          if ((session.permissions?.size ?? 0) > 0 || (session.asks?.size ?? 0) > 0) permissionPending = true;
+          if ((session.permissions?.size ?? 0) > 0 || (session.asks?.size ?? 0) > 0)
+            permissionPending = true;
         }
         return { working, permissionPending, lastClientAt: this.lastClientAt };
       },
@@ -213,7 +219,10 @@ export class Daemon extends DaemonConnectSession {
       cwd: session.cwd,
       agentSessionId: session.agentSessionId,
       working: session.working === true,
-      permissions: [...(session.permissions ?? [])].map(([requestId, params]) => ({ requestId, params })),
+      permissions: [...(session.permissions ?? [])].map(([requestId, params]) => ({
+        requestId,
+        params,
+      })),
     };
   }
 
@@ -344,12 +353,19 @@ export class Daemon extends DaemonConnectSession {
             body: push.body,
             ...(push.focus ? { focus: push.focus } : {}),
           } satisfies wire.VoiceRing);
-          void pushVoiceRing(this.pushTargets, { ...push, badge: this.waitingOnYou() }, { relay: this.ringRelay, ringId, log: (line) => console.log(line) });
+          void pushVoiceRing(
+            this.pushTargets,
+            { ...push, badge: this.waitingOnYou() },
+            { relay: this.ringRelay, ringId, log: (line) => console.log(line) },
+          );
         },
         threadFor: (sessionId) => {
           const session = this.sessions.get(sessionId);
           if (!session?.agentSessionId) return undefined;
-          return { key: threadKey(session.providerId, session.agentSessionId), label: folderName(session.cwd) };
+          return {
+            key: threadKey(session.providerId, session.agentSessionId),
+            label: folderName(session.cwd),
+          };
         },
       },
       {
@@ -371,12 +387,14 @@ export class Daemon extends DaemonConnectSession {
   async voiceChats(): Promise<VoiceChat[]> {
     const live = new Map<string, string>();
     for (const session of this.sessions.values()) {
-      if (session.agentSessionId) live.set(`${session.providerId}\u0000${session.agentSessionId}`, session.log.sessionId);
+      if (session.agentSessionId)
+        live.set(`${session.providerId}\u0000${session.agentSessionId}`, session.log.sessionId);
     }
     const chats: VoiceChat[] = [];
     for (const provider of this.providers) {
       const providerId = provider.manifest.id;
-      if (providerId === GG_GOALS_ID || !this.isEnabled(providerId) || !isAvailable(provider)) continue;
+      if (providerId === GG_GOALS_ID || !this.isEnabled(providerId) || !isAvailable(provider))
+        continue;
       if (provider.manifest.pew.experimental && !this.includeExperimental) continue;
       for (const stored of await this.projectsWithHistory(providerId)) {
         const liveId = live.get(`${providerId}\u0000${stored.sessionId}`);
@@ -402,7 +420,9 @@ export class Daemon extends DaemonConnectSession {
   /** The agents Pew may start a chat with: id and display name. */
   voiceAgents(): { providerId: string; agentName: string }[] {
     return this.providers
-      .filter((p) => p.manifest.id !== GG_GOALS_ID && this.isEnabled(p.manifest.id) && isAvailable(p))
+      .filter(
+        (p) => p.manifest.id !== GG_GOALS_ID && this.isEnabled(p.manifest.id) && isAvailable(p),
+      )
       .filter((p) => !p.manifest.pew.experimental || this.includeExperimental)
       .map((p) => ({ providerId: p.manifest.id, agentName: p.manifest.name }));
   }
@@ -445,7 +465,11 @@ export class Daemon extends DaemonConnectSession {
   }
 
   /** `{ limit }` when an idle session's last turn stopped on a usage or rate limit. */
-  private limitOf(sessionId: string, working: boolean, events: readonly wire.SessionEvent[]): { limit?: string } {
+  private limitOf(
+    sessionId: string,
+    working: boolean,
+    events: readonly wire.SessionEvent[],
+  ): { limit?: string } {
     if (working) return {};
     const failure = this.turnFailures.get(sessionId);
     const limit = hitLimit([...lastAgentLines(events, 4), ...(failure ? [failure] : [])]);
@@ -464,9 +488,13 @@ export class Daemon extends DaemonConnectSession {
   }
 
   /** A session's model menu and current model, for `set_model`. Undefined: none, or no such session. */
-  voiceModels(sessionId: string): { current?: string; options: { value: string; name?: string }[] } | undefined {
+  voiceModels(
+    sessionId: string,
+  ): { current?: string; options: { value: string; name?: string }[] } | undefined {
     if (!this.sessions.has(sessionId)) return undefined;
-    const model = this.configOptions(sessionId).find((option) => option.id === "model" || option.category === "model");
+    const model = this.configOptions(sessionId).find(
+      (option) => option.id === "model" || option.category === "model",
+    );
     if (!model?.options?.length) return undefined;
     return {
       ...(typeof model.currentValue === "string" ? { current: model.currentValue } : {}),
@@ -546,7 +574,9 @@ export class Daemon extends DaemonConnectSession {
       // Same three exclusions the reaper uses, for the same reasons: a turn in
       // flight would lose work, and a conversation the agent never named has
       // nothing to resume from, so closing it loses it rather than parks it.
-      .filter(([id, s]) => id !== exempt && !s.working && s.agentSessionId !== undefined && !s.native)
+      .filter(
+        ([id, s]) => id !== exempt && !s.working && s.agentSessionId !== undefined && !s.native,
+      )
       .sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt);
 
     // A native mirror holds no agent process, so it does not count.
@@ -687,7 +717,8 @@ export class Daemon extends DaemonConnectSession {
     rememberTurnText(session, payload);
     const event = session.log.append(payload);
     const kind = (payload as { kind?: unknown } | null)?.kind;
-    if (kind === "permission_request" || kind === "ask_user" || kind === "ask_user_closed") this.touchInbox();
+    if (kind === "permission_request" || kind === "ask_user" || kind === "ask_user_closed")
+      this.touchInbox();
     else this.touchBoard();
     if (!session.live) return;
     if (!session.streamingReplay) {
@@ -904,7 +935,10 @@ export class Daemon extends DaemonConnectSession {
       this.providers
         .filter((p) => this.isEnabled(p.manifest.id))
         .map((p) => ({ id: p.manifest.id, commandMissing: p.commandMissing })),
-      { platform: this.nativeOptions.platform ?? process.platform, hasITerm: this.nativeDeps.hasITerm() },
+      {
+        platform: this.nativeOptions.platform ?? process.platform,
+        hasITerm: this.nativeDeps.hasITerm(),
+      },
     );
     // A picture of the screen goes wherever a window can be opened (macOS).
     const withCapture = status.available ? { ...status, capture: true } : status;
@@ -925,7 +959,8 @@ export class Daemon extends DaemonConnectSession {
       seen.add(`${kind}:${agentSessionId}`);
       windows.push({ agentSessionId, kind });
     };
-    for (const session of this.sessions.values()) if (session.native) add(session.agentSessionId, "native");
+    for (const session of this.sessions.values())
+      if (session.native) add(session.agentSessionId, "native");
     for (const window of this.chatWindows.values()) add(window.agentSessionId, "chat");
     return windows;
   }
@@ -938,7 +973,10 @@ export class Daemon extends DaemonConnectSession {
   trackChatWindow(sessionId: string, itermSessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session?.agentSessionId) return;
-    this.chatWindows.set(itermSessionId, { agentSessionId: session.agentSessionId, providerId: session.providerId });
+    this.chatWindows.set(itermSessionId, {
+      agentSessionId: session.agentSessionId,
+      providerId: session.providerId,
+    });
     this.watchChatWindows();
     this.announceProviders();
   }
@@ -983,20 +1021,31 @@ export class Daemon extends DaemonConnectSession {
    */
   async closeDesk(target: { sessionId?: string; agentSessionId?: string }): Promise<DeskResult> {
     const agentSessionId =
-      (target.sessionId ? this.sessions.get(target.sessionId)?.agentSessionId : undefined) ?? target.agentSessionId;
+      (target.sessionId ? this.sessions.get(target.sessionId)?.agentSessionId : undefined) ??
+      target.agentSessionId;
     const natives = agentSessionId
-      ? [...this.sessions.values()].filter((session) => session.native && session.agentSessionId === agentSessionId)
+      ? [...this.sessions.values()].filter(
+          (session) => session.native && session.agentSessionId === agentSessionId,
+        )
       : [];
     const chats = agentSessionId
-      ? [...this.chatWindows.entries()].filter(([, window]) => window.agentSessionId === agentSessionId).map(([id]) => id)
+      ? [...this.chatWindows.entries()]
+          .filter(([, window]) => window.agentSessionId === agentSessionId)
+          .map(([id]) => id)
       : [];
     if (natives.length === 0 && chats.length === 0) {
-      return { ok: false, message: "There's no terminal open on the computer for this conversation." };
+      return {
+        ok: false,
+        message: "There's no terminal open on the computer for this conversation.",
+      };
     }
     for (const session of natives) {
       if (session.working) {
         const name = NATIVE_APPS[session.providerId]?.name ?? "The agent";
-        return { ok: false, message: `${name} is in the middle of a reply. Stop it first, then close it.` };
+        return {
+          ok: false,
+          message: `${name} is in the middle of a reply. Stop it first, then close it.`,
+        };
       }
     }
 
@@ -1014,7 +1063,9 @@ export class Daemon extends DaemonConnectSession {
       if (id && current) this.closeSession(id, current);
     }
     for (const id of chats) {
-      const closed = await this.closeTerminal(id, () => this.nativeDeps.osa(nativeWriteScript(id, [KEYS.interrupt]), 8_000));
+      const closed = await this.closeTerminal(id, () =>
+        this.nativeDeps.osa(nativeWriteScript(id, [KEYS.interrupt]), 8_000),
+      );
       if (closed) this.chatWindows.delete(id);
       else failed.push("pew2 chat");
     }
@@ -1025,7 +1076,10 @@ export class Daemon extends DaemonConnectSession {
   }
 
   /** Ask politely, wait for the window to go, then close it outright. */
-  private async closeTerminal(itermSessionId: string, ask: () => Promise<unknown>): Promise<boolean> {
+  private async closeTerminal(
+    itermSessionId: string,
+    ask: () => Promise<unknown>,
+  ): Promise<boolean> {
     await ask();
     if (await this.waitGone(itermSessionId)) return true;
     await this.nativeDeps.osa(nativeCloseScript(itermSessionId), 8_000);
@@ -1075,7 +1129,12 @@ export class Daemon extends DaemonConnectSession {
    */
   liveSessionFor(providerId: string, agentSessionId: string): string | undefined {
     for (const [id, session] of this.sessions) {
-      if (!session.native && session.providerId === providerId && session.agentSessionId === agentSessionId) return id;
+      if (
+        !session.native &&
+        session.providerId === providerId &&
+        session.agentSessionId === agentSessionId
+      )
+        return id;
     }
     return undefined;
   }
@@ -1095,7 +1154,12 @@ export class Daemon extends DaemonConnectSession {
       agentSessionId: session.agentSessionId,
     });
     this.send({ t: "session.replay", sessionId, events: session.log.since(-1), complete: true });
-    this.send({ t: "session.config", sessionId, providerId: session.providerId, configOptions: this.configOptions(sessionId) });
+    this.send({
+      t: "session.config",
+      sessionId,
+      providerId: session.providerId,
+      configOptions: this.configOptions(sessionId),
+    });
     // Where it stands now (a turn running, an approval open): the history
     // replay alone reads as idle.
     const latest = session.log.since(-1).at(-1)?.seq ?? 0;
@@ -1105,7 +1169,12 @@ export class Daemon extends DaemonConnectSession {
 
   nativeSessionFor(providerId: string, agentSessionId: string): string | undefined {
     for (const [id, session] of this.sessions) {
-      if (session.native && session.providerId === providerId && session.agentSessionId === agentSessionId) return id;
+      if (
+        session.native &&
+        session.providerId === providerId &&
+        session.agentSessionId === agentSessionId
+      )
+        return id;
     }
     return undefined;
   }
@@ -1134,30 +1203,47 @@ export class Daemon extends DaemonConnectSession {
   async openNative(sessionId: string): Promise<DeskResult> {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      return { ok: false, message: "That conversation isn't open on the computer. Send it a message first." };
+      return {
+        ok: false,
+        message: "That conversation isn't open on the computer. Send it a message first.",
+      };
     }
-    if (session.native) return { ok: true, app: "iTerm", message: "It's already open in OG Coder on the computer." };
+    if (session.native)
+      return { ok: true, app: "iTerm", message: "It's already open in OG Coder on the computer." };
     const provider = this.providers.find((p) => p.manifest.id === session.providerId);
     const allowed = this.deskAnnouncement()?.native ?? [];
     if (!provider || !allowed.includes(session.providerId)) {
       return { ok: false, message: "This agent can't be opened in its own app on this computer." };
     }
     if ((session.permissions?.size ?? 0) > 0) {
-      return { ok: false, message: "It's waiting for your approval. Answer that first, then open it on the computer." };
+      return {
+        ok: false,
+        message: "It's waiting for your approval. Answer that first, then open it on the computer.",
+      };
     }
     if (session.working) {
-      return { ok: false, message: "It's in the middle of a reply. Open it on the computer once it finishes." };
+      return {
+        ok: false,
+        message: "It's in the middle of a reply. Open it on the computer once it finishes.",
+      };
     }
     const agentSessionId = session.agentSessionId;
     if (!agentSessionId) {
-      return { ok: false, message: "That conversation hasn't finished opening yet. Try again in a moment." };
+      return {
+        ok: false,
+        message: "That conversation hasn't finished opening yet. Try again in a moment.",
+      };
     }
     const cwd = session.cwd;
     const providerId = session.providerId;
     // Taken before the ACP session closes, so the phone keeps its pills.
     const configOptions = this.configOptions(sessionId);
 
-    const history = await loadGgCoderDisplayHistory(agentSessionId, cwd, this.nativeOptions.sessionsRoot).catch(() => undefined);
+    const history = await loadGgCoderDisplayHistory(
+      agentSessionId,
+      cwd,
+      this.nativeOptions.sessionsRoot,
+    ).catch(() => undefined);
     return this.attachNative({
       provider,
       providerId,
@@ -1216,7 +1302,10 @@ export class Daemon extends DaemonConnectSession {
     beforeRegister?: () => void;
   }): Promise<DeskResult> {
     const { providerId, cwd, configOptions } = args;
-    const directory = path.join(this.nativeOptions.sessionsRoot ?? path.join(homedir(), ".gg", "sessions"), encodeCwd(cwd));
+    const directory = path.join(
+      this.nativeOptions.sessionsRoot ?? path.join(homedir(), ".gg", "sessions"),
+      encodeCwd(cwd),
+    );
     const known = args.agentSessionId ? undefined : await conversationNames(directory);
     const openedAt = Date.now();
 
@@ -1230,8 +1319,12 @@ export class Daemon extends DaemonConnectSession {
         sessionsRoot: this.nativeOptions.sessionsRoot,
         pollMs: this.nativeOptions.pollMs,
         callbacks: {
-          onUpdate: (update) => handles.mirrorSession && this.record(handles.mirrorSession, { sessionId: agentSessionId, update }),
-          onUserMessage: (text) => handles.mirrorSession && this.record(handles.mirrorSession, { kind: "user_message", text }),
+          onUpdate: (update) =>
+            handles.mirrorSession &&
+            this.record(handles.mirrorSession, { sessionId: agentSessionId, update }),
+          onUserMessage: (text) =>
+            handles.mirrorSession &&
+            this.record(handles.mirrorSession, { kind: "user_message", text }),
           onTurnStart: () => handles.mirrorSession && this.nativeTurnStart(handles.mirrorSession),
           onTurnEnd: () => handles.mirrorSession && this.nativeTurnEnd(handles.mirrorSession),
         },
@@ -1256,10 +1349,16 @@ export class Daemon extends DaemonConnectSession {
       const deadline = Date.now() + (this.nativeOptions.newConversationTimeoutMs ?? 20_000);
       while (!agentSessionId && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, this.nativeOptions.pollMs ?? 300));
-        agentSessionId = (await findNewConversation(directory, known ?? new Set(), openedAt))?.agentSessionId;
+        agentSessionId = (await findNewConversation(directory, known ?? new Set(), openedAt))
+          ?.agentSessionId;
       }
       if (!agentSessionId) {
-        return { ok: true, app: "iTerm", message: "OG Coder opened, but pew2 couldn't find its conversation, so the phone isn't linked to it." };
+        return {
+          ok: true,
+          app: "iTerm",
+          message:
+            "OG Coder opened, but pew2 couldn't find its conversation, so the phone isn't linked to it.",
+        };
       }
       mirror = makeMirror(agentSessionId);
       await mirror.baseline();
@@ -1270,7 +1369,11 @@ export class Daemon extends DaemonConnectSession {
     const log = new SessionLog(`${providerId}-${Date.now().toString(36)}`);
     const native: NativeSession = {
       itermSessionId: opened.itermSessionId,
-      typer: new NativeTyper(opened.itermSessionId, this.nativeDeps.osa, this.nativeOptions.throttleMs),
+      typer: new NativeTyper(
+        opened.itermSessionId,
+        this.nativeDeps.osa,
+        this.nativeOptions.throttleMs,
+      ),
       mirror: mirror!,
       configOptions,
     };
@@ -1323,7 +1426,8 @@ export class Daemon extends DaemonConnectSession {
     // Never the id it had, nor one in use: two re-keys in one millisecond
     // would otherwise file it under itself and forward it in a loop.
     let id = `${session.providerId}-${Date.now().toString(36)}`;
-    while (id === sessionId || this.sessions.has(id)) id = `${session.providerId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+    while (id === sessionId || this.sessions.has(id))
+      id = `${session.providerId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
     const log = new SessionLog(id);
     for (const event of session.log.since(-1)) log.append(event.payload);
     this.sessions.delete(sessionId);
@@ -1345,7 +1449,12 @@ export class Daemon extends DaemonConnectSession {
     });
     this.markStreaming(log.sessionId);
     this.finishStreaming(log.sessionId);
-    this.send({ t: "session.config", sessionId: log.sessionId, providerId: session.providerId, configOptions: session.native.configOptions });
+    this.send({
+      t: "session.config",
+      sessionId: log.sessionId,
+      providerId: session.providerId,
+      configOptions: session.native.configOptions,
+    });
     this.announceProviders();
     return log.sessionId;
   }
@@ -1362,10 +1471,15 @@ export class Daemon extends DaemonConnectSession {
    * Shift+Tab, pressed until the status line shows the level. Plan mode has no
    * key from outside, so it is refused.
    */
-  private async setNativeConfigOption(native: NativeSession, configId: string, value: string | boolean) {
+  private async setNativeConfigOption(
+    native: NativeSession,
+    configId: string,
+    value: string | boolean,
+  ) {
     const option = native.configOptions.find((o) => o.id === configId);
     if (!option) throw new Error(`Unknown option '${configId}'`);
-    if (option.category !== "model" && option.category !== "thought_level") throw new Error(NATIVE_CONFIG_REFUSAL);
+    if (option.category !== "model" && option.category !== "thought_level")
+      throw new Error(NATIVE_CONFIG_REFUSAL);
     native.configuring = true;
     try {
       // Start from what OG Coder actually shows, not pew2's last record: the
@@ -1376,7 +1490,8 @@ export class Daemon extends DaemonConnectSession {
       if (current?.currentValue === value) return native.configOptions;
 
       if (option.category === "model") {
-        if (!(await native.typer.command(`/model ${String(value)}`))) throw new Error(NATIVE_WINDOW_GONE);
+        if (!(await native.typer.command(`/model ${String(value)}`)))
+          throw new Error(NATIVE_WINDOW_GONE);
       } else {
         // Shift+Tab one press at a time, reading the status line after each:
         // OG Coder's cycle is per model, so counting presses off the advertised
@@ -1388,13 +1503,15 @@ export class Daemon extends DaemonConnectSession {
           const screen = press === 0 ? before : await this.settledScreen(native);
           if (!screen?.thinking) {
             // Unreadable screen: fall back to counting presses.
-            if (!(await native.typer.shiftTab(cycleDistance(current ?? option, value)))) throw new Error(NATIVE_WINDOW_GONE);
+            if (!(await native.typer.shiftTab(cycleDistance(current ?? option, value))))
+              throw new Error(NATIVE_WINDOW_GONE);
             reached = true;
             break;
           }
           reached = screen.thinking === String(value);
         }
-        if (!reached) throw new Error(`OG Coder doesn't offer thinking '${String(value)}' for this model.`);
+        if (!reached)
+          throw new Error(`OG Coder doesn't offer thinking '${String(value)}' for this model.`);
       }
 
       const after = await this.settledScreen(native);
@@ -1446,16 +1563,30 @@ export class Daemon extends DaemonConnectSession {
     return this.readNativeScreen(native);
   }
 
-  private applyNativeScreen(sessionId: string, session: ActiveSession, native: NativeSession, screen: DeskScreen) {
+  private applyNativeScreen(
+    sessionId: string,
+    session: ActiveSession,
+    native: NativeSession,
+    screen: DeskScreen,
+  ) {
     this.applyNativeStatus(session, native, screen);
     const { options, changed } = applyDeskScreen(native.configOptions, screen);
     if (changed) {
       native.configOptions = options;
-      this.send({ t: "session.config", sessionId, providerId: session.providerId, configOptions: options });
+      this.send({
+        t: "session.config",
+        sessionId,
+        providerId: session.providerId,
+        configOptions: options,
+      });
     }
 
     const input = screen.input;
-    if (input === undefined || native.typer.busy(this.nativeOptions.readQuietMs ?? NATIVE_READ_QUIET_MS)) return;
+    if (
+      input === undefined ||
+      native.typer.busy(this.nativeOptions.readQuietMs ?? NATIVE_READ_QUIET_MS)
+    )
+      return;
     const typed = native.typer.lastTyped;
     // What the phone typed, as the screen shows it (padding trims trailing
     // spaces off, so compare without them).
@@ -1487,7 +1618,10 @@ export class Daemon extends DaemonConnectSession {
       native.statusRun = undefined;
       return;
     }
-    native.statusRun = native.statusRun?.status === status ? { status, count: native.statusRun.count + 1 } : { status, count: 1 };
+    native.statusRun =
+      native.statusRun?.status === status
+        ? { status, count: native.statusRun.count + 1 }
+        : { status, count: 1 };
     if (native.statusRun.count < 2) return;
     if (status === "idle" && session.working) {
       const since = Date.now() - (session.turnStartedAt ?? 0);
@@ -1549,7 +1683,11 @@ export class Daemon extends DaemonConnectSession {
   }
 
   /** A phone prompt for a native window: typed in, then Enter. */
-  protected async promptNative(session: ActiveSession, text: string, attachments: wire.PromptAttachment[]) {
+  protected async promptNative(
+    session: ActiveSession,
+    text: string,
+    attachments: wire.PromptAttachment[],
+  ) {
     const native = session.native;
     if (!native) return;
     const sessionId = session.log.sessionId;
@@ -1567,7 +1705,11 @@ export class Daemon extends DaemonConnectSession {
         kind: "user_message",
         text,
         ...(stored.length > 0 && {
-          attachments: stored.map((file) => ({ name: file.name, mimeType: file.mimeType, uri: file.path })),
+          attachments: stored.map((file) => ({
+            name: file.name,
+            mimeType: file.mimeType,
+            uri: file.path,
+          })),
         }),
       }),
     );
@@ -1576,7 +1718,9 @@ export class Daemon extends DaemonConnectSession {
     const ok = await native.typer.prompt(typed);
     if (!ok) {
       this.nativeTurnEnd(session);
-      throw new Error("The OG Coder window on the computer didn't take the message. Is it still open?");
+      throw new Error(
+        "The OG Coder window on the computer didn't take the message. Is it still open?",
+      );
     }
   }
 

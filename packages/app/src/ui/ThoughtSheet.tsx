@@ -37,7 +37,10 @@ function ThoughtSheetView({ visible, text, onClose }: ThoughtSheetProps) {
       dismissLabel="Close thought process"
     >
       <View>
-        <StageScroll style={[styles.scroll, { maxHeight: Math.round(screenHeight * 0.6) }]} contentContainerStyle={styles.content}>
+        <StageScroll
+          style={[styles.scroll, { maxHeight: Math.round(screenHeight * 0.6) }]}
+          contentContainerStyle={styles.content}
+        >
           {/* The dim thinking tone it had inline, so opening it does not promote
               reasoning to the same weight as the agent's answer. */}
           <MarkdownText text={held.current.trimEnd()} tone="thought" />

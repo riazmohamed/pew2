@@ -106,13 +106,17 @@ describe("agentStoppedMessage: why an agent died mid-request", () => {
         "}",
         "Node.js v26.0.0",
       ]),
-    ).toBe("GG Coder stopped while working (it crashed, code 1): Error: Cannot find module '/x/dist/cli.js'");
+    ).toBe(
+      "GG Coder stopped while working (it crashed, code 1): Error: Cannot find module '/x/dist/cli.js'",
+    );
   });
 
   test("a kill is called out; nothing printed still reads as a sentence", () => {
     expect(agentStoppedMessage("Codex", { code: null, signal: "SIGKILL" }, [])).toBe(
       "Codex stopped while working (it was killed, often for running out of memory).",
     );
-    expect(agentStoppedMessage("GG Coder", undefined, [])).toBe("GG Coder stopped while working (the connection to it closed).");
+    expect(agentStoppedMessage("GG Coder", undefined, [])).toBe(
+      "GG Coder stopped while working (the connection to it closed).",
+    );
   });
 });

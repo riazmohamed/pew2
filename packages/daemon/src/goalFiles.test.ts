@@ -31,11 +31,16 @@ test("nothing to store writes nothing", async () => {
 test("the attachment ceilings apply", async () => {
   const big = "A".repeat(12 * 1024 * 1024);
   await expect(
-    storeGoalFiles([{ name: "big.bin", mimeType: "application/octet-stream", data: big }], tmpdir()),
+    storeGoalFiles(
+      [{ name: "big.bin", mimeType: "application/octet-stream", data: big }],
+      tmpdir(),
+    ),
   ).rejects.toThrow();
 });
 
 test("lives under PEW2_HOME, never the tempdir", () => {
   // Built with join on both sides, so the separator is the platform's own.
-  expect(goalFilesRoot({ PEW2_HOME: join("x", "home") } as NodeJS.ProcessEnv)).toBe(join("x", "home", "goal-files"));
+  expect(goalFilesRoot({ PEW2_HOME: join("x", "home") } as NodeJS.ProcessEnv)).toBe(
+    join("x", "home", "goal-files"),
+  );
 });

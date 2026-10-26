@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { bezierAt, createEntranceLifetime, DUR, dissolvePlan, EASE, lerpFrom, withAlpha, wordDissolve, wordFadeAlpha } from "./motion";
+import {
+  bezierAt,
+  createEntranceLifetime,
+  DUR,
+  dissolvePlan,
+  EASE,
+  lerpFrom,
+  withAlpha,
+  wordDissolve,
+  wordFadeAlpha,
+} from "./motion";
 
 describe("motion tokens", () => {
   test("mirror GG Coder App.css", () => {

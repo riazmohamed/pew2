@@ -37,16 +37,24 @@ describe("shouldSendDraft", () => {
 
 describe("shouldApplyRemoteDraft", () => {
   test("drops our own echo", () => {
-    expect(shouldApplyRemoteDraft({ text: "a", from: "me", sessionId: "s" }, "me", "s")).toBe(false);
+    expect(shouldApplyRemoteDraft({ text: "a", from: "me", sessionId: "s" }, "me", "s")).toBe(
+      false,
+    );
   });
   test("applies for the session on screen only", () => {
-    expect(shouldApplyRemoteDraft({ text: "a", from: "desk", sessionId: "s" }, "me", "s")).toBe(true);
-    expect(shouldApplyRemoteDraft({ text: "a", from: "desk", sessionId: "t" }, "me", "s")).toBe(false);
+    expect(shouldApplyRemoteDraft({ text: "a", from: "desk", sessionId: "s" }, "me", "s")).toBe(
+      true,
+    );
+    expect(shouldApplyRemoteDraft({ text: "a", from: "desk", sessionId: "t" }, "me", "s")).toBe(
+      false,
+    );
     expect(shouldApplyRemoteDraft({ text: "a", from: "desk" }, "me", "s")).toBe(false);
   });
   test("both absent is the not-yet-started conversation", () => {
     expect(shouldApplyRemoteDraft({ text: "a", from: "desk" }, "me", undefined)).toBe(true);
-    expect(shouldApplyRemoteDraft({ text: "a", from: "desk", sessionId: "s" }, "me", undefined)).toBe(false);
+    expect(
+      shouldApplyRemoteDraft({ text: "a", from: "desk", sessionId: "s" }, "me", undefined),
+    ).toBe(false);
   });
 });
 

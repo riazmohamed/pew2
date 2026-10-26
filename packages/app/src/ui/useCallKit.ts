@@ -11,7 +11,15 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { wire } from "@pew2/protocol";
-import { canRing, endSystemCall, listen, onToken, simulateRing, voipToken, type CallEvent } from "../../modules/pew-call";
+import {
+  canRing,
+  endSystemCall,
+  listen,
+  onToken,
+  simulateRing,
+  voipToken,
+  type CallEvent,
+} from "../../modules/pew-call";
 
 interface Options {
   post: (message: unknown) => boolean;
@@ -24,7 +32,15 @@ interface Options {
   onMute: (muted: boolean) => void;
 }
 
-export function useCallKit({ post, online, consented, callActive, onAnswer, onHangUp, onMute }: Options) {
+export function useCallKit({
+  post,
+  online,
+  consented,
+  callActive,
+  onAnswer,
+  onHangUp,
+  onMute,
+}: Options) {
   const handlers = useRef({ onAnswer, onHangUp, onMute });
   handlers.current = { onAnswer, onHangUp, onMute };
   /** Declines and misses not yet told to the daemon (the app may have woken offline). */
@@ -57,7 +73,10 @@ export function useCallKit({ post, online, consented, callActive, onAnswer, onHa
         case "declined":
         case "missed":
           systemCall.current = false;
-          setUnsent((list) => [...list, { t: "voice.end", callId: event.ring ?? "ring", reason: event.type }]);
+          setUnsent((list) => [
+            ...list,
+            { t: "voice.end", callId: event.ring ?? "ring", reason: event.type },
+          ]);
           break;
         case "hangup":
           systemCall.current = false;

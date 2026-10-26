@@ -24,8 +24,6 @@ export function defaultProviderId<P extends ProviderLike>(
   providers: readonly P[],
   remembered: string | undefined,
 ): string | undefined {
-  const last = remembered
-    ? providers.find((p) => p.id === remembered && p.available)
-    : undefined;
+  const last = remembered ? providers.find((p) => p.id === remembered && p.available) : undefined;
   return (last ?? providers.find((p) => p.available))?.id;
 }

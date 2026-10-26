@@ -19,7 +19,10 @@ interface PewAudioRouteNative {
   /** Absent from a build made before the speaker kept its choice. */
   setVoiceChatMode?(): boolean;
   setProximity?(on: boolean): void;
-  addListener?(event: "onRoute", listener: (event: { speaker: boolean; wanted: boolean }) => void): { remove(): void };
+  addListener?(
+    event: "onRoute",
+    listener: (event: { speaker: boolean; wanted: boolean }) => void,
+  ): { remove(): void };
 }
 
 const native = requireOptionalNativeModule<PewAudioRouteNative>("PewAudioRoute");
@@ -53,11 +56,17 @@ export function isSpeaker(): boolean {
 }
 
 /** Whether sounds can play off the JS thread (a native build with `playCue`). */
-export const canPlayCues = typeof native?.playCue === "function" && typeof native?.prepareCues === "function";
+export const canPlayCues =
+  typeof native?.playCue === "function" && typeof native?.prepareCues === "function";
 
 /** Play a sound file (a `file://` URI) without blocking the JS thread. Never throws. */
-export function playCue(uri: string, options: { volume?: number; at?: number; activate?: boolean } = {}): void {
-  void native?.playCue?.(uri, options.volume ?? 1, options.at ?? 0, options.activate ?? false).catch(() => {});
+export function playCue(
+  uri: string,
+  options: { volume?: number; at?: number; activate?: boolean } = {},
+): void {
+  void native
+    ?.playCue?.(uri, options.volume ?? 1, options.at ?? 0, options.activate ?? false)
+    .catch(() => {});
 }
 
 export function prepareCues(uris: string[]): void {
@@ -82,7 +91,9 @@ export function setVoiceChatMode(): boolean {
  * now). Undefined on a build without route events: the screen then trusts
  * its own button.
  */
-export function onRouteChange(listener: (speaker: boolean) => void): { remove(): void } | undefined {
+export function onRouteChange(
+  listener: (speaker: boolean) => void,
+): { remove(): void } | undefined {
   if (typeof native?.addListener !== "function") return undefined;
   return native.addListener("onRoute", (event) => listener(event.speaker === true));
 }

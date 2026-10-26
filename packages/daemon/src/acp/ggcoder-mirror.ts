@@ -19,7 +19,13 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
-import { assetDirFor, encodeCwd, isTranscriptMessage, messageDisplayUpdates, type GgCoderDisplayUpdate } from "./ggcoder-history.js";
+import {
+  assetDirFor,
+  encodeCwd,
+  isTranscriptMessage,
+  messageDisplayUpdates,
+  type GgCoderDisplayUpdate,
+} from "./ggcoder-history.js";
 
 const gunzipAsync = promisify(gunzip);
 
@@ -40,14 +46,21 @@ function contentText(content: unknown): string {
   if (typeof content === "string") return content.trim();
   if (!Array.isArray(content)) return "";
   return content
-    .map((block) => (block && typeof block === "object" && typeof (block as { text?: unknown }).text === "string" ? (block as { text: string }).text : ""))
+    .map((block) =>
+      block && typeof block === "object" && typeof (block as { text?: unknown }).text === "string"
+        ? (block as { text: string }).text
+        : "",
+    )
     .filter(Boolean)
     .join(" ")
     .trim();
 }
 
 /** A user prompt worth recognising a conversation by (not a summary). */
-function promptOf(entry: { type?: unknown; message?: { role?: unknown; content?: unknown } }): string | undefined {
+function promptOf(entry: {
+  type?: unknown;
+  message?: { role?: unknown; content?: unknown };
+}): string | undefined {
   if (entry.type !== "message" || entry.message?.role !== "user") return undefined;
   const text = contentText(entry.message.content);
   return text && !text.startsWith(SUMMARY_PREFIX) ? text : undefined;
@@ -82,7 +95,12 @@ export function checkpointOf(
   let first = true;
   for (const line of lines.slice(1)) {
     if (!line.trim()) continue;
-    let entry: { type?: unknown; id?: unknown; timestamp?: unknown; message?: { role?: unknown; content?: unknown } };
+    let entry: {
+      type?: unknown;
+      id?: unknown;
+      timestamp?: unknown;
+      message?: { role?: unknown; content?: unknown };
+    };
     try {
       entry = JSON.parse(line);
     } catch {
@@ -90,7 +108,11 @@ export function checkpointOf(
     }
     if (first && entry.type === "message") {
       first = false;
-      if (entry.message?.role !== "user" || !contentText(entry.message.content).startsWith(SUMMARY_PREFIX)) return undefined;
+      if (
+        entry.message?.role !== "user" ||
+        !contentText(entry.message.content).startsWith(SUMMARY_PREFIX)
+      )
+        return undefined;
     }
     const at = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
     if (!(at <= born + CHECKPOINT_COPY_MS)) continue;
@@ -107,7 +129,11 @@ export function checkpointOf(
     .filter((start) => copiedPrompts.every((prompt, i) => prompts[start + i] === prompt));
   if (runs.length === 0) return undefined;
   if (copiedPrompts.length === 1 && copiedPrompts[0] !== prompts.at(-1)) return undefined;
-  return { id: header.id, conversationId: typeof header.conversationId === "string" ? header.conversationId : header.id, copied };
+  return {
+    id: header.id,
+    conversationId: typeof header.conversationId === "string" ? header.conversationId : header.id,
+    copied,
+  };
 }
 
 export interface MirrorCallbacks {
@@ -129,7 +155,11 @@ async function readHeader(file: string): Promise<Header | undefined> {
     const text = file.endsWith(".gz")
       ? (await gunzipAsync(await readFile(file))).toString("utf8")
       : await firstLine(file);
-    const entry = JSON.parse(text.split("\n")[0] ?? "") as { type?: unknown; id?: unknown; conversationId?: unknown };
+    const entry = JSON.parse(text.split("\n")[0] ?? "") as {
+      type?: unknown;
+      id?: unknown;
+      conversationId?: unknown;
+    };
     if (entry.type !== "session" || typeof entry.id !== "string") return undefined;
     return {
       id: entry.id,
@@ -152,15 +182,23 @@ async function firstLine(file: string): Promise<string> {
 }
 
 /** Every entry id in a file, for the "already on the phone" set, and its prompts. */
-async function entryIds(file: string): Promise<{ ids: Set<string>; bytes: number; prompts: string[] }> {
+async function entryIds(
+  file: string,
+): Promise<{ ids: Set<string>; bytes: number; prompts: string[] }> {
   const raw = await readFile(file);
-  const text = file.endsWith(".gz") ? (await gunzipAsync(raw)).toString("utf8") : raw.toString("utf8");
+  const text = file.endsWith(".gz")
+    ? (await gunzipAsync(raw)).toString("utf8")
+    : raw.toString("utf8");
   const ids = new Set<string>();
   const prompts: string[] = [];
   for (const line of text.split("\n")) {
     if (!line) continue;
     try {
-      const entry = JSON.parse(line) as { id?: unknown; type?: unknown; message?: { role?: unknown; content?: unknown } };
+      const entry = JSON.parse(line) as {
+        id?: unknown;
+        type?: unknown;
+        message?: { role?: unknown; content?: unknown };
+      };
       if (typeof entry.id === "string") ids.add(entry.id);
       const prompt = promptOf(entry);
       if (prompt !== undefined) prompts.push(prompt);
@@ -199,7 +237,8 @@ export async function findNewConversation(
     if (!info || info.birthtimeMs < since - 2_000) continue;
     const header = await readHeader(file);
     if (!header?.id) continue;
-    if (!best || info.mtimeMs > best.mtime) best = { file, agentSessionId: header.id, mtime: info.mtimeMs };
+    if (!best || info.mtimeMs > best.mtime)
+      best = { file, agentSessionId: header.id, mtime: info.mtimeMs };
   }
   return best && { file: best.file, agentSessionId: best.agentSessionId };
 }
@@ -281,7 +320,10 @@ export class GgCoderMirror {
       batchSettleMs?: number;
     },
   ) {
-    this.directory = path.join(options.sessionsRoot ?? path.join(homedir(), ".gg", "sessions"), encodeCwd(options.cwd));
+    this.directory = path.join(
+      options.sessionsRoot ?? path.join(homedir(), ".gg", "sessions"),
+      encodeCwd(options.cwd),
+    );
     this.followId = options.agentSessionId;
   }
 
@@ -308,7 +350,9 @@ export class GgCoderMirror {
   async baseline(): Promise<void> {
     this.startedAt = Date.now();
     this.known = await conversationNames(this.directory);
-    const found = await findConversationFile(this.directory, { agentSessionId: this.options.agentSessionId });
+    const found = await findConversationFile(this.directory, {
+      agentSessionId: this.options.agentSessionId,
+    });
     if (!found) return;
     this.conversationId = found.header.conversationId;
     const { ids, bytes, prompts } = await entryIds(found.file);
@@ -363,7 +407,9 @@ export class GgCoderMirror {
     this.draining = (async () => {
       do {
         this.again = false;
-        await this.drain().catch((error) => console.error(`[native] mirror read failed: ${String(error)}`));
+        await this.drain().catch((error) =>
+          console.error(`[native] mirror read failed: ${String(error)}`),
+        );
       } while (this.again && !this.stopped);
     })().finally(() => {
       this.draining = undefined;
@@ -405,7 +451,12 @@ export class GgCoderMirror {
       return;
     }
     for (const name of names) {
-      if (!name.endsWith(".jsonl") || this.known.has(name) || this.ruledOut.get(name) === this.prompts.length) continue;
+      if (
+        !name.endsWith(".jsonl") ||
+        this.known.has(name) ||
+        this.ruledOut.get(name) === this.prompts.length
+      )
+        continue;
       const file = path.join(this.directory, name);
       if (file === this.file) continue;
       const info = await stat(file).catch(() => undefined);
@@ -429,7 +480,9 @@ export class GgCoderMirror {
       this.file = file;
       this.offset = 0;
       this.partial = "";
-      console.log(`[native] OG Coder compacted ${this.options.agentSessionId} into ${checkpoint.id}: following it`);
+      console.log(
+        `[native] OG Coder compacted ${this.options.agentSessionId} into ${checkpoint.id}: following it`,
+      );
       await this.readFrom(file);
       return;
     }
@@ -468,7 +521,11 @@ export class GgCoderMirror {
       type?: unknown;
       id?: unknown;
       kind?: unknown;
-      message?: { role?: string; content: unknown; provenance?: { kind?: string; visibility?: "transcript" | "hidden" | "summary" } };
+      message?: {
+        role?: string;
+        content: unknown;
+        provenance?: { kind?: string; visibility?: "transcript" | "hidden" | "summary" };
+      };
     };
     try {
       entry = JSON.parse(line);
@@ -479,7 +536,9 @@ export class GgCoderMirror {
       if (this.seen.has(entry.id)) return;
       this.seen.add(entry.id);
     }
-    const prompt = promptOf(entry as { type?: unknown; message?: { role?: unknown; content?: unknown } });
+    const prompt = promptOf(
+      entry as { type?: unknown; message?: { role?: unknown; content?: unknown } },
+    );
     if (prompt !== undefined) this.prompts.push(prompt);
     const { callbacks } = this.options;
     if (entry.type === "custom") {
@@ -507,7 +566,10 @@ export class GgCoderMirror {
     if (entry.type !== "message" || !entry.message) return;
     const message = entry.message;
     if (!isTranscriptMessage(message)) return;
-    const updates = messageDisplayUpdates(message, { tools: true, ...(this.file && { assetDirs: [assetDirFor(this.file)] }) });
+    const updates = messageDisplayUpdates(message, {
+      tools: true,
+      ...(this.file && { assetDirs: [assetDirFor(this.file)] }),
+    });
     if (message.role === "user") {
       const user = updates.find((update) => update.sessionUpdate === "user_message_chunk");
       if (!user) return;

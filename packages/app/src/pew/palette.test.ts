@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { activityMood, pewInk, pewPalette, homeMood, PEW2_PEW, roleColor, workerMood } from "./palette";
+import {
+  activityMood,
+  pewInk,
+  pewPalette,
+  homeMood,
+  PEW2_PEW,
+  roleColor,
+  workerMood,
+} from "./palette";
 
 const luminance = ([r, g, b]: number[]) => {
   const f = (c: number) => {
@@ -22,7 +30,19 @@ describe("pewPalette", () => {
 
   test("every agent's lit dots read on the canvas, and unlit ones stay dark", () => {
     // The manifest colours in providers/*.json, plus GG Goals.
-    for (const brand of ["#4ade80", "#d97757", "#10a37f", "#4285f4", "#26c6da", "#e4e4e7", "#94a3b8", "#615ced", "#8b7cf6", "#000000", "#ffffff"]) {
+    for (const brand of [
+      "#4ade80",
+      "#d97757",
+      "#10a37f",
+      "#4285f4",
+      "#26c6da",
+      "#e4e4e7",
+      "#94a3b8",
+      "#615ced",
+      "#8b7cf6",
+      "#000000",
+      "#ffffff",
+    ]) {
       const p = pewPalette(brand);
       expect(contrast(p.base, CANVAS)).toBeGreaterThan(4.5);
       expect(contrast(p.light, CANVAS)).toBeGreaterThan(contrast(p.base, CANVAS));

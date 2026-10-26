@@ -6,7 +6,13 @@
  */
 import { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import Reanimated, { runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, type SharedValue } from "react-native-reanimated";
+import Reanimated, {
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  type SharedValue,
+} from "react-native-reanimated";
 import { theme } from "../theme";
 import { lastActiveLabel } from "../ggState";
 import { Dissolve } from "./motion/Dissolve";
@@ -64,7 +70,20 @@ const HERO = 200;
 const GLOW = 340;
 const MAX_CHATS = 6;
 
-export function HomeGreeting({ color, busy, online = true, failed = false, text, status, onPressPew, chats, onOpenChat, typing, smiling = false, hint = "Tap Pew to switch agent" }: HomeGreetingProps) {
+export function HomeGreeting({
+  color,
+  busy,
+  online = true,
+  failed = false,
+  text,
+  status,
+  onPressPew,
+  chats,
+  onOpenChat,
+  typing,
+  smiling = false,
+  hint = "Tap Pew to switch agent",
+}: HomeGreetingProps) {
   const mood: PewMood = smiling ? "happy" : failed ? "oops" : homeMood(online, busy);
   const ink = pewInk(color);
   const shown = (chats ?? []).slice(0, MAX_CHATS);
@@ -120,69 +139,82 @@ export function HomeGreeting({ color, busy, online = true, failed = false, text,
           below.value = e.nativeEvent.layout.height;
         }}
       >
-      {status !== undefined && (
-        <Led color={ink} style={styles.status}>
-          {status}
-        </Led>
-      )}
-      {/* The line's space is held whether or not there is a greeting yet, so
+        {status !== undefined && (
+          <Led color={ink} style={styles.status}>
+            {status}
+          </Led>
+        )}
+        {/* The line's space is held whether or not there is a greeting yet, so
           it fades in where it will stay instead of nudging what is under it. */}
-      <View style={styles.textHold}>
-        {text !== undefined && failed ? (
-          // A refusal is a paragraph, not a greeting: shrunk onto one line it
-          // was unreadable. Headline at the greeting's size (two lines at most),
-          // then the fix as a wrapped note with its command picked out.
-          <Dissolve kind="swap" dissolveKey={text} delay={40} style={styles.textWrap}>
-            <FatalText message={text} />
-          </Dissolve>
-        ) : text !== undefined ? (
-          <Dissolve kind="swap" dissolveKey={text} delay={40} style={styles.textWrap}>
-            <Text style={styles.text} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
-              {text}
-            </Text>
-          </Dissolve>
-        ) : null}
-      </View>
-      {/* Switching agent can't help while the machine refuses this phone. */}
-      {onPressPew && !failed && (
-        <Text style={styles.hint} numberOfLines={1}>
-          {hint}
-        </Text>
-      )}
-      {/* The row's height is held from the first frame, empty or not: the
+        <View style={styles.textHold}>
+          {text !== undefined && failed ? (
+            // A refusal is a paragraph, not a greeting: shrunk onto one line it
+            // was unreadable. Headline at the greeting's size (two lines at most),
+            // then the fix as a wrapped note with its command picked out.
+            <Dissolve kind="swap" dissolveKey={text} delay={40} style={styles.textWrap}>
+              <FatalText message={text} />
+            </Dissolve>
+          ) : text !== undefined ? (
+            <Dissolve kind="swap" dissolveKey={text} delay={40} style={styles.textWrap}>
+              <Text
+                style={styles.text}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.5}
+              >
+                {text}
+              </Text>
+            </Dissolve>
+          ) : null}
+        </View>
+        {/* Switching agent can't help while the machine refuses this phone. */}
+        {onPressPew && !failed && (
+          <Text style={styles.hint} numberOfLines={1}>
+            {hint}
+          </Text>
+        )}
+        {/* The row's height is held from the first frame, empty or not: the
           history arrives a moment after launch, and adding the row then pushed
           Pew and the greeting up the screen. Now the cards fade into a space
           that was already there. (A brand-new install with no chats keeps the
           empty band; the layout never jumps.) */}
-      {onOpenChat && shown.length === 0 && <View style={styles.cardsHold} />}
-      {shown.length > 0 && onOpenChat && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.cards}
-          contentContainerStyle={styles.cardsRow}
-          keyboardShouldPersistTaps="handled"
-        >
-          {shown.map((chat, i) => (
-            <Dissolve key={chat.id} kind="row" delay={120 + i * 50}>
-              <PressScale
-                feel="tap"
-                onPress={() => onOpenChat(chat.id)}
-                style={styles.card}
-                accessibilityLabel={`${chat.title}, ${chat.startedAt > 0 ? lastActiveLabel(chat.startedAt) : "earlier"}`}
-                accessibilityHint="Opens this conversation"
-              >
-                <Led tone="dim" size={theme.stage.ledSize} maxFontSizeMultiplier={CARD_FONT_SCALE}>
-                  {chat.startedAt > 0 ? lastActiveLabel(chat.startedAt) : "earlier"}
-                </Led>
-                <Text style={styles.cardTitle} numberOfLines={2} maxFontSizeMultiplier={CARD_FONT_SCALE}>
-                  {chat.title}
-                </Text>
-              </PressScale>
-            </Dissolve>
-          ))}
-        </ScrollView>
-      )}
+        {onOpenChat && shown.length === 0 && <View style={styles.cardsHold} />}
+        {shown.length > 0 && onOpenChat && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.cards}
+            contentContainerStyle={styles.cardsRow}
+            keyboardShouldPersistTaps="handled"
+          >
+            {shown.map((chat, i) => (
+              <Dissolve key={chat.id} kind="row" delay={120 + i * 50}>
+                <PressScale
+                  feel="tap"
+                  onPress={() => onOpenChat(chat.id)}
+                  style={styles.card}
+                  accessibilityLabel={`${chat.title}, ${chat.startedAt > 0 ? lastActiveLabel(chat.startedAt) : "earlier"}`}
+                  accessibilityHint="Opens this conversation"
+                >
+                  <Led
+                    tone="dim"
+                    size={theme.stage.ledSize}
+                    maxFontSizeMultiplier={CARD_FONT_SCALE}
+                  >
+                    {chat.startedAt > 0 ? lastActiveLabel(chat.startedAt) : "earlier"}
+                  </Led>
+                  <Text
+                    style={styles.cardTitle}
+                    numberOfLines={2}
+                    maxFontSizeMultiplier={CARD_FONT_SCALE}
+                  >
+                    {chat.title}
+                  </Text>
+                </PressScale>
+              </Dissolve>
+            ))}
+          </ScrollView>
+        )}
       </Reanimated.View>
     </View>
   );
@@ -238,11 +270,23 @@ const styles = StyleSheet.create({
   },
   hint: { color: theme.color.textDim, fontSize: theme.font.small, marginTop: theme.space(1) },
   fatal: { alignSelf: "stretch", gap: theme.space(2), paddingBottom: theme.space(2) },
-  fatalDetail: { color: theme.color.textDim, fontSize: theme.font.small, lineHeight: 19, textAlign: "center" },
+  fatalDetail: {
+    color: theme.color.textDim,
+    fontSize: theme.font.small,
+    lineHeight: 19,
+    textAlign: "center",
+  },
   fatalCommand: { color: theme.color.text, fontWeight: "600" },
   cards: { alignSelf: "stretch", marginTop: theme.space(6), flexGrow: 0 },
   cardsRow: { paddingHorizontal: theme.gutter, gap: theme.space(2) },
-  card: { ...dashedOutline, width: 148, height: CARD_HEIGHT, borderRadius: 12, padding: theme.space(3), gap: theme.space(1.5) },
+  card: {
+    ...dashedOutline,
+    width: 148,
+    height: CARD_HEIGHT,
+    borderRadius: 12,
+    padding: theme.space(3),
+    gap: theme.space(1.5),
+  },
   // The cards' space while there are none yet: the row's own height.
   cardsHold: { alignSelf: "stretch", marginTop: theme.space(6), height: CARD_HEIGHT },
   cardTitle: { color: theme.color.text, fontSize: 13, lineHeight: 17 },

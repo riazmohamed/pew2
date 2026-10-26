@@ -40,20 +40,51 @@ import type { GoalResult, GoalSummary } from "../ggState";
 import type { WorkspaceBrowse } from "../useDaemon";
 import { EASE_OUT } from "./motion/ease";
 import { DUR } from "../motion";
-import { addAttachments, MAX_ATTACHMENTS, toWireAttachments, type PendingAttachment, type WireAttachment } from "../attachments";
+import {
+  addAttachments,
+  MAX_ATTACHMENTS,
+  toWireAttachments,
+  type PendingAttachment,
+  type WireAttachment,
+} from "../attachments";
 import { pickFiles } from "./attachmentPicker";
 import { LaunchFx, type LaunchFxValues } from "./LaunchFx";
 import { sounds } from "./sounds";
 import { BURST_MIN_S, type FxScene } from "../launchFx";
 import { LaunchPad, COVER_LAG_S, usePlainLaunch } from "./GoalLaunchPad";
-import { CHIP_LAYOUT, CONTEXT_MAX, ContextChips, GOAL_MAX, INSTRUCTIONS_MAX, INSTRUCTIONS_PLACEHOLDER, NAME_MAX, StageInput } from "./goalForm";
+import {
+  CHIP_LAYOUT,
+  CONTEXT_MAX,
+  ContextChips,
+  GOAL_MAX,
+  INSTRUCTIONS_MAX,
+  INSTRUCTIONS_PLACEHOLDER,
+  NAME_MAX,
+  StageInput,
+} from "./goalForm";
 // The form pieces moved to `goalForm.tsx`; re-exported so goal settings keeps importing them from here.
-export { CHIP_LAYOUT, CONTEXT_MAX, ContextChips, Field, GOAL_MAX, INSTRUCTIONS_MAX, INSTRUCTIONS_PLACEHOLDER, NAME_MAX, StageInput } from "./goalForm";
+export {
+  CHIP_LAYOUT,
+  CONTEXT_MAX,
+  ContextChips,
+  Field,
+  GOAL_MAX,
+  INSTRUCTIONS_MAX,
+  INSTRUCTIONS_PLACEHOLDER,
+  NAME_MAX,
+  StageInput,
+} from "./goalForm";
 
 interface NewGoalSheetProps {
   visible: boolean;
   onClose: () => void;
-  onCreate: (input: { name: string; goal: string; context: string[]; instructions?: string; files?: WireAttachment[] }) => string | undefined;
+  onCreate: (input: {
+    name: string;
+    goal: string;
+    context: string[];
+    instructions?: string;
+    files?: WireAttachment[];
+  }) => string | undefined;
   results: Record<string, GoalResult>;
   onCreated: (goal: GoalSummary | undefined) => void;
   browse?: WorkspaceBrowse;
@@ -116,7 +147,18 @@ const STEP_TITLE: Record<Step, string> = {
  * (top right) and Back (top left, beside Close) move between steps, clear of
  * the keyboard; the last step is the launch pad.
  */
-function NewGoalScreen({ visible, onClose, onCreate, results, onCreated, browse, onBrowse, prefill, online, onQuietExit }: NewGoalSheetProps & { onQuietExit: () => void }) {
+function NewGoalScreen({
+  visible,
+  onClose,
+  onCreate,
+  results,
+  onCreated,
+  browse,
+  onBrowse,
+  prefill,
+  online,
+  onQuietExit,
+}: NewGoalSheetProps & { onQuietExit: () => void }) {
   const insets = useSafeAreaInsets();
   const reduce = useReducedMotion();
   const [step, setStep] = useState<Step>("name");
@@ -168,7 +210,9 @@ function NewGoalScreen({ visible, onClose, onCreate, results, onCreated, browse,
     setWaitingLong(false);
     // `EXPO_PUBLIC_DEV_GOAL_STEP=<step>` (development only) opens on that step,
     // with a name and goal filled in, for checking it on the simulator.
-    const devStep = __DEV__ ? (process.env.EXPO_PUBLIC_DEV_GOAL_STEP as Step | undefined) : undefined;
+    const devStep = __DEV__
+      ? (process.env.EXPO_PUBLIC_DEV_GOAL_STEP as Step | undefined)
+      : undefined;
     setStep(devStep && STEPS.includes(devStep) ? devStep : "name");
     setName(devStep ? "Pew2 polish" : prefill ? suggestGoalName(prefill) : "");
     setGoal(devStep ? "Make every screen feel alive." : (prefill ?? ""));
@@ -291,7 +335,8 @@ function NewGoalScreen({ visible, onClose, onCreate, results, onCreated, browse,
   const ready = name.trim().length > 0 && goal.trim().length > 0 && pending === undefined;
   const index = STEPS.indexOf(step);
   // Name and goal are required; the rest can be skipped with Next.
-  const canNext = step === "name" ? name.trim().length > 0 : step === "goal" ? goal.trim().length > 0 : true;
+  const canNext =
+    step === "name" ? name.trim().length > 0 : step === "goal" ? goal.trim().length > 0 : true;
 
   const go = (to: number) => {
     const next = STEPS[Math.max(0, Math.min(STEPS.length - 1, to))]!;
@@ -348,168 +393,220 @@ function NewGoalScreen({ visible, onClose, onCreate, results, onCreated, browse,
   // Not on the blast's very first frame: the canvas paints its cover a frame
   // after the value flips, and hiding the wizard on the flip showed whatever
   // was behind the sheet (another conversation) for that one frame.
-  const wizardStyle = useAnimatedStyle(() => ({ opacity: fx.burst.value < COVER_LAG_S ? 1 : 1 - fx.fade.value }));
+  const wizardStyle = useAnimatedStyle(() => ({
+    opacity: fx.burst.value < COVER_LAG_S ? 1 : 1 - fx.fade.value,
+  }));
 
   // Ken's mood follows the step: listening while you write, happy at the end.
   const kenMood = step === "goal" ? "thinking" : "idle";
 
   return (
     <View style={styles.fill}>
-    <Reanimated.View style={[styles.screen, { paddingTop: insets.top }, wizardStyle]} pointerEvents={launched ? "none" : "auto"}>
-      {/* Back and Next live up here, not under the field: the steps open the
+      <Reanimated.View
+        style={[styles.screen, { paddingTop: insets.top }, wizardStyle]}
+        pointerEvents={launched ? "none" : "auto"}
+      >
+        {/* Back and Next live up here, not under the field: the steps open the
           keyboard themselves, and a row along the bottom sat under it, so
           every step meant closing the keyboard to reach the next one. */}
-      <View style={styles.bar}>
-        <View style={styles.barSide}>
-          <CircleButton label="Close new goal" onPress={onClose}>
-            <DotGlyph name="close" size={14} />
-          </CircleButton>
-          {index > 0 && (
-            <Reanimated.View entering={reduce ? undefined : FadeIn.duration(DUR.enter)} exiting={reduce ? undefined : FadeOut.duration(DUR.exit)}>
-              <CircleButton label="Back" feel={() => undefined} onPress={() => go(index - 1)}>
-                <DotGlyph name="back" size={16} />
-              </CircleButton>
-            </Reanimated.View>
-          )}
+        <View style={styles.bar}>
+          <View style={styles.barSide}>
+            <CircleButton label="Close new goal" onPress={onClose}>
+              <DotGlyph name="close" size={14} />
+            </CircleButton>
+            {index > 0 && (
+              <Reanimated.View
+                entering={reduce ? undefined : FadeIn.duration(DUR.enter)}
+                exiting={reduce ? undefined : FadeOut.duration(DUR.exit)}
+              >
+                <CircleButton label="Back" feel={() => undefined} onPress={() => go(index - 1)}>
+                  <DotGlyph name="back" size={16} />
+                </CircleButton>
+              </Reanimated.View>
+            )}
+          </View>
+          <View style={styles.progress} accessibilityLabel={`Step ${index + 1} of ${STEPS.length}`}>
+            {STEPS.map((s, i) => (
+              <View
+                key={s}
+                style={[
+                  styles.progressDot,
+                  i <= index && styles.progressDotOn,
+                  i === index && styles.progressDotNow,
+                ]}
+              />
+            ))}
+          </View>
+          <View style={[styles.barSide, styles.barSideEnd]}>
+            {step !== "launch" && (
+              <StageButton
+                compact
+                color={KEN_COLOR}
+                style={styles.next}
+                disabled={!canNext}
+                label={
+                  (step === "context" && context.length === 0 && files.length === 0) ||
+                  (step === "instructions" && !instructions.trim())
+                    ? "Skip"
+                    : "Next"
+                }
+                feel="none"
+                onPress={() => go(index + 1)}
+              />
+            )}
+          </View>
         </View>
-        <View style={styles.progress} accessibilityLabel={`Step ${index + 1} of ${STEPS.length}`}>
-          {STEPS.map((s, i) => (
-            <View key={s} style={[styles.progressDot, i <= index && styles.progressDotOn, i === index && styles.progressDotNow]} />
-          ))}
-        </View>
-        <View style={[styles.barSide, styles.barSideEnd]}>
-          {step !== "launch" && (
-            <StageButton
-              compact
-              color={KEN_COLOR}
-              style={styles.next}
-              disabled={!canNext}
-              label={(step === "context" && context.length === 0 && files.length === 0) || (step === "instructions" && !instructions.trim()) ? "Skip" : "Next"}
-              feel="none"
-              onPress={() => go(index + 1)}
-            />
-          )}
-        </View>
-      </View>
 
-      {step === "launch" ? (
-        // Not in the scroll view: the hold area is most of the screen, and
-        // the blast is drawn from where Ken sits, so he must not move.
-        <View style={[styles.fill, { paddingBottom: insets.bottom + theme.space(4) }]}>
-          <Reanimated.View entering={reduce ? undefined : FadeInDown.duration(260)} style={styles.launchHead}>
-            <Text style={styles.stepTitle} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-              {STEP_TITLE.launch}
-            </Text>
-            {error ? (
-              <Text style={[styles.error, styles.errorCentred]} accessibilityLiveRegion="polite">
-                {error}
+        {step === "launch" ? (
+          // Not in the scroll view: the hold area is most of the screen, and
+          // the blast is drawn from where Ken sits, so he must not move.
+          <View style={[styles.fill, { paddingBottom: insets.bottom + theme.space(4) }]}>
+            <Reanimated.View
+              entering={reduce ? undefined : FadeInDown.duration(260)}
+              style={styles.launchHead}
+            >
+              <Text
+                style={styles.stepTitle}
+                accessibilityRole="header"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
+                {STEP_TITLE.launch}
               </Text>
-            ) : null}
-          </Reanimated.View>
-          <LaunchPad ready={ready} pending={pending !== undefined} plain={plain} fx={fx} onFire={fire} onLaunch={launch} onScene={setScene} />
-        </View>
-      ) : (
-      <KeyboardAwareScrollView
-        style={styles.fill}
-        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + theme.space(8) }]}
-        keyboardShouldPersistTaps="handled"
-        bottomOffset={theme.space(6)}
-      >
-        {/* Ken stays put across steps (not keyed): only the step below changes. */}
-        <View style={styles.ken}>
-          <Pew size={112} mood={kenMood} color={KEN_COLOR} accessibilityLabel="Ken" />
-        </View>
-        <Reanimated.View
-          key={step}
-          entering={reduce ? undefined : FadeInDown.duration(260)}
-          style={styles.step}
-        >
-          <Text style={styles.stepTitle} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-            {STEP_TITLE[step]}
-          </Text>
-
-          {step === "name" && (
-            <>
-              <StageInput
-                style={styles.center}
-                value={name}
-                onChangeText={setName}
-                maxLength={NAME_MAX}
-                placeholder="Checkout speed"
-                returnKeyType="next"
-                autoFocus={process.env.EXPO_PUBLIC_DEV_NO_FOCUS !== "1"}
-                onSubmitEditing={() => canNext && go(index + 1)}
-              />
-              <Led tone="dim">{`${name.length}/${NAME_MAX}`}</Led>
-            </>
-          )}
-
-          {step === "goal" && (
-            <StageInput
-              style={styles.goal}
-              value={goal}
-              onChangeText={setGoal}
-              maxLength={GOAL_MAX}
-              placeholder="Get checkout loading under one second on mobile"
-              multiline
-              autoFocus={process.env.EXPO_PUBLIC_DEV_NO_FOCUS !== "1"}
+              {error ? (
+                <Text style={[styles.error, styles.errorCentred]} accessibilityLiveRegion="polite">
+                  {error}
+                </Text>
+              ) : null}
+            </Reanimated.View>
+            <LaunchPad
+              ready={ready}
+              pending={pending !== undefined}
+              plain={plain}
+              fx={fx}
+              onFire={fire}
+              onLaunch={launch}
+              onScene={setScene}
             />
-          )}
-
-          {step === "context" && (
-            <View style={styles.wide}>
-              <ContextChips
-                chosen={context}
-                onChange={setContext}
-                phoneFiles={files}
-                onRemovePhoneFile={(id) => setFiles((now) => now.filter((f) => f.id !== id))}
-              />
-              {/* Moves down (or up) with the same spring when a chip row
-                  appears or grows, instead of jumping. */}
-              {visible && (
-                <Reanimated.View layout={reduce ? undefined : CHIP_LAYOUT}>
-                  <FolderPicker
-                    chosen={context}
-                    onChange={(next) => setContext(next.slice(0, CONTEXT_MAX - files.length))}
-                    browse={browse}
-                    onBrowse={onBrowse}
-                    online={online}
-                    allowFiles
-                    hideChosen
-                    onPickPhoneFiles={() => void pickPhone()}
-                  />
-                </Reanimated.View>
-              )}
+          </View>
+        ) : (
+          <KeyboardAwareScrollView
+            style={styles.fill}
+            contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + theme.space(8) }]}
+            keyboardShouldPersistTaps="handled"
+            bottomOffset={theme.space(6)}
+          >
+            {/* Ken stays put across steps (not keyed): only the step below changes. */}
+            <View style={styles.ken}>
+              <Pew size={112} mood={kenMood} color={KEN_COLOR} accessibilityLabel="Ken" />
             </View>
-          )}
+            <Reanimated.View
+              key={step}
+              entering={reduce ? undefined : FadeInDown.duration(260)}
+              style={styles.step}
+            >
+              <Text
+                style={styles.stepTitle}
+                accessibilityRole="header"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
+                {STEP_TITLE[step]}
+              </Text>
 
-          {step === "instructions" && (
-            <StageInput
-              style={styles.multi}
-              value={instructions}
-              onChangeText={setInstructions}
-              maxLength={INSTRUCTIONS_MAX}
-              placeholder={INSTRUCTIONS_PLACEHOLDER}
-              multiline
-              autoFocus={process.env.EXPO_PUBLIC_DEV_NO_FOCUS !== "1"}
-            />
-          )}
+              {step === "name" && (
+                <>
+                  <StageInput
+                    style={styles.center}
+                    value={name}
+                    onChangeText={setName}
+                    maxLength={NAME_MAX}
+                    placeholder="Checkout speed"
+                    returnKeyType="next"
+                    autoFocus={process.env.EXPO_PUBLIC_DEV_NO_FOCUS !== "1"}
+                    onSubmitEditing={() => canNext && go(index + 1)}
+                  />
+                  <Led tone="dim">{`${name.length}/${NAME_MAX}`}</Led>
+                </>
+              )}
 
-          {error ? (
-            <Text style={styles.error} accessibilityLiveRegion="polite">
-              {error}
-            </Text>
-          ) : null}
-        </Reanimated.View>
-      </KeyboardAwareScrollView>
-      )}
-    </Reanimated.View>
-    {step === "launch" && scene && !plain && <LaunchFx scene={scene} color={KEN_COLOR} values={fx} />}
-    {launched && waitingLong && (
-      <Reanimated.View style={styles.launching} pointerEvents="none" entering={FadeIn.duration(DUR.dissolve)} exiting={FadeOut.duration(DUR.exit)}>
-        <Led tone="agent" color={KEN_COLOR}>Launching</Led>
+              {step === "goal" && (
+                <StageInput
+                  style={styles.goal}
+                  value={goal}
+                  onChangeText={setGoal}
+                  maxLength={GOAL_MAX}
+                  placeholder="Get checkout loading under one second on mobile"
+                  multiline
+                  autoFocus={process.env.EXPO_PUBLIC_DEV_NO_FOCUS !== "1"}
+                />
+              )}
+
+              {step === "context" && (
+                <View style={styles.wide}>
+                  <ContextChips
+                    chosen={context}
+                    onChange={setContext}
+                    phoneFiles={files}
+                    onRemovePhoneFile={(id) => setFiles((now) => now.filter((f) => f.id !== id))}
+                  />
+                  {/* Moves down (or up) with the same spring when a chip row
+                  appears or grows, instead of jumping. */}
+                  {visible && (
+                    <Reanimated.View layout={reduce ? undefined : CHIP_LAYOUT}>
+                      <FolderPicker
+                        chosen={context}
+                        onChange={(next) => setContext(next.slice(0, CONTEXT_MAX - files.length))}
+                        browse={browse}
+                        onBrowse={onBrowse}
+                        online={online}
+                        allowFiles
+                        hideChosen
+                        onPickPhoneFiles={() => void pickPhone()}
+                      />
+                    </Reanimated.View>
+                  )}
+                </View>
+              )}
+
+              {step === "instructions" && (
+                <StageInput
+                  style={styles.multi}
+                  value={instructions}
+                  onChangeText={setInstructions}
+                  maxLength={INSTRUCTIONS_MAX}
+                  placeholder={INSTRUCTIONS_PLACEHOLDER}
+                  multiline
+                  autoFocus={process.env.EXPO_PUBLIC_DEV_NO_FOCUS !== "1"}
+                />
+              )}
+
+              {error ? (
+                <Text style={styles.error} accessibilityLiveRegion="polite">
+                  {error}
+                </Text>
+              ) : null}
+            </Reanimated.View>
+          </KeyboardAwareScrollView>
+        )}
       </Reanimated.View>
-    )}
+      {step === "launch" && scene && !plain && (
+        <LaunchFx scene={scene} color={KEN_COLOR} values={fx} />
+      )}
+      {launched && waitingLong && (
+        <Reanimated.View
+          style={styles.launching}
+          pointerEvents="none"
+          entering={FadeIn.duration(DUR.dissolve)}
+          exiting={FadeOut.duration(DUR.exit)}
+        >
+          <Led tone="agent" color={KEN_COLOR}>
+            Launching
+          </Led>
+        </Reanimated.View>
+      )}
     </View>
   );
 }
@@ -527,7 +624,13 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   screen: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.color.bg },
   // The page header's own rail (`styles.topBar`): gutter, `headerInset`, 44pt controls.
-  bar: { flexDirection: "row", alignItems: "center", gap: theme.space(2), paddingHorizontal: theme.gutter, paddingVertical: theme.headerInset },
+  bar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(2),
+    paddingHorizontal: theme.gutter,
+    paddingVertical: theme.headerInset,
+  },
   // Both sides one width, so the progress dots stay centred whichever
   // buttons are showing.
   barSide: { width: BAR_SIDE, flexDirection: "row", alignItems: "center", gap: theme.space(2) },
@@ -538,18 +641,41 @@ const styles = StyleSheet.create({
   progressDotOn: { backgroundColor: KEN_COLOR },
   progressDotNow: { width: 18 },
   // Centred column: Ken, then the step's title, then its one field.
-  body: { flexGrow: 1, alignItems: "center", paddingHorizontal: theme.gutter, paddingTop: theme.space(6), paddingBottom: theme.space(8) },
+  body: {
+    flexGrow: 1,
+    alignItems: "center",
+    paddingHorizontal: theme.gutter,
+    paddingTop: theme.space(6),
+    paddingBottom: theme.space(8),
+  },
   ken: { alignItems: "center", marginBottom: theme.space(2) },
   step: { alignSelf: "stretch", alignItems: "center", gap: theme.space(3) },
-  stepTitle: { color: theme.color.text, fontFamily: theme.display.regular, fontSize: 24, lineHeight: 30, textAlign: "center" },
+  stepTitle: {
+    color: theme.color.text,
+    fontFamily: theme.display.regular,
+    fontSize: 24,
+    lineHeight: 30,
+    textAlign: "center",
+  },
   center: { alignSelf: "stretch", textAlign: "center", fontSize: 18 },
   wide: { alignSelf: "stretch", gap: theme.space(3) },
   goal: { alignSelf: "stretch", minHeight: 140, textAlignVertical: "top" },
   multi: { alignSelf: "stretch", minHeight: 120, textAlignVertical: "top" },
   error: { color: theme.color.danger, fontSize: theme.font.small },
   errorCentred: { textAlign: "center", alignSelf: "stretch", lineHeight: 20 },
-  launchHead: { alignItems: "center", gap: theme.space(2), paddingHorizontal: theme.gutter, paddingTop: theme.space(6) },
-  launching: { position: "absolute", left: 0, right: 0, bottom: theme.space(24), alignItems: "center" },
+  launchHead: {
+    alignItems: "center",
+    gap: theme.space(2),
+    paddingHorizontal: theme.gutter,
+    paddingTop: theme.space(6),
+  },
+  launching: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: theme.space(24),
+    alignItems: "center",
+  },
   pressed: { opacity: 0.7 },
 });
 

@@ -10,7 +10,17 @@
  */
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Gesture, GestureDetector, type PanGesture } from "react-native-gesture-handler";
-import { Alert, Dimensions, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  Dimensions,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { theme } from "../theme";
@@ -197,7 +207,15 @@ interface SessionRowProps {
  * process. At most four conversations hold an agent at once (the daemon caps
  * it), so this stays rare enough not to be clutter.
  */
-function CloseAgentButton({ title, busy, onPress }: { title: string; busy: boolean; onPress: () => void }) {
+function CloseAgentButton({
+  title,
+  busy,
+  onPress,
+}: {
+  title: string;
+  busy: boolean;
+  onPress: () => void;
+}) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -237,7 +255,19 @@ function CloseAgentButton({ title, busy, onPress }: { title: string; busy: boole
  */
 const RAIL_SLEEP = [0, 5, 8, 3, 7, 2, 9, 4, 6, 1] as const;
 
-const SessionRow = memo(function SessionRow({ session, index, active, reduceMotion, paused, onOpen, meta, onLongPress, cascadeAt, live, onClose }: SessionRowProps) {
+const SessionRow = memo(function SessionRow({
+  session,
+  index,
+  active,
+  reduceMotion,
+  paused,
+  onOpen,
+  meta,
+  onLongPress,
+  cascadeAt,
+  live,
+  onClose,
+}: SessionRowProps) {
   // The cascade is keyed to the drawer opening, not to a row's mount: each row
   // takes its slot (index × stagger) from that one moment, so a row the list
   // mounts in a later batch still lands after the one above it, and a row that
@@ -245,7 +275,14 @@ const SessionRow = memo(function SessionRow({ session, index, active, reduceMoti
   const agent = useAgentColor();
   const mark = rowMark(session);
   const when = shortWhen(session.startedAt);
-  const status = mark === "live" ? "Working" : mark === "attention" ? "Waiting on you" : mark === "unread" ? "New reply" : undefined;
+  const status =
+    mark === "live"
+      ? "Working"
+      : mark === "attention"
+        ? "Waiting on you"
+        : mark === "unread"
+          ? "New reply"
+          : undefined;
   return (
     <Dissolve
       kind="row"
@@ -256,14 +293,20 @@ const SessionRow = memo(function SessionRow({ session, index, active, reduceMoti
       {index > 0 && <DashedRule />}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={[session.title, status, meta ?? (when ? `${when} ago` : undefined)].filter(Boolean).join(", ")}
+        accessibilityLabel={[session.title, status, meta ?? (when ? `${when} ago` : undefined)]
+          .filter(Boolean)
+          .join(", ")}
         accessibilityState={{ selected: active }}
         onPress={() => {
           haptics.select();
           onOpen(session.id);
         }}
         onLongPress={onLongPress ? () => onLongPress(session.id) : undefined}
-        style={({ pressed }) => [styles.row, active && { backgroundColor: withAlpha(agent, 0.1) }, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.row,
+          active && { backgroundColor: withAlpha(agent, 0.1) },
+          pressed && styles.pressed,
+        ]}
       >
         {/* The title starts on the column's rail, under "Latest chats"; the
             status marker sits at the right edge beside the time, so a marked
@@ -271,12 +314,24 @@ const SessionRow = memo(function SessionRow({ session, index, active, reduceMoti
         <Text style={[styles.rowTitle, active && { color: agent }]} numberOfLines={1}>
           {session.title}
         </Text>
-        {mark ? <View style={styles.statusCol}><Pixel kind={mark} paused={paused} /></View> : null}
-        {when ? <Text style={styles.rowWhen} numberOfLines={1}>{when}</Text> : null}
+        {mark ? (
+          <View style={styles.statusCol}>
+            <Pixel kind={mark} paused={paused} />
+          </View>
+        ) : null}
+        {when ? (
+          <Text style={styles.rowWhen} numberOfLines={1}>
+            {when}
+          </Text>
+        ) : null}
         {/* Inside the row on screen, its own target: tapping the title opens,
             tapping this closes, and the two do not overlap. */}
         {live && onClose ? (
-          <CloseAgentButton title={session.title} busy={session.busy === true} onPress={() => onClose(session.id)} />
+          <CloseAgentButton
+            title={session.title}
+            busy={session.busy === true}
+            onPress={() => onClose(session.id)}
+          />
         ) : null}
       </Pressable>
     </Dissolve>
@@ -313,7 +368,19 @@ function ListHead({ label, children }: { label: string; children?: ReactNode }) 
 }
 
 /** GG Goals' half of the drawer: its goals in the same row style as chats. */
-function GoalsSection({ goals, activeSessionId, reduceMotion, paused, cascadeAt }: { goals: SidebarGoals; activeSessionId?: string; reduceMotion: boolean; paused: boolean; cascadeAt: number }) {
+function GoalsSection({
+  goals,
+  activeSessionId,
+  reduceMotion,
+  paused,
+  cascadeAt,
+}: {
+  goals: SidebarGoals;
+  activeSessionId?: string;
+  reduceMotion: boolean;
+  paused: boolean;
+  cascadeAt: number;
+}) {
   const sorted = useMemo(() => sortGoals([...(goals.list ?? [])]), [goals.list]);
   const byId = useMemo(() => new Map(sorted.map((goal) => [goal.id, goal])), [sorted]);
   // The system spinner only ever answers a pull the user made.
@@ -336,10 +403,14 @@ function GoalsSection({ goals, activeSessionId, reduceMotion, paused, cascadeAt 
       const goal = byId.get(id);
       if (!goal) return;
       haptics.warned();
-      Alert.alert("Delete goal?", `“${goal.name}” will be removed from GG Goals on your computer.`, [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => onDelete(goal) },
-      ]);
+      Alert.alert(
+        "Delete goal?",
+        `“${goal.name}” will be removed from GG Goals on your computer.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Delete", style: "destructive", onPress: () => onDelete(goal) },
+        ],
+      );
     },
     [byId, onDelete],
   );
@@ -372,7 +443,9 @@ function GoalsSection({ goals, activeSessionId, reduceMotion, paused, cascadeAt 
           goals.list === undefined && !goals.error ? (
             <HistorySkeleton label="Loading goals" />
           ) : (
-            <Text style={styles.empty} numberOfLines={2}>{goals.error ?? "No goals yet. Start one with New goal."}</Text>
+            <Text style={styles.empty} numberOfLines={2}>
+              {goals.error ?? "No goals yet. Start one with New goal."}
+            </Text>
           )
         }
         renderItem={({ item: goal, index }) => {
@@ -398,28 +471,69 @@ function GoalsSection({ goals, activeSessionId, reduceMotion, paused, cascadeAt 
 
 /** One agent on the rail: its Pew, a tinted tile when chosen (no edge bar: the user wants no coloured left edges anywhere), a status pixel. */
 const RailAgent = memo(function RailAgent({
-  provider, selected, mark, index, paused, reduceMotion, onPress,
-}: { provider: Provider; selected: boolean; mark: Mark; index: number; paused: boolean; reduceMotion: boolean; onPress: (id: string) => void }) {
+  provider,
+  selected,
+  mark,
+  index,
+  paused,
+  reduceMotion,
+  onPress,
+}: {
+  provider: Provider;
+  selected: boolean;
+  mark: Mark;
+  index: number;
+  paused: boolean;
+  reduceMotion: boolean;
+  onPress: (id: string) => void;
+}) {
   const enabled = provider.available;
   const ink = pewInk(provider.color);
   const [revealing] = useState(() => !paused);
-  const spoken = mark === "attention" ? "needs you" : mark === "live" ? "working" : mark === "unread" ? "new reply" : undefined;
+  const spoken =
+    mark === "attention"
+      ? "needs you"
+      : mark === "live"
+        ? "working"
+        : mark === "unread"
+          ? "new reply"
+          : undefined;
   return (
     <Dissolve kind="in" delay={index * ROW_STAGGER_MS} enabled={!reduceMotion && revealing}>
       <Pressable
         disabled={!enabled}
         accessibilityRole="button"
-        accessibilityLabel={enabled ? [provider.name, spoken].filter(Boolean).join(", ") : `${provider.name}, unavailable. ${provider.unavailableReason ?? ""}`}
+        accessibilityLabel={
+          enabled
+            ? [provider.name, spoken].filter(Boolean).join(", ")
+            : `${provider.name}, unavailable. ${provider.unavailableReason ?? ""}`
+        }
         accessibilityState={{ selected, disabled: !enabled }}
         onPress={() => {
           if (selected) return;
           haptics.chosen(agentSound(provider.id));
           onPress(provider.id);
         }}
-        style={({ pressed }) => [styles.railButton, selected && { backgroundColor: withAlpha(ink, 0.13) }, !enabled && styles.unavailable, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.railButton,
+          selected && { backgroundColor: withAlpha(ink, 0.13) },
+          !enabled && styles.unavailable,
+          pressed && styles.pressed,
+        ]}
       >
-        <Pew size={RAIL_PEW} color={provider.color} mood={!enabled ? "sleepy" : selected ? "idle" : "sleepy"} sleepKey={provider.id} sleepStyle={RAIL_SLEEP[index % RAIL_SLEEP.length]} paused={paused || !enabled} />
-        {mark && <View style={styles.railBadge}><Pixel kind={mark} color={mark === "attention" ? undefined : ink} paused={paused} /></View>}
+        <Pew
+          size={RAIL_PEW}
+          color={provider.color}
+          mood={!enabled ? "sleepy" : selected ? "idle" : "sleepy"}
+          sleepKey={provider.id}
+          sleepStyle={RAIL_SLEEP[index % RAIL_SLEEP.length]}
+          paused={paused || !enabled}
+        />
+        {mark && (
+          <View style={styles.railBadge}>
+            <Pixel kind={mark} color={mark === "attention" ? undefined : ink} paused={paused} />
+          </View>
+        )}
       </Pressable>
     </Dissolve>
   );
@@ -428,7 +542,19 @@ const RailAgent = memo(function RailAgent({
 /** One project tab: dashed at rest, solid in the agent colour when chosen. */
 const ALL_TAB = "\u0000all";
 
-const ProjectTab = memo(function ProjectTab({ path, label, a11y, selected, onSelect }: { path?: string; label: string; a11y: string; selected: boolean; onSelect: (path?: string) => void }) {
+const ProjectTab = memo(function ProjectTab({
+  path,
+  label,
+  a11y,
+  selected,
+  onSelect,
+}: {
+  path?: string;
+  label: string;
+  a11y: string;
+  selected: boolean;
+  onSelect: (path?: string) => void;
+}) {
   const agent = useAgentColor();
   return (
     <Pressable
@@ -440,9 +566,17 @@ const ProjectTab = memo(function ProjectTab({ path, label, a11y, selected, onSel
         haptics.select();
         onSelect(path);
       }}
-      style={({ pressed }) => [styles.tab, selected ? { borderStyle: "solid", borderColor: agent, backgroundColor: withAlpha(agent, 0.1) } : null, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.tab,
+        selected
+          ? { borderStyle: "solid", borderColor: agent, backgroundColor: withAlpha(agent, 0.1) }
+          : null,
+        pressed && styles.pressed,
+      ]}
     >
-      <Text style={[styles.tabText, selected && { color: agent }]} numberOfLines={1}>{label}</Text>
+      <Text style={[styles.tabText, selected && { color: agent }]} numberOfLines={1}>
+        {label}
+      </Text>
     </Pressable>
   );
 });
@@ -459,7 +593,9 @@ function BrowseTab({ onPress }: { onPress: () => void }) {
       }}
       style={({ pressed }) => [styles.tab, styles.browseTab, pressed && styles.pressed]}
     >
-      <Text style={styles.tabText} numberOfLines={1}>Another folder…</Text>
+      <Text style={styles.tabText} numberOfLines={1}>
+        Another folder…
+      </Text>
     </Pressable>
   );
 }
@@ -508,7 +644,10 @@ function SidebarView({
   }, [open]);
 
   // GG Coder and GG Goals pinned first, then most recently used.
-  const orderedProviders = useMemo(() => orderProvidersByRecency(providers, sessions), [providers, sessions]);
+  const orderedProviders = useMemo(
+    () => orderProvidersByRecency(providers, sessions),
+    [providers, sessions],
+  );
   const activeProvider = orderedProviders.find((p) => p.id === activeProviderId);
 
   // One status per agent for its rail Pew: needs you > working > unread.
@@ -524,7 +663,10 @@ function SidebarView({
     return out;
   }, [sessions]);
 
-  const selectedProject = useMemo(() => projects.find((project) => project.path === selectedProjectPath), [projects, selectedProjectPath]);
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.path === selectedProjectPath),
+    [projects, selectedProjectPath],
+  );
   const tabItems = useMemo(() => projectTabItems(projects), [projects]);
   // Narrowed before the recent-work cap, or a project's older conversations
   // would be cut away by a window they were never in.
@@ -562,8 +704,17 @@ function SidebarView({
     >
       {/* The drawer starts at the physical left edge, which in landscape is
           under the notch on one of the two ways round. */}
-      <View style={[styles.board, { paddingTop: insets.top + theme.headerInset, paddingLeft: insets.left }]}>
-        <View style={[styles.rail, { paddingBottom: insets.bottom + theme.space(4) }]} accessibilityRole="tablist" accessibilityLabel="Agents">
+      <View
+        style={[
+          styles.board,
+          { paddingTop: insets.top + theme.headerInset, paddingLeft: insets.left },
+        ]}
+      >
+        <View
+          style={[styles.rail, { paddingBottom: insets.bottom + theme.space(4) }]}
+          accessibilityRole="tablist"
+          accessibilityLabel="Agents"
+        >
           <DashedRule vertical style={styles.railEdge} />
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.railList}>
             {orderedProviders.map((provider, index) => (
@@ -590,16 +741,28 @@ function SidebarView({
             style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
           >
             <Ionicons name="settings-outline" size={22} color={theme.color.textDim} />
-            {update && <View style={styles.railBadge}><Pixel kind="attention" paused={rowsStill} /></View>}
+            {update && (
+              <View style={styles.railBadge}>
+                <Pixel kind="attention" paused={rowsStill} />
+              </View>
+            )}
           </Pressable>
         </View>
 
         {/* The bottom inset here as well as on the rail: the list's last rows
             otherwise sit in the home indicator's gesture strip. */}
-        <View style={[styles.main, { paddingBottom: insets.bottom + theme.space(4), paddingRight: insets.right }]}>
+        <View
+          style={[
+            styles.main,
+            { paddingBottom: insets.bottom + theme.space(4), paddingRight: insets.right },
+          ]}
+        >
           <View style={styles.head}>
             <View style={styles.headTop}>
-              <Text style={[styles.agentName, { color: pewInk(activeProvider?.color) }]} numberOfLines={1}>
+              <Text
+                style={[styles.agentName, { color: pewInk(activeProvider?.color) }]}
+                numberOfLines={1}
+              >
                 {activeProvider?.name ?? "Agents"}
               </Text>
               {/* Full width now, so nothing of the conversation is left to tap:
@@ -621,41 +784,49 @@ function SidebarView({
           </View>
 
           {goals ? (
-            <GoalsSection goals={goals} activeSessionId={activeSessionId} reduceMotion={reduceMotion} paused={rowsStill} cascadeAt={cascadeAt} />
+            <GoalsSection
+              goals={goals}
+              activeSessionId={activeSessionId}
+              reduceMotion={reduceMotion}
+              paused={rowsStill}
+              cascadeAt={cascadeAt}
+            />
           ) : (
             <>
               {/* Horizontal tabs instead of a dropdown: the row scrolls, so many
                   projects still fit, and the choice is visible without a tap. */}
               {(projects.length > 0 || onBrowseFolder) && (
                 <GestureDetector gesture={tabsGesture}>
-                <FlatList
-                  // Windowed: GG Coder can hold hundreds of projects, and
-                  // mounting every dashed pill at once made switching to it
-                  // visibly slower than to any other agent.
-                  key={activeProviderId ?? "all-providers"}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.tabScroller}
-                  contentContainerStyle={styles.tabs}
-                  data={tabItems}
-                  extraData={selectedProject?.path}
-                  keyExtractor={(item) => item.path ?? ALL_TAB}
-                  initialNumToRender={8}
-                  maxToRenderPerBatch={8}
-                  windowSize={5}
-                  renderItem={({ item }) => (
-                    <ProjectTab
-                      path={item.path}
-                      label={item.label}
-                      a11y={item.a11y}
-                      selected={item.path === selectedProject?.path}
-                      onSelect={onSelectProject}
-                    />
-                  )}
-                  // The way to a folder this agent has never been used in: the
-                  // tabs only list projects it already knows.
-                  ListFooterComponent={onBrowseFolder ? <BrowseTab onPress={onBrowseFolder} /> : null}
-                />
+                  <FlatList
+                    // Windowed: GG Coder can hold hundreds of projects, and
+                    // mounting every dashed pill at once made switching to it
+                    // visibly slower than to any other agent.
+                    key={activeProviderId ?? "all-providers"}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.tabScroller}
+                    contentContainerStyle={styles.tabs}
+                    data={tabItems}
+                    extraData={selectedProject?.path}
+                    keyExtractor={(item) => item.path ?? ALL_TAB}
+                    initialNumToRender={8}
+                    maxToRenderPerBatch={8}
+                    windowSize={5}
+                    renderItem={({ item }) => (
+                      <ProjectTab
+                        path={item.path}
+                        label={item.label}
+                        a11y={item.a11y}
+                        selected={item.path === selectedProject?.path}
+                        onSelect={onSelectProject}
+                      />
+                    )}
+                    // The way to a folder this agent has never been used in: the
+                    // tabs only list projects it already knows.
+                    ListFooterComponent={
+                      onBrowseFolder ? <BrowseTab onPress={onBrowseFolder} /> : null
+                    }
+                  />
                 </GestureDetector>
               )}
 
@@ -692,7 +863,9 @@ function SidebarView({
                     <HistorySkeleton />
                   ) : (
                     <Text style={styles.empty} numberOfLines={2}>
-                      {selectedProject ? `No chats in ${selectedProject.name} yet.` : "No chats yet. Send a message to start one."}
+                      {selectedProject
+                        ? `No chats in ${selectedProject.name} yet.`
+                        : "No chats yet. Send a message to start one."}
                     </Text>
                   )
                 }
@@ -773,9 +946,21 @@ const styles = StyleSheet.create({
   main: { flex: 1, minWidth: 0, paddingBottom: theme.space(4) },
   // The close button sits on the screen's own right rail (`theme.gutter`), the
   // spot the main screen's right-hand button occupies, like every page header.
-  head: { paddingLeft: COLUMN_PAD, paddingRight: theme.gutter, gap: theme.space(1), minHeight: theme.size.control, justifyContent: "center" },
+  head: {
+    paddingLeft: COLUMN_PAD,
+    paddingRight: theme.gutter,
+    gap: theme.space(1),
+    minHeight: theme.size.control,
+    justifyContent: "center",
+  },
   headTop: { flexDirection: "row", alignItems: "center", gap: theme.space(2) },
-  agentName: { flex: 1, minWidth: 0, fontFamily: theme.display.regular, fontSize: theme.font.title, letterSpacing: 0.5 },
+  agentName: {
+    flex: 1,
+    minWidth: 0,
+    fontFamily: theme.display.regular,
+    fontSize: theme.font.title,
+    letterSpacing: 0.5,
+  },
 
   tabScroller: { flexGrow: 0, marginTop: theme.space(4) },
   tabs: { paddingHorizontal: COLUMN_PAD, gap: theme.space(2), alignItems: "center" },
@@ -817,10 +1002,21 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.sm,
   },
   statusCol: { width: STATUS_COL, alignItems: "center", justifyContent: "center" },
-  rowTitle: { flex: 1, color: theme.color.text, fontSize: theme.font.body, lineHeight: theme.line.body },
+  rowTitle: {
+    flex: 1,
+    color: theme.color.text,
+    fontSize: theme.font.body,
+    lineHeight: theme.line.body,
+  },
   rowWhen: { color: theme.color.textDim, fontSize: theme.font.tiny },
   // After the time, quiet: housekeeping must never compete with the title.
-  closeAgent: { width: 24, height: 24, alignItems: "center", justifyContent: "center", borderRadius: theme.radius.sm },
+  closeAgent: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.radius.sm,
+  },
   empty: {
     color: theme.color.textDim,
     fontSize: theme.font.small,

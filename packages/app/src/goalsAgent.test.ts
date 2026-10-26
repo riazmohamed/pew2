@@ -10,7 +10,11 @@ describe("ggStrips", () => {
     });
   });
   test("follows extensions for ggcoder", () => {
-    expect(ggStrips("ggcoder", { autopilot: true }, true)).toEqual({ autopilot: true, checklist: false, plan: true });
+    expect(ggStrips("ggcoder", { autopilot: true }, true)).toEqual({
+      autopilot: true,
+      checklist: false,
+      plan: true,
+    });
     expect(ggStrips("ggcoder", undefined, true).autopilot).toBe(false);
   });
   test("nothing without a session", () => {
@@ -25,7 +29,9 @@ describe("ggStrips", () => {
 
 describe("suggestGoalName", () => {
   test("first words, capitalised, punctuation trimmed", () => {
-    expect(suggestGoalName("get checkout loading under one second, please")).toBe("Get checkout loading under");
+    expect(suggestGoalName("get checkout loading under one second, please")).toBe(
+      "Get checkout loading under",
+    );
     expect(suggestGoalName("  ship the docs!\nthen more")).toBe("Ship the docs then");
   });
   test("caps length and handles empty", () => {
@@ -35,7 +41,13 @@ describe("suggestGoalName", () => {
 });
 
 describe("goalDrawerRow", () => {
-  const goal = { id: "g1", name: "Pew2-gg", status: "interrupted", path: "/goals/g1", lastActiveMs: 5 };
+  const goal = {
+    id: "g1",
+    name: "Pew2-gg",
+    status: "interrupted",
+    path: "/goals/g1",
+    lastActiveMs: 5,
+  };
   test("reads like a chat row: title, then status · when", () => {
     const { row, meta } = goalDrawerRow(goal, "11m ago");
     expect(row.title).toBe("Pew2-gg");

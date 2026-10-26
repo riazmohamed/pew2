@@ -13,15 +13,20 @@ export function lastAgentLines(events: readonly wire.SessionEvent[], max = 3): s
   const parts: string[] = [];
   let scanned = 0;
   for (let index = events.length - 1; index >= 0 && scanned < 400; index -= 1, scanned += 1) {
-    const update = (events[index]?.payload as { update?: { sessionUpdate?: unknown; content?: unknown } } | null)
-      ?.update;
+    const update = (
+      events[index]?.payload as { update?: { sessionUpdate?: unknown; content?: unknown } } | null
+    )?.update;
     if (update?.sessionUpdate === "user_message_chunk" && parts.length > 0) break;
     if (update?.sessionUpdate !== "agent_message_chunk") continue;
     const content = update.content;
     const text = Array.isArray(content)
-      ? content.map((block: { type?: unknown; text?: unknown }) => (block?.type === "text" && typeof block.text === "string" ? block.text : "")).join("")
+      ? content
+          .map((block: { type?: unknown; text?: unknown }) =>
+            block?.type === "text" && typeof block.text === "string" ? block.text : "",
+          )
+          .join("")
       : typeof (content as { text?: unknown } | null)?.text === "string"
-        ? ((content as { text: string }).text)
+        ? (content as { text: string }).text
         : "";
     parts.push(text);
     if (parts.join("").length > 2000) break;

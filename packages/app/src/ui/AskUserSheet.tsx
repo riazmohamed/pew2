@@ -87,7 +87,11 @@ function AskUserSheetView({ ask, onAnswer, onTalk, call }: AskUserSheetProps) {
         else if (ask) onAnswer(ask.requestId, CANCEL_RESULT);
       }}
     >
-      <StageScroll style={styles.scroll} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <StageScroll
+        style={styles.scroll}
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+      >
         {shown?.questions.map((question, index) => (
           <QuestionBlock
             key={question.id}
@@ -108,7 +112,13 @@ function AskUserSheetView({ ask, onAnswer, onTalk, call }: AskUserSheetProps) {
           }}
         />
         {onTalk && shown && (
-          <StageButton compact kind="secondary" feel="tap" label="Talk it through" onPress={() => onTalk(shown.requestId)} />
+          <StageButton
+            compact
+            kind="secondary"
+            feel="tap"
+            label="Talk it through"
+            onPress={() => onTalk(shown.requestId)}
+          />
         )}
       </StageScroll>
     </Sheet>
@@ -158,10 +168,16 @@ function QuestionBlock({
                 <Pressable
                   accessibilityRole={multi ? "checkbox" : "radio"}
                   accessibilityState={{ checked: on }}
-                  accessibilityLabel={option.recommended ? `${option.label}, recommended` : option.label}
+                  accessibilityLabel={
+                    option.recommended ? `${option.label}, recommended` : option.label
+                  }
                   style={({ pressed }) => [
                     styles.option,
-                    on && { borderStyle: "solid", borderColor: agent, backgroundColor: withAlpha(agent, 0.1) },
+                    on && {
+                      borderStyle: "solid",
+                      borderColor: agent,
+                      backgroundColor: withAlpha(agent, 0.1),
+                    },
                     pressed && styles.optionPressed,
                   ]}
                   onPress={() => {
@@ -178,7 +194,9 @@ function QuestionBlock({
                   </View>
                   {option.recommended ? (
                     <View style={styles.badge} pointerEvents="none">
-                      <Text style={styles.badgeText} numberOfLines={1}>Recommended</Text>
+                      <Text style={styles.badgeText} numberOfLines={1}>
+                        Recommended
+                      </Text>
                     </View>
                   ) : null}
                 </Pressable>
@@ -188,17 +206,26 @@ function QuestionBlock({
         </View>
       )}
       {allowsOther(question) && (
-        <View style={[styles.option, otherOn && { borderStyle: "solid", borderColor: agent, backgroundColor: withAlpha(agent, 0.1) }]}>
-        <Radio on={otherOn} square={multi} color={agent} />
-        <TextInput
-          style={styles.input}
-          value={other}
-          onChangeText={(text) => onChange(typeOther(draft, question, text))}
-          placeholder="Your own answer…"
-          placeholderTextColor={theme.color.placeholder}
-          accessibilityLabel={`${question.question}, your own answer`}
-          multiline
-        />
+        <View
+          style={[
+            styles.option,
+            otherOn && {
+              borderStyle: "solid",
+              borderColor: agent,
+              backgroundColor: withAlpha(agent, 0.1),
+            },
+          ]}
+        >
+          <Radio on={otherOn} square={multi} color={agent} />
+          <TextInput
+            style={styles.input}
+            value={other}
+            onChangeText={(text) => onChange(typeOther(draft, question, text))}
+            placeholder="Your own answer…"
+            placeholderTextColor={theme.color.placeholder}
+            accessibilityLabel={`${question.question}, your own answer`}
+            multiline
+          />
         </View>
       )}
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
@@ -212,10 +239,22 @@ function Radio({ on, square, color }: { on: boolean; square: boolean; color: str
       style={[
         styles.radio,
         square && styles.radioSquare,
-        on && { borderColor: color, shadowColor: color, shadowOpacity: 0.8, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
+        on && {
+          borderColor: color,
+          shadowColor: color,
+          shadowOpacity: 0.8,
+          shadowRadius: 6,
+          shadowOffset: { width: 0, height: 0 },
+        },
       ]}
     >
-      {on ? (square ? <Ionicons name="checkmark" size={12} color={color} /> : <View style={[styles.radioDot, { backgroundColor: color }]} />) : null}
+      {on ? (
+        square ? (
+          <Ionicons name="checkmark" size={12} color={color} />
+        ) : (
+          <View style={[styles.radioDot, { backgroundColor: color }]} />
+        )
+      ) : null}
     </View>
   );
 }
@@ -226,9 +265,22 @@ const styles = StyleSheet.create({
   scroll: { maxHeight: 520 },
   body: { gap: theme.space(5), paddingBottom: theme.space(2) },
   question: { gap: theme.space(2) },
-  heading: { color: theme.color.text, fontSize: theme.font.body, fontWeight: "600", paddingHorizontal: theme.space(1) },
-  detail: { color: theme.color.textDim, fontSize: theme.font.small, paddingHorizontal: theme.space(1) },
-  hint: { color: theme.color.textFaint, fontSize: theme.font.tiny, paddingHorizontal: theme.space(1) },
+  heading: {
+    color: theme.color.text,
+    fontSize: theme.font.body,
+    fontWeight: "600",
+    paddingHorizontal: theme.space(1),
+  },
+  detail: {
+    color: theme.color.textDim,
+    fontSize: theme.font.small,
+    paddingHorizontal: theme.space(1),
+  },
+  hint: {
+    color: theme.color.textFaint,
+    fontSize: theme.font.tiny,
+    paddingHorizontal: theme.space(1),
+  },
   opts: { gap: theme.space(2) },
   option: {
     ...dashedOutline,
@@ -240,7 +292,15 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space(2.5),
     paddingHorizontal: theme.space(4),
   },
-  radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: theme.color.textDim, alignItems: "center", justifyContent: "center" },
+  radio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: theme.color.textDim,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   radioSquare: { borderRadius: 4 },
   radioDot: { width: 8, height: 8, borderRadius: 4 },
   optionPressed: { backgroundColor: theme.color.surfacePressed },
@@ -262,7 +322,12 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.accentSoft,
     paddingHorizontal: theme.space(2),
   },
-  badgeText: { color: theme.color.accent, fontSize: theme.font.tiny, lineHeight: 14, fontWeight: "600" },
+  badgeText: {
+    color: theme.color.accent,
+    fontSize: theme.font.tiny,
+    lineHeight: 14,
+    fontWeight: "600",
+  },
   input: { flex: 1, color: theme.color.text, fontSize: theme.font.body, padding: 0 },
   submit: { marginTop: theme.space(2) },
   pressed: { opacity: 0.7 },

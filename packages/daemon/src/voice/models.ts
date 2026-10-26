@@ -47,10 +47,14 @@ const FAMILIES: { said: RegExp; id: RegExp }[] = [
 export function matchModel(
   said: string,
   options: readonly ModelChoice[],
-): { kind: "found"; model: ModelChoice } | { kind: "ambiguous"; options: ModelChoice[] } | { kind: "none" } {
+):
+  | { kind: "found"; model: ModelChoice }
+  | { kind: "ambiguous"; options: ModelChoice[] }
+  | { kind: "none" } {
   const want = squash(said);
   if (!want) return { kind: "none" };
-  const keys = (option: ModelChoice) => [squash(option.value), squash(option.name ?? "")].filter(Boolean);
+  const keys = (option: ModelChoice) =>
+    [squash(option.value), squash(option.name ?? "")].filter(Boolean);
   const exact = options.find((option) => keys(option).includes(want));
   if (exact) return { kind: "found", model: exact };
   const family = FAMILIES.find((entry) => entry.said.test(want));
@@ -63,7 +67,8 @@ export function matchModel(
   if (partial.length > 1) {
     // "sol" matches gpt-6.1-sol and gpt-6.1-sol-fast: the shortest id is the plain one.
     const sorted = [...partial].sort((a, b) => a.value.length - b.value.length);
-    if (sorted.every((option) => option.value.startsWith(sorted[0]!.value))) return { kind: "found", model: sorted[0]! };
+    if (sorted.every((option) => option.value.startsWith(sorted[0]!.value)))
+      return { kind: "found", model: sorted[0]! };
     return { kind: "ambiguous", options: partial.slice(0, 4) };
   }
   return { kind: "none" };
@@ -71,7 +76,10 @@ export function matchModel(
 
 /** A model the user can switch to when Claude's limit is hit: the menu's first plain GPT. */
 export function fallbackModel(options: readonly ModelChoice[]): ModelChoice | undefined {
-  return options.find((option) => /^gpt-[\d.]+-[a-z]+$/.test(option.value)) ?? options.find((option) => !/claude|opus|sonnet|haiku|fable/i.test(option.value));
+  return (
+    options.find((option) => /^gpt-[\d.]+-[a-z]+$/.test(option.value)) ??
+    options.find((option) => !/claude|opus|sonnet|haiku|fable/i.test(option.value))
+  );
 }
 
 /**
@@ -81,6 +89,9 @@ export function fallbackModel(options: readonly ModelChoice[]): ModelChoice | un
  */
 export function hitLimit(lines: readonly string[]): string | undefined {
   const text = lines.slice(-4).join(" ");
-  const match = /(you'?ve hit your [a-z ]*limit[^.\n]*|usage limit[^.\n]*|rate[ _-]?limit[^.\n]*|quota (exceeded|reached)[^.\n]*|out of credits[^.\n]*|\b429\b[^.\n]*|overloaded[^.\n]*)/i.exec(text);
+  const match =
+    /(you'?ve hit your [a-z ]*limit[^.\n]*|usage limit[^.\n]*|rate[ _-]?limit[^.\n]*|quota (exceeded|reached)[^.\n]*|out of credits[^.\n]*|\b429\b[^.\n]*|overloaded[^.\n]*)/i.exec(
+      text,
+    );
   return match ? match[0].trim().slice(0, 160) : undefined;
 }

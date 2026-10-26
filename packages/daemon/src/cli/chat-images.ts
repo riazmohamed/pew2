@@ -18,7 +18,11 @@ function baseName(src: string): string {
 }
 
 function isImageMime(mimeType: unknown): mimeType is string {
-  return typeof mimeType === "string" && mimeType.startsWith("image/") && !mimeType.toLowerCase().startsWith("image/svg");
+  return (
+    typeof mimeType === "string" &&
+    mimeType.startsWith("image/") &&
+    !mimeType.toLowerCase().startsWith("image/svg")
+  );
 }
 
 /** An image in one ACP content block, as the app reads them. */
@@ -35,7 +39,8 @@ function imageFromBlock(block: unknown): ChatImage | undefined {
   if (b.type === "image") {
     if (b.mimeType !== undefined && !isImageMime(b.mimeType)) return undefined;
     const mimeType = isImageMime(b.mimeType) ? b.mimeType : "image/png";
-    if (typeof b.data === "string" && b.data) return { src: `data:${mimeType};base64,${b.data}`, name: "image" };
+    if (typeof b.data === "string" && b.data)
+      return { src: `data:${mimeType};base64,${b.data}`, name: "image" };
     if (typeof b.uri === "string" && b.uri) return { src: b.uri, name: baseName(b.uri) };
     return undefined;
   }
@@ -50,7 +55,8 @@ function imageFromBlock(block: unknown): ChatImage | undefined {
       return { src: `data:${r.mimeType};base64,${r.blob}`, name: "image" };
     }
     const uri = typeof r.uri === "string" ? r.uri : "";
-    if (uri && (isImageMime(r.mimeType) || isImageSource(uri))) return { src: uri, name: baseName(uri) };
+    if (uri && (isImageMime(r.mimeType) || isImageSource(uri)))
+      return { src: uri, name: baseName(uri) };
   }
   return undefined;
 }
@@ -78,7 +84,10 @@ export function imagesFromAttachments(attachments: unknown): ChatImage[] {
   for (const file of attachments as { uri?: unknown; mimeType?: unknown; name?: unknown }[]) {
     const uri = typeof file?.uri === "string" ? file.uri : "";
     if (!uri || (!isImageMime(file.mimeType) && !isImageSource(uri))) continue;
-    out.push({ src: uri, name: typeof file.name === "string" && file.name ? file.name : baseName(uri) });
+    out.push({
+      src: uri,
+      name: typeof file.name === "string" && file.name ? file.name : baseName(uri),
+    });
   }
   return out;
 }
@@ -129,7 +138,10 @@ export function imageMimeForPath(path: string): string | undefined {
  * dropped on the window (quoted, or with backslash-escaped spaces, or as a
  * `file://` URL), and whatever follows it.
  */
-export function parseAttachArgs(arg: string, home = ""): { path: string; message: string } | undefined {
+export function parseAttachArgs(
+  arg: string,
+  home = "",
+): { path: string; message: string } | undefined {
   const text = arg.trim();
   if (!text) return undefined;
   let path = "";
@@ -169,7 +181,9 @@ export function buildAttachment(
 ): { attachment: Attachment } | { error: string } {
   if (bytes.byteLength === 0) return { error: `'${name}' is empty` };
   if (bytes.byteLength > wire.MAX_ATTACHMENT_BYTES) {
-    return { error: `'${name}' is ${megabytes(bytes.byteLength)}, over the ${megabytes(wire.MAX_ATTACHMENT_BYTES)} limit for one file` };
+    return {
+      error: `'${name}' is ${megabytes(bytes.byteLength)}, over the ${megabytes(wire.MAX_ATTACHMENT_BYTES)} limit for one file`,
+    };
   }
   return { attachment: { name, mimeType, data: Buffer.from(bytes).toString("base64") } };
 }
@@ -182,7 +196,8 @@ export function attachmentsError(attachments: readonly Attachment[]): string | u
   let total = 0;
   for (const a of attachments) {
     const size = Math.floor((a.data.replace(/=+$/, "").length * 3) / 4);
-    if (size > wire.MAX_ATTACHMENT_BYTES) return `'${a.name}' is over the ${megabytes(wire.MAX_ATTACHMENT_BYTES)} limit`;
+    if (size > wire.MAX_ATTACHMENT_BYTES)
+      return `'${a.name}' is over the ${megabytes(wire.MAX_ATTACHMENT_BYTES)} limit`;
     total += size;
   }
   if (total > wire.MAX_ATTACHMENTS_TOTAL_BYTES) {

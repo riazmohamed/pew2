@@ -111,13 +111,21 @@ describe("storeAttachments", () => {
     // Silently dropping one would leave a prompt referring to a file the agent
     // never received.
     await expect(
-      storeAttachments("sess-1", [{ name: "x.bin", mimeType: "application/octet-stream", data: bytes(9 * 1024 * 1024) }], root),
+      storeAttachments(
+        "sess-1",
+        [{ name: "x.bin", mimeType: "application/octet-stream", data: bytes(9 * 1024 * 1024) }],
+        root,
+      ),
     ).rejects.toThrow(/limit/);
   });
 
   test("discard removes the session's files", async () => {
     const root = await mkdtemp(join(tmpdir(), "pew2-test-"));
-    await storeAttachments("sess-1", [{ name: "a.txt", mimeType: "text/plain", data: b64("a") }], root);
+    await storeAttachments(
+      "sess-1",
+      [{ name: "a.txt", mimeType: "text/plain", data: b64("a") }],
+      root,
+    );
     await discardAttachments("sess-1", root);
     await expect(readdir(attachmentDir("sess-1", root))).rejects.toThrow();
   });

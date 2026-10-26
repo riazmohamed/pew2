@@ -65,7 +65,9 @@ export function CrewRow({ workers: all, onPressWorker, hidden = false }: CrewRow
   const shown = useSharedValue(hidden ? 0 : 1);
   useEffect(() => {
     const to = hidden ? 0 : 1;
-    shown.value = reduce ? to : withTiming(to, { duration: hidden ? HIDE_MS : SHOW_MS, easing: EASE_OUT });
+    shown.value = reduce
+      ? to
+      : withTiming(to, { duration: hidden ? HIDE_MS : SHOW_MS, easing: EASE_OUT });
   }, [hidden, reduce, shown]);
   const fade = useAnimatedStyle(() => ({ opacity: shown.value }));
 
@@ -77,7 +79,11 @@ export function CrewRow({ workers: all, onPressWorker, hidden = false }: CrewRow
   }, [picked]);
 
   const tip = picked
-    ? [picked.agent ?? "worker", picked.activity ?? picked.error ?? picked.state, elapsedLabel(workerElapsed(picked, now))]
+    ? [
+        picked.agent ?? "worker",
+        picked.activity ?? picked.error ?? picked.state,
+        elapsedLabel(workerElapsed(picked, now)),
+      ]
         .filter(Boolean)
         .join(" · ")
     : undefined;
@@ -98,65 +104,89 @@ export function CrewRow({ workers: all, onPressWorker, hidden = false }: CrewRow
         accessibilityElementsHidden={hidden}
         importantForAccessibility={hidden ? "no-hide-descendants" : "auto"}
       >
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-        {workers.map((w, i) => {
-          const color = roleColor(w.agent ?? w.name);
-          const live = isLive(w);
-          const on = w.id === selected;
-          return (
-            <Reanimated.View
-              key={w.id}
-              // Arrives with a little spring, leaves by shrinking away, and the
-              // chips beside it slide over to close the gap.
-              entering={reduce ? undefined : ZoomIn.duration(SPRING.arrive.duration).easing(EASE_OUT).delay(Math.min(i, 4) * 40)}
-              exiting={reduce ? undefined : ZoomOut.duration(220)}
-              layout={reduce ? undefined : LinearTransition.duration(SPRING.settle.duration).easing(EASE_OUT)}
-            >
-              <PressScale
-                feel="select"
-                // The chip is a face and an LED name; without these VoiceOver
-                // reads the raw name with no hint that tapping shows details.
-                accessibilityLabel={[w.name, w.agent, live ? w.activity ?? w.state : w.state].filter(Boolean).join(", ")}
-                accessibilityHint={on ? "Hides details" : "Shows what this worker is doing"}
-                accessibilityState={{ selected: on }}
-                // The chip is 32pt tall; the slop takes it to the 44pt target.
-                hitSlop={(theme.size.touch - CHIP_HEIGHT) / 2}
-                onPress={() => {
-                  setNow(Date.now());
-                  setSelected(on ? undefined : w.id);
-                  onPressWorker?.(w);
-                }}
-                style={[
-                  styles.chip,
-                  live || on ? { borderStyle: "solid", borderColor: color } : null,
-                  on ? { backgroundColor: withAlpha(color, 0.1) } : null,
-                ]}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.row}
+        >
+          {workers.map((w, i) => {
+            const color = roleColor(w.agent ?? w.name);
+            const live = isLive(w);
+            const on = w.id === selected;
+            return (
+              <Reanimated.View
+                key={w.id}
+                // Arrives with a little spring, leaves by shrinking away, and the
+                // chips beside it slide over to close the gap.
+                entering={
+                  reduce
+                    ? undefined
+                    : ZoomIn.duration(SPRING.arrive.duration)
+                        .easing(EASE_OUT)
+                        .delay(Math.min(i, 4) * 40)
+                }
+                exiting={reduce ? undefined : ZoomOut.duration(220)}
+                layout={
+                  reduce
+                    ? undefined
+                    : LinearTransition.duration(SPRING.settle.duration).easing(EASE_OUT)
+                }
               >
-                <View style={styles.pew}>
-                  <Pew size={28} mood={workerMood(w.state)} color={color} paused={!live} />
-                </View>
-                <Led color={color} unlit={!live} style={styles.name} maxFontSizeMultiplier={CHIP_FONT_SCALE}>
-                  {w.name}
-                </Led>
-              </PressScale>
-            </Reanimated.View>
-          );
-        })}
-      </ScrollView>
-      {tip && picked && (
-        <Reanimated.View entering={reduce ? undefined : FadeIn.duration(180)} exiting={reduce ? undefined : FadeOut.duration(140)}>
-          <Text
-            style={styles.tip}
-            numberOfLines={1}
-            // Spoken in sentence case (all caps can be spelled out letter by
-            // letter), and announced politely when a chip is picked.
-            accessibilityLabel={tip}
-            accessibilityLiveRegion="polite"
+                <PressScale
+                  feel="select"
+                  // The chip is a face and an LED name; without these VoiceOver
+                  // reads the raw name with no hint that tapping shows details.
+                  accessibilityLabel={[w.name, w.agent, live ? (w.activity ?? w.state) : w.state]
+                    .filter(Boolean)
+                    .join(", ")}
+                  accessibilityHint={on ? "Hides details" : "Shows what this worker is doing"}
+                  accessibilityState={{ selected: on }}
+                  // The chip is 32pt tall; the slop takes it to the 44pt target.
+                  hitSlop={(theme.size.touch - CHIP_HEIGHT) / 2}
+                  onPress={() => {
+                    setNow(Date.now());
+                    setSelected(on ? undefined : w.id);
+                    onPressWorker?.(w);
+                  }}
+                  style={[
+                    styles.chip,
+                    live || on ? { borderStyle: "solid", borderColor: color } : null,
+                    on ? { backgroundColor: withAlpha(color, 0.1) } : null,
+                  ]}
+                >
+                  <View style={styles.pew}>
+                    <Pew size={28} mood={workerMood(w.state)} color={color} paused={!live} />
+                  </View>
+                  <Led
+                    color={color}
+                    unlit={!live}
+                    style={styles.name}
+                    maxFontSizeMultiplier={CHIP_FONT_SCALE}
+                  >
+                    {w.name}
+                  </Led>
+                </PressScale>
+              </Reanimated.View>
+            );
+          })}
+        </ScrollView>
+        {tip && picked && (
+          <Reanimated.View
+            entering={reduce ? undefined : FadeIn.duration(180)}
+            exiting={reduce ? undefined : FadeOut.duration(140)}
           >
-            {tip.toUpperCase()}
-          </Text>
-        </Reanimated.View>
-      )}
+            <Text
+              style={styles.tip}
+              numberOfLines={1}
+              // Spoken in sentence case (all caps can be spelled out letter by
+              // letter), and announced politely when a chip is picked.
+              accessibilityLabel={tip}
+              accessibilityLiveRegion="polite"
+            >
+              {tip.toUpperCase()}
+            </Text>
+          </Reanimated.View>
+        )}
       </Reanimated.View>
     </Reanimated.View>
   );
@@ -174,7 +204,18 @@ const styles = StyleSheet.create({
     paddingRight: theme.space(3),
     gap: theme.space(1),
   },
-  pew: { width: 24, height: 24, alignItems: "center", justifyContent: "center", overflow: "visible" },
+  pew: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "visible",
+  },
   name: { maxWidth: 140 },
-  tip: { color: theme.color.textDim, fontSize: 12, marginTop: theme.space(2), paddingHorizontal: theme.gutter },
+  tip: {
+    color: theme.color.textDim,
+    fontSize: 12,
+    marginTop: theme.space(2),
+    paddingHorizontal: theme.gutter,
+  },
 });

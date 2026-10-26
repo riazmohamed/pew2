@@ -8,11 +8,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  KNOWN_PROJECT_LIMIT,
-  readKnownProjects,
-  rememberKnownProject,
-} from "./known-projects.js";
+import { KNOWN_PROJECT_LIMIT, readKnownProjects, rememberKnownProject } from "./known-projects.js";
 
 async function scratch(): Promise<NodeJS.ProcessEnv> {
   return { PEW2_HOME: await mkdtemp(join(tmpdir(), "pew2-known-")) };

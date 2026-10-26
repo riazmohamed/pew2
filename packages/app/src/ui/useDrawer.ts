@@ -129,9 +129,12 @@ export function useDrawer({
 
   // Translate only. The conversation keeps its exact size as it moves, so no
   // text reflows or resamples mid-animation.
-  const paneSlide = useAnimatedStyle(() => ({
-    transform: [{ translateX: drawer$.value * DRAWER_WIDTH }],
-  }), [DRAWER_WIDTH]);
+  const paneSlide = useAnimatedStyle(
+    () => ({
+      transform: [{ translateX: drawer$.value * DRAWER_WIDTH }],
+    }),
+    [DRAWER_WIDTH],
+  );
 
   /**
    * Hide the keyboard, from a worklet.
@@ -185,10 +188,7 @@ export function useDrawer({
         })
         .onUpdate((event) => {
           const base = menuOpen ? 1 : 0;
-          drawer$.value = Math.min(
-            1,
-            Math.max(0, base + event.translationX / DRAWER_WIDTH),
-          );
+          drawer$.value = Math.min(1, Math.max(0, base + event.translationX / DRAWER_WIDTH));
         })
         .onEnd((event) => {
           // Signed against the one direction that has somewhere to go, so a drag

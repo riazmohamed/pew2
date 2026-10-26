@@ -1,5 +1,15 @@
 import { expect, test } from "bun:test";
-import { NEW_CLOCK, highlightRuns, learnPace, planWords, revealed, sayPosition, syllables, tickClock, voicedNow } from "./speechSync";
+import {
+  NEW_CLOCK,
+  highlightRuns,
+  learnPace,
+  planWords,
+  revealed,
+  sayPosition,
+  syllables,
+  tickClock,
+  voicedNow,
+} from "./speechSync";
 
 test("syllables, roughly", () => {
   expect(syllables("I")).toBe(1);

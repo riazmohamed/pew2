@@ -57,13 +57,18 @@ describe("arming", () => {
     expect(isArmed(s, undefined, T0)).toBe(false);
     expect(armedCount(s, T0)).toBe(1);
   });
-
-
 });
 
 describe("which chats ring", () => {
-  const status = (prefs: Partial<wire.VoicePrefsValues> | undefined, extra: Partial<wire.VoiceStatus> = {}) =>
-    ({ available: true, prefs: prefs ? { mode: "notify", ...prefs } : undefined, ...extra }) as wire.VoiceStatus;
+  const status = (
+    prefs: Partial<wire.VoicePrefsValues> | undefined,
+    extra: Partial<wire.VoiceStatus> = {},
+  ) =>
+    ({
+      available: true,
+      prefs: prefs ? { mode: "notify", ...prefs } : undefined,
+      ...extra,
+    }) as wire.VoiceStatus;
   test("a new daemon says; an older one only knows chosen chats", () => {
     expect(ringScope({ mode: "onthego", ringScope: "all" })).toBe("all");
     expect(ringScope({ mode: "onthego" })).toBe("chosen");
@@ -74,7 +79,11 @@ describe("which chats ring", () => {
     const now = 1_000_000;
     expect(callsLine(status({ mode: "notify" }), now)).toBe("Ring me off");
     expect(callsLine(status({ mode: "onthego", ringUntil: 0 }), now)).toBe("Ring me on");
-    expect(callsLine(status({ mode: "onthego", ringUntil: now + 40 * 60_000 }), now)).toBe("Ring me on · 40m left");
-    expect(callsLine(status(undefined, { available: false, canLogin: true }), now)).toBe("Sign in to OpenAI");
+    expect(callsLine(status({ mode: "onthego", ringUntil: now + 40 * 60_000 }), now)).toBe(
+      "Ring me on · 40m left",
+    );
+    expect(callsLine(status(undefined, { available: false, canLogin: true }), now)).toBe(
+      "Sign in to OpenAI",
+    );
   });
 });

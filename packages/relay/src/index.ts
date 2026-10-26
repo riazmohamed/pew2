@@ -140,13 +140,16 @@ export class PairingRoom extends DurableObject {
     // without a Workers runtime. The validated role and deviceId come back out,
     // so what gets attached below is what was actually checked.
     const daemons = this.peers("daemon");
-    const resumeKey = url.searchParams.get("role") === "daemon" ? request.headers.get(RESUME_HEADER) : null;
+    const resumeKey =
+      url.searchParams.get("role") === "daemon" ? request.headers.get(RESUME_HEADER) : null;
     const resumeHash = isResumeKey(resumeKey) ? await sha256Hex(resumeKey) : undefined;
     const decision = admit({
       resumes:
         resumeHash !== undefined &&
         daemons.length > 0 &&
-        daemons.every((peer) => (peer.deserializeAttachment() as Attachment | null)?.resumeHash === resumeHash),
+        daemons.every(
+          (peer) => (peer.deserializeAttachment() as Attachment | null)?.resumeHash === resumeHash,
+        ),
       role: url.searchParams.get("role"),
       deviceId: url.searchParams.get("deviceId"),
       daemons: daemons.length,
@@ -218,7 +221,9 @@ export class PairingRoom extends DurableObject {
     try {
       message = JSON.parse(raw);
     } catch {
-      ws.send(JSON.stringify({ t: "error", code: "bad_json", message: "Message was not valid JSON" }));
+      ws.send(
+        JSON.stringify({ t: "error", code: "bad_json", message: "Message was not valid JSON" }),
+      );
       return;
     }
 
@@ -252,8 +257,7 @@ export class PairingRoom extends DurableObject {
     //
     // This is routing metadata, not a credential: it grants nothing, and a frame
     // still has to carry a valid tag to be read at all.
-    const forwarded =
-      message.t === "e" ? JSON.stringify({ ...message, from: from.deviceId }) : raw;
+    const forwarded = message.t === "e" ? JSON.stringify({ ...message, from: from.deviceId }) : raw;
     // Daemons talk to apps, apps to daemons — never an echo to the sender.
     for (const peer of this.peers(from.role === "daemon" ? "app" : "daemon")) {
       peer.send(forwarded);

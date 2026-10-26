@@ -21,7 +21,9 @@ test("an ordered list stays one block, so its numbering cannot restart", () => {
 });
 
 test("a fenced block stays whole, blank lines inside it included", () => {
-  const blocks = splitMarkdownBlocks("Before.\n\n```js\nconst a = 1;\n\nconst b = 2;\n```\n\nAfter.");
+  const blocks = splitMarkdownBlocks(
+    "Before.\n\n```js\nconst a = 1;\n\nconst b = 2;\n```\n\nAfter.",
+  );
   expect(blocks).toHaveLength(3);
   expect(blocks[1]).toBe("```js\nconst a = 1;\n\nconst b = 2;\n```");
 });

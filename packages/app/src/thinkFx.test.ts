@@ -17,8 +17,20 @@ import {
   type DialMoment,
 } from "./thinkFx";
 
-const G: DialGeometry = { size: 260, radius: 104, pewR: 36, start: (150 * Math.PI) / 180, span: (240 * Math.PI) / 180, stops: 5 };
-const PAL: FxPalette = { bg: [10, 10, 12], base: [217, 119, 87], light: [255, 190, 160], off: [52, 54, 62] };
+const G: DialGeometry = {
+  size: 260,
+  radius: 104,
+  pewR: 36,
+  start: (150 * Math.PI) / 180,
+  span: (240 * Math.PI) / 180,
+  stops: 5,
+};
+const PAL: FxPalette = {
+  bg: [10, 10, 12],
+  base: [217, 119, 87],
+  light: [255, 190, 160],
+  off: [52, 54, 62],
+};
 const still = (level: number): DialMoment => ({ t: 1, level, since: 10, dir: 1, stop: 0 });
 
 function recorder() {
@@ -78,7 +90,8 @@ describe("a change", () => {
     let outward = 0;
     for (let i = 0; i < SPARKS; i++) {
       changeSpark(G, m, i, out);
-      if (out[3]! > 0 && Math.hypot(out[0]! - G.size / 2, out[1]! - G.size / 2) > G.radius) outward++;
+      if (out[3]! > 0 && Math.hypot(out[0]! - G.size / 2, out[1]! - G.size / 2) > G.radius)
+        outward++;
     }
     expect(outward).toBeGreaterThan(SPARKS / 2);
   });
@@ -94,8 +107,20 @@ describe("a change", () => {
 
   test("a change fires a ring and sparks; a settled dial has neither", () => {
     const busy = recorder();
-    paintDialBack(G, { t: 1, level: 0.75, since: 0.2, dir: 1, stop: 3 }, PAL, busy.p, new Float32Array(4));
-    paintDialFront(G, { t: 1, level: 0.75, since: 0.2, dir: 1, stop: 3 }, PAL, busy.p, new Float32Array(4));
+    paintDialBack(
+      G,
+      { t: 1, level: 0.75, since: 0.2, dir: 1, stop: 3 },
+      PAL,
+      busy.p,
+      new Float32Array(4),
+    );
+    paintDialFront(
+      G,
+      { t: 1, level: 0.75, since: 0.2, dir: 1, stop: 3 },
+      PAL,
+      busy.p,
+      new Float32Array(4),
+    );
     expect(busy.calls.ring).toBeGreaterThan(0);
     const calm = recorder();
     paintDialBack(G, still(0.75), PAL, calm.p, new Float32Array(4));
@@ -122,7 +147,13 @@ test("every frame of a run up and down is finite", () => {
   const s = new Float32Array(4);
   for (let f = 0; f < 300; f++) {
     const t = f / 60;
-    const m: DialMoment = { t, level: (Math.sin(t) + 1) / 2, since: t % 1.2, dir: f % 2 ? 1 : -1, stop: f % 5 };
+    const m: DialMoment = {
+      t,
+      level: (Math.sin(t) + 1) / 2,
+      since: t % 1.2,
+      dir: f % 2 ? 1 : -1,
+      stop: f % 5,
+    };
     paintDialBack(G, m, PAL, p, s);
     paintDialFront(G, m, PAL, p, s);
   }
@@ -131,9 +162,12 @@ test("every frame of a run up and down is finite", () => {
 
 test("worklets never call a helper declared below them", () => {
   const src = readFileSync(join(import.meta.dir, "thinkFx.ts"), "utf8");
-  const fns = [...src.matchAll(/^(?:export )?function (\w+)/gm)].map((m) => [m[1]!, m.index!] as const);
+  const fns = [...src.matchAll(/^(?:export )?function (\w+)/gm)].map(
+    (m) => [m[1]!, m.index!] as const,
+  );
   fns.forEach(([, at], k) => {
     const body = src.slice(at, fns[k + 1]?.[1] ?? src.length);
-    for (const [other, otherAt] of fns) if (otherAt > at) expect(body.includes(`${other}(`)).toBe(false);
+    for (const [other, otherAt] of fns)
+      if (otherAt > at) expect(body.includes(`${other}(`)).toBe(false);
   });
 });

@@ -24,7 +24,14 @@ import { storeGoalFiles } from "./goalFiles";
 import { readKnownProjects } from "./known-projects.js";
 import { resolveSession, runModelTool, runVoiceTool, type VoicePort } from "./voice/tools.js";
 import { matchModel } from "./voice/models.js";
-import { CHAT_TOOLS, REACH_PROJECTS, recentProjects, runChatTool, withinReach, type ChatPort } from "./voice/chats.js";
+import {
+  CHAT_TOOLS,
+  REACH_PROJECTS,
+  recentProjects,
+  runChatTool,
+  withinReach,
+  type ChatPort,
+} from "./voice/chats.js";
 import { actionLine, actionTarget } from "./voice/memory.js";
 
 /** Every chat Pew may reach by voice (`withinReach`): what it is told about and what its tools match against. */
@@ -133,7 +140,13 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
       console.log(`[desk] ${message.t} for ${message.sessionId} followed to ${now}`);
       (message as { sessionId: string }).sessionId = now;
       if (message.t === "desk.open") {
-        reply({ t: "desk.opened", requestId: message.requestId, ok: true, app: "iTerm", message: "It's already open in OG Coder on the computer." });
+        reply({
+          t: "desk.opened",
+          requestId: message.requestId,
+          ok: true,
+          app: "iTerm",
+          message: "It's already open in OG Coder on the computer.",
+        });
         return;
       }
     }
@@ -224,7 +237,10 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         // conversation comes first — it is the authority on where its own
         // session lives, it needs no client to be up to date, and it is right
         // even for an older app that sends no `cwd` at all.
-        if (message.providerId === GG_GOALS_ID && !(message.cwd && daemon.isGoalFolder(message.cwd))) {
+        if (
+          message.providerId === GG_GOALS_ID &&
+          !(message.cwd && daemon.isGoalFolder(message.cwd))
+        ) {
           reply({ t: "error", code: "not_a_goal", message: NOT_A_GOAL });
           break;
         }
@@ -237,28 +253,28 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         // Already running here: the same session again, not a second agent.
         const runningId = daemon.liveSessionFor(message.providerId, message.agentSessionId);
         if (runningId && daemon.reannounce(runningId)) {
-          console.log(`[resume] ${message.agentSessionId} is already running as ${runningId}: reusing it`);
+          console.log(
+            `[resume] ${message.agentSessionId} is already running as ${runningId}: reusing it`,
+          );
           break;
         }
-        const recorded = await daemon.agentSessionCwd(
-          message.providerId,
-          message.agentSessionId,
-        );
+        const recorded = await daemon.agentSessionCwd(message.providerId, message.agentSessionId);
         // Only asked when the agent had no record: checking a path also files it
         // as a project this client has opened, and the one it sent here is not
         // the one being opened.
         const named =
           recorded ??
-          (message.cwd
-            ? await daemon.knownProject(message.providerId, message.cwd)
-            : undefined);
+          (message.cwd ? await daemon.knownProject(message.providerId, message.cwd) : undefined);
         const workspace = named ?? (await daemon.lastWorkspace(message.providerId)) ?? cwd;
         openResumed(ctx, message.providerId, message.agentSessionId, workspace);
         break;
       }
 
       case "session.start": {
-        if (message.providerId === GG_GOALS_ID && !(message.cwd && daemon.isGoalFolder(message.cwd))) {
+        if (
+          message.providerId === GG_GOALS_ID &&
+          !(message.cwd && daemon.isGoalFolder(message.cwd))
+        ) {
           reply({ t: "error", code: "not_a_goal", message: NOT_A_GOAL });
           break;
         }
@@ -270,7 +286,12 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           : ((await daemon.lastWorkspace(message.providerId)) ?? cwd);
         // The not-yet-started conversation's draft has just been sent.
         broadcast(daemon.setDraft(undefined, "", ctx.deviceId));
-        const { sessionId: started } = await openStarted(ctx, message.providerId, workspace, message.requestId);
+        const { sessionId: started } = await openStarted(
+          ctx,
+          message.providerId,
+          workspace,
+          message.requestId,
+        );
         daemon.voice.sessionStarted(started);
         break;
       }
@@ -306,7 +327,9 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           break;
         }
         daemon.pushTargets.registerVoip(deviceId, message.token, message.env);
-        console.log(`[voice] '${deviceId}' ${message.token ? `can be called (${message.env})` : "stopped calls"}`);
+        console.log(
+          `[voice] '${deviceId}' ${message.token ? `can be called (${message.env})` : "stopped calls"}`,
+        );
         break;
       }
 
@@ -320,10 +343,17 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           reply(errorMessage("push_unidentified", "Say hello before registering for push."));
           break;
         }
-        const fresh = !daemon.pushTargets.entries().some(([id, target]) => id === deviceId && target.token === message.token);
-        if (daemon.pushTargets.register(deviceId, message.token, message.platform, message.ringer)) {
+        const fresh = !daemon.pushTargets
+          .entries()
+          .some(([id, target]) => id === deviceId && target.token === message.token);
+        if (
+          daemon.pushTargets.register(deviceId, message.token, message.platform, message.ringer)
+        ) {
           // Once per phone and token, so "why didn't it ring" has an answer in the log.
-          if (fresh) console.log(`[push] '${deviceId}' registered for alerts (${message.platform}${message.ringer === "native" ? ", rings like a call" : ""})`);
+          if (fresh)
+            console.log(
+              `[push] '${deviceId}' registered for alerts (${message.platform}${message.ringer === "native" ? ", rings like a call" : ""})`,
+            );
         } else {
           // Said out loud rather than ignored: a silently rejected token looks
           // exactly like a working one until someone waits for a notification
@@ -364,7 +394,12 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         if (!message.sessionId && message.cwd && message.providerId) {
           const project = await daemon.knownProject(message.providerId, message.cwd);
           if (!project) {
-            reply({ t: "desk.opened", requestId: message.requestId, ok: false, message: "Choose a project first, then open it on the computer." });
+            reply({
+              t: "desk.opened",
+              requestId: message.requestId,
+              ok: false,
+              message: "Choose a project first, then open it on the computer.",
+            });
             break;
           }
           // The iTerm id stays in the daemon; a new chat has no conversation to
@@ -374,7 +409,9 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
               ? await daemon.openNativeNew(message.providerId, project)
               : await daemon.desk.open({ cwd: project, providerId: message.providerId });
           void _untracked;
-          console.log(`[desk] new ${message.target ?? "chat"} in ${project}: ${result.ok ? "ok" : result.message}`);
+          console.log(
+            `[desk] new ${message.target ?? "chat"} in ${project}: ${result.ok ? "ok" : result.message}`,
+          );
           reply({ t: "desk.opened", requestId: message.requestId, ...result });
           break;
         }
@@ -388,10 +425,16 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           });
           break;
         }
-        const { itermSessionId, ...result } = await daemon.desk.open({ sessionId: message.sessionId, cwd });
+        const { itermSessionId, ...result } = await daemon.desk.open({
+          sessionId: message.sessionId,
+          cwd,
+        });
         // Remembered so the phone can close this window later.
-        if (result.ok && itermSessionId && message.sessionId) daemon.trackChatWindow(message.sessionId, itermSessionId);
-        console.log(`[desk] open ${message.sessionId ?? "all"}: ${result.ok ? `ok (${result.app ?? "?"})` : result.message}`);
+        if (result.ok && itermSessionId && message.sessionId)
+          daemon.trackChatWindow(message.sessionId, itermSessionId);
+        console.log(
+          `[desk] open ${message.sessionId ?? "all"}: ${result.ok ? `ok (${result.app ?? "?"})` : result.message}`,
+        );
         reply({ t: "desk.opened", requestId: message.requestId, ...result });
         break;
       }
@@ -399,9 +442,19 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
       case "desk.close": {
         // Replied to the asking device; every client learns the window went
         // through the re-announced `desk.windows`.
-        const result = await daemon.closeDesk({ sessionId: message.sessionId, agentSessionId: message.agentSessionId });
-        console.log(`[desk] close ${message.sessionId ?? message.agentSessionId ?? "?"}: ${result.ok ? "ok" : result.message}`);
-        reply({ t: "desk.closed", requestId: message.requestId, ok: result.ok, ...(result.message && { message: result.message }) });
+        const result = await daemon.closeDesk({
+          sessionId: message.sessionId,
+          agentSessionId: message.agentSessionId,
+        });
+        console.log(
+          `[desk] close ${message.sessionId ?? message.agentSessionId ?? "?"}: ${result.ok ? "ok" : result.message}`,
+        );
+        reply({
+          t: "desk.closed",
+          requestId: message.requestId,
+          ok: result.ok,
+          ...(result.message && { message: result.message }),
+        });
         break;
       }
 
@@ -409,7 +462,9 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         // Replied to the asking device only. The picture is never logged and
         // never broadcast: it is for the phone that asked, to attach or not.
         const result = await daemon.desk.capture();
-        console.log(`[desk] screenshot: ${result.ok ? `ok (${Math.round(((result.data?.length ?? 0) * 3) / 4 / 1024)} KB)` : result.message}`);
+        console.log(
+          `[desk] screenshot: ${result.ok ? `ok (${Math.round(((result.data?.length ?? 0) * 3) / 4 / 1024)} KB)` : result.message}`,
+        );
         reply({ t: "desk.captured", requestId: message.requestId, ...result });
         break;
       }
@@ -438,11 +493,7 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
       }
 
       case "provider.config": {
-        await daemon.rememberConfigOption(
-          message.providerId,
-          message.configId,
-          message.value,
-        );
+        await daemon.rememberConfigOption(message.providerId, message.configId, message.value);
         break;
       }
 
@@ -468,8 +519,7 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         // The root comes from the session the daemon started, never from the
         // message: a client-supplied `cwd` would let a caller name its own
         // containment root and read anything on the machine.
-        const root =
-          (message.sessionId ? daemon.sessionCwd(message.sessionId) : undefined) ?? cwd;
+        const root = (message.sessionId ? daemon.sessionCwd(message.sessionId) : undefined) ?? cwd;
         try {
           const image = await loadImage(uri, { cwd: root });
           reply({ t: "image", requestId, uri, ...image });
@@ -622,7 +672,11 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
 
       case "plan.decide": {
         if (daemon.sessionProvider(message.sessionId) === GG_GOALS_ID) {
-          reply({ t: "error", code: "unsupported", message: "Plans are for GG Coder conversations." });
+          reply({
+            t: "error",
+            code: "unsupported",
+            message: "Plans are for GG Coder conversations.",
+          });
           break;
         }
         // A turn on the normal prompt path, so busy/idle/queue rules hold.
@@ -646,7 +700,12 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
       case "checklist": {
         try {
           const result = await daemon.checklist(message.sessionId);
-          reply({ t: "checklist", requestId: message.requestId, sessionId: message.sessionId, ...result });
+          reply({
+            t: "checklist",
+            requestId: message.requestId,
+            sessionId: message.sessionId,
+            ...result,
+          });
         } catch (error) {
           reply({
             t: "checklist",
@@ -679,10 +738,21 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
             context: [...message.context, ...filePaths],
             instructions: message.instructions,
           });
-          reply({ t: "goal.result", requestId: message.requestId, ok: true, goal, files: filePaths.length });
+          reply({
+            t: "goal.result",
+            requestId: message.requestId,
+            ok: true,
+            goal,
+            files: filePaths.length,
+          });
           await broadcastGoals(ctx);
         } catch (error) {
-          reply({ t: "goal.result", requestId: message.requestId, ok: false, error: humanError(error) });
+          reply({
+            t: "goal.result",
+            requestId: message.requestId,
+            ok: false,
+            error: humanError(error),
+          });
         }
         break;
       }
@@ -705,7 +775,12 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           });
           await broadcastGoals(ctx);
         } catch (error) {
-          reply({ t: "goal.result", requestId: message.requestId, ok: false, error: humanError(error) });
+          reply({
+            t: "goal.result",
+            requestId: message.requestId,
+            ok: false,
+            error: humanError(error),
+          });
         }
         break;
       }
@@ -720,7 +795,11 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         try {
           reply(await daemon.voice.loginAction(message.action, message.requestId));
         } catch (error) {
-          reply({ ...(await daemon.voice.status(message.requestId)), available: false, reason: humanError(error) });
+          reply({
+            ...(await daemon.voice.status(message.requestId)),
+            available: false,
+            reason: humanError(error),
+          });
         }
         break;
       }
@@ -742,13 +821,25 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
         // Called from a chat with nothing sent yet: no session exists, so the
         // project and agent on screen are the only clue to where they are.
         const statuses = daemon.voiceStatuses();
-        const inSession = message.sessionId && statuses.some((status) => status.sessionId === message.sessionId);
-        const known = !inSession && message.cwd ? await daemon.knownProject(message.providerId ?? "", message.cwd) : undefined;
+        const inSession =
+          message.sessionId && statuses.some((status) => status.sessionId === message.sessionId);
+        const known =
+          !inSession && message.cwd
+            ? await daemon.knownProject(message.providerId ?? "", message.cwd)
+            : undefined;
         const folder = folderName(known);
         const agentName = message.providerId ? daemon.providerName(message.providerId) : undefined;
         const place = folder ? { folder, ...(agentName ? { agentName } : {}) } : undefined;
         reply(
-          await daemon.voice.openSession(message.requestId, message.focus, statuses, message.sessionId, projects, place, message.engines),
+          await daemon.voice.openSession(
+            message.requestId,
+            message.focus,
+            statuses,
+            message.sessionId,
+            projects,
+            place,
+            message.engines,
+          ),
         );
         break;
       }
@@ -773,7 +864,13 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
       }
 
       case "voice.tool": {
-        const result = await runCallTool(ctx, message.callId, message.toolCallId, message.name, message.arguments);
+        const result = await runCallTool(
+          ctx,
+          message.callId,
+          message.toolCallId,
+          message.name,
+          message.arguments,
+        );
         reply({
           t: "voice.tool",
           requestId: message.requestId,
@@ -859,11 +956,20 @@ function runTurn(ctx: HandlerContext, sessionId: string, turn: Promise<PromptOut
  * runs them from the sideband. Opening or starting a chat spawns an agent, so
  * it is the one slow tool; it runs well inside the app's 30 s tool timeout.
  */
-async function runCallTool(ctx: HandlerContext, callId: string, toolCallId: string, name: string, args: string): Promise<{ output: string; hangUp?: boolean }> {
+async function runCallTool(
+  ctx: HandlerContext,
+  callId: string,
+  toolCallId: string,
+  name: string,
+  args: string,
+): Promise<{ output: string; hangUp?: boolean }> {
   const { daemon } = ctx;
   let first = false;
   const result = !daemon.voice.knowsCall(callId)
-    ? { output: JSON.stringify({ ok: false, error: "unknown call", say: "This call has ended." }), hangUp: true }
+    ? {
+        output: JSON.stringify({ ok: false, error: "unknown call", say: "This call has ended." }),
+        hangUp: true,
+      }
     : await daemon.voice.runOnce(callId, toolCallId, async () => {
         first = true;
         return CHAT_TOOLS.has(name)
@@ -885,9 +991,11 @@ function voicePort(ctx: HandlerContext, callId: string): VoicePort {
   const { daemon } = ctx;
   return {
     items: () => daemon.voice.inbox,
-    permissionOptions: (sessionId, requestId) => daemon.voicePermissionOptions(sessionId, requestId),
+    permissionOptions: (sessionId, requestId) =>
+      daemon.voicePermissionOptions(sessionId, requestId),
     askQuestions: (sessionId, requestId) => daemon.voiceAskQuestions(sessionId, requestId),
-    answerPermission: (sessionId, requestId, optionId) => daemon.answerPermission(sessionId, requestId, optionId),
+    answerPermission: (sessionId, requestId, optionId) =>
+      daemon.answerPermission(sessionId, requestId, optionId),
     answerAsk: (sessionId, requestId, result) => daemon.answerAsk(sessionId, requestId, result),
     decidePlan: (sessionId, action, generation, feedback) => {
       // The same turn `plan.decide` runs, so busy/idle/queue rules hold.

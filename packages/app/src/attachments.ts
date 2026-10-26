@@ -116,9 +116,7 @@ export interface WireAttachment {
 }
 
 /** The wire form: `localUri` and `id` are this device's business only. */
-export function toWireAttachments(
-  attachments: readonly PendingAttachment[],
-): WireAttachment[] {
+export function toWireAttachments(attachments: readonly PendingAttachment[]): WireAttachment[] {
   return attachments.map(({ name, mimeType, data }) => ({ name, mimeType, data }));
 }
 

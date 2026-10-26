@@ -20,6 +20,10 @@ export function openingStep(startInBrowse: boolean, canBrowse: boolean): "choice
  * conversation the project is fixed, so it shows the details as before. GG
  * Goals has no free-standing chat, so its pill keeps the details too.
  */
-export function projectPillAction(input: { sessionId?: string; loadingSession: boolean; goals: boolean }): "choose" | "details" {
+export function projectPillAction(input: {
+  sessionId?: string;
+  loadingSession: boolean;
+  goals: boolean;
+}): "choose" | "details" {
   return !input.sessionId && !input.loadingSession && !input.goals ? "choose" : "details";
 }

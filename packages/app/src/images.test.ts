@@ -9,9 +9,9 @@ import {
 } from "./images";
 
 test("inline image blocks become data URIs the app can paint", () => {
-  expect(
-    imagesFromContent({ type: "image", mimeType: "image/png", data: "AAAA" }),
-  ).toEqual([{ src: "data:image/png;base64,AAAA", mimeType: "image/png" }]);
+  expect(imagesFromContent({ type: "image", mimeType: "image/png", data: "AAAA" })).toEqual([
+    { src: "data:image/png;base64,AAAA", mimeType: "image/png" },
+  ]);
 });
 
 test("resource links are images only when the type or extension says so", () => {
@@ -32,9 +32,9 @@ test("embedded resources use their blob, and fall back to their uri", () => {
     }),
   ).toEqual([{ src: "data:image/jpeg;base64,QUJD", mimeType: "image/jpeg" }]);
 
-  expect(
-    imagesFromContent({ type: "resource", resource: { uri: "file:///shot.jpg" } }),
-  ).toEqual([{ src: "file:///shot.jpg", mimeType: undefined }]);
+  expect(imagesFromContent({ type: "resource", resource: { uri: "file:///shot.jpg" } })).toEqual([
+    { src: "file:///shot.jpg", mimeType: undefined },
+  ]);
 });
 
 test("tool call content carries generated images, but never tool text", () => {
@@ -54,9 +54,7 @@ test("tool call content carries generated images, but never tool text", () => {
 test("a format with no renderer is refused wherever it is declared", () => {
   // `image/svg+xml` is an image mime type, so trusting `image/*` alone would
   // let these through the source check and reserve a permanently empty frame.
-  expect(
-    imagesFromContent({ type: "image", mimeType: "image/svg+xml", data: "AA" }),
-  ).toEqual([]);
+  expect(imagesFromContent({ type: "image", mimeType: "image/svg+xml", data: "AA" })).toEqual([]);
   expect(
     imagesFromContent({
       type: "resource_link",

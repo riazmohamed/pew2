@@ -34,10 +34,7 @@ export abstract class DaemonProbes extends DaemonSpares {
    * revalidate rather than permanent — see `PROBE_TTL_MS` — because the work
    * this list describes is mostly done at the desk, while the daemon runs.
    */
-  async probeProvider(
-    providerId: string,
-    { refresh = false } = {},
-  ): Promise<ProviderCapabilities> {
+  async probeProvider(providerId: string, { refresh = false } = {}): Promise<ProviderCapabilities> {
     if (providerId === GG_GOALS_ID) {
       if (!this.isEnabled(GG_GOALS_ID)) return EMPTY_CAPABILITIES;
       const base = await this.probeRaw(GG_PROVIDER_ID, { refresh });
@@ -189,62 +186,61 @@ export abstract class DaemonProbes extends DaemonSpares {
         handle = undefined;
         announceSpare();
         try {
+          // Needed several times below, and `listSessions` is the slow call:
+          // once only.
+          const { sessions, projects, all } = await booted.listSessions();
+          // Held so choosing a project can be answered from memory. The agent was
+          // already asked for every session it has; asking again per project
+          // would pay the spawn and the list a second time for data this process
+          // is already holding.
+          this.projectHistory.set(providerId, all);
 
-        // Needed several times below, and `listSessions` is the slow call:
-        // once only.
-        const { sessions, projects, all } = await booted.listSessions();
-        // Held so choosing a project can be answered from memory. The agent was
-        // already asked for every session it has; asking again per project
-        // would pay the spawn and the list a second time for data this process
-        // is already holding.
-        this.projectHistory.set(providerId, all);
-
-        const capabilities: ProviderCapabilities = {
-          // The agent's own list, at the agent's own values. `capabilitiesFor`
-          // is what folds the user's remembered choices over it, so that the
-          // correction happens per answer rather than once per daemon lifetime —
-          // and so what lands in the probe cache stays the agent's answer,
-          // which is the one thing that file is documented to hold.
-          configOptions: booted.configOptions,
-          // The agent's own history, including everything started at the desk.
-          sessions,
-          canResume: booted.canLoadSession,
-          // The complete set of places this agent has worked, which the capped
-          // `sessions` above cannot describe.
-          projects,
-          ...((ext) => (ext ? { extensions: ext } : {}))(
-            readExtensions(booted.ggCapabilities as Record<string, unknown> | undefined),
-          ),
-          // Read after `listSessions` deliberately. Commands arrive as a
-          // notification rather than in `session/new`'s result, so reading them
-          // the instant the session opened would find none; that round trip is
-          // the window they land in.
-          //
-          // Falling back to the project's own files when the agent sent none:
-          // some agents ship no such notification at all, and their commands
-          // would otherwise be invisible. The agent always wins when it does
-          // answer, since only it knows its built-ins.
-          commands: booted.availableCommands.length
-            ? booted.availableCommands
-            : await readCommandDirs(
-                provider.manifest.pew.commandDirs,
-                // The agent's own most recent project, not the daemon's cwd.
-                // Under launchd that cwd is `/` and `resolveWorkspace()` falls
-                // back to home, which holds no project's commands — so the
-                // fallback would find nothing for every agent that needs it.
-                sessions[0]?.cwd ?? workspace,
-              ),
-        };
-        // Persist so the next ask — and the next daemon boot — answers from
-        // disk instead of spawning again.
-        void writeProbeCache(providerId, capabilities, this.env, all).catch(() => {});
-        // Installed only now that it exists, which is what lets a refresh leave
-        // the previous answer serving readers until this moment.
-        this.probes.set(providerId, Promise.resolve(capabilities));
-        // This is the answer the staleness clock is about: everything served
-        // from here until it expires is this moment's view of the agent's disk.
-        this.markProbed(providerId, Date.now());
-        return capabilities;
+          const capabilities: ProviderCapabilities = {
+            // The agent's own list, at the agent's own values. `capabilitiesFor`
+            // is what folds the user's remembered choices over it, so that the
+            // correction happens per answer rather than once per daemon lifetime —
+            // and so what lands in the probe cache stays the agent's answer,
+            // which is the one thing that file is documented to hold.
+            configOptions: booted.configOptions,
+            // The agent's own history, including everything started at the desk.
+            sessions,
+            canResume: booted.canLoadSession,
+            // The complete set of places this agent has worked, which the capped
+            // `sessions` above cannot describe.
+            projects,
+            ...((ext) => (ext ? { extensions: ext } : {}))(
+              readExtensions(booted.ggCapabilities as Record<string, unknown> | undefined),
+            ),
+            // Read after `listSessions` deliberately. Commands arrive as a
+            // notification rather than in `session/new`'s result, so reading them
+            // the instant the session opened would find none; that round trip is
+            // the window they land in.
+            //
+            // Falling back to the project's own files when the agent sent none:
+            // some agents ship no such notification at all, and their commands
+            // would otherwise be invisible. The agent always wins when it does
+            // answer, since only it knows its built-ins.
+            commands: booted.availableCommands.length
+              ? booted.availableCommands
+              : await readCommandDirs(
+                  provider.manifest.pew.commandDirs,
+                  // The agent's own most recent project, not the daemon's cwd.
+                  // Under launchd that cwd is `/` and `resolveWorkspace()` falls
+                  // back to home, which holds no project's commands — so the
+                  // fallback would find nothing for every agent that needs it.
+                  sessions[0]?.cwd ?? workspace,
+                ),
+          };
+          // Persist so the next ask — and the next daemon boot — answers from
+          // disk instead of spawning again.
+          void writeProbeCache(providerId, capabilities, this.env, all).catch(() => {});
+          // Installed only now that it exists, which is what lets a refresh leave
+          // the previous answer serving readers until this moment.
+          this.probes.set(providerId, Promise.resolve(capabilities));
+          // This is the answer the staleness clock is about: everything served
+          // from here until it expires is this moment's view of the agent's disk.
+          this.markProbed(providerId, Date.now());
+          return capabilities;
         } finally {
           const left = (this.borrowed.get(booted) ?? 1) - 1;
           if (left > 0) this.borrowed.set(booted, left);
@@ -305,7 +301,10 @@ export abstract class DaemonProbes extends DaemonSpares {
     if (probed === EMPTY_CAPABILITIES) return probed;
     const extensions = probed.extensions ?? this.knownExtensions.get(providerId);
     if (providerId === GG_GOALS_ID) {
-      return { ...probed, configOptions: withStoredPrefs(probed.configOptions, await readConfigPrefs(providerId)) };
+      return {
+        ...probed,
+        configOptions: withStoredPrefs(probed.configOptions, await readConfigPrefs(providerId)),
+      };
     }
     return {
       ...probed,

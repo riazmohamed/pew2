@@ -25,7 +25,8 @@ export function selectApprovalOptions(options: readonly ApprovalOption[]): Appro
 
   for (const option of options) {
     if (selected.length >= 2) break;
-    if (!selected.some((candidate) => candidate.optionId === option.optionId)) selected.push(option);
+    if (!selected.some((candidate) => candidate.optionId === option.optionId))
+      selected.push(option);
   }
   return selected.slice(0, 2);
 }

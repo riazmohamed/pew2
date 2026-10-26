@@ -6,7 +6,14 @@
  * because the QR printed above is already valid.
  */
 import { expect, test } from "bun:test";
-import { checkRelay, cliDeviceId, deviceLabel, reachOf, rotationFor, waitForDevice } from "./pair.js";
+import {
+  checkRelay,
+  cliDeviceId,
+  deviceLabel,
+  reachOf,
+  rotationFor,
+  waitForDevice,
+} from "./pair.js";
 
 /** A WebSocket stand-in with just the surface `waitForDevice` touches. */
 class FakeSocket {
@@ -48,7 +55,11 @@ test("a device joining resolves the wait", async () => {
 test("the CLI never counts its own id as the phone", async () => {
   const { socket, create } = harness();
 
-  const pending = waitForDevice({ url: "ws://127.0.0.1:8787/", createSocket: create, timeoutMs: 60 });
+  const pending = waitForDevice({
+    url: "ws://127.0.0.1:8787/",
+    createSocket: create,
+    timeoutMs: 60,
+  });
   // The watching socket does not announce itself today, so this should be
   // unreachable — pinned so that adding a `hello` later cannot make the command
   // report success the instant it starts.
@@ -61,7 +72,11 @@ test("the CLI never counts its own id as the phone", async () => {
 test("a pew2 chat window joining is never mistaken for the phone", async () => {
   const { socket, create } = harness();
 
-  const pending = waitForDevice({ url: "ws://127.0.0.1:8787/", createSocket: create, timeoutMs: 60 });
+  const pending = waitForDevice({
+    url: "ws://127.0.0.1:8787/",
+    createSocket: create,
+    timeoutMs: 60,
+  });
   socket.deliver({ t: "device.joined", deviceId: `${cliDeviceId()}#chat-ab12`, at: Date.now() });
 
   expect(await pending).toBeNull();
@@ -70,7 +85,11 @@ test("a pew2 chat window joining is never mistaken for the phone", async () => {
 test("unrelated and malformed traffic is ignored", async () => {
   const { socket, create } = harness();
 
-  const pending = waitForDevice({ url: "ws://127.0.0.1:8787/", createSocket: create, timeoutMs: 60 });
+  const pending = waitForDevice({
+    url: "ws://127.0.0.1:8787/",
+    createSocket: create,
+    timeoutMs: 60,
+  });
   socket.onmessage?.({ data: "not json at all" });
   socket.onmessage?.({ data: new ArrayBuffer(4) });
   socket.deliver({ t: "providers", providers: [] });
@@ -127,7 +146,9 @@ test("the relay check probes /health over http and treats any failure as down", 
 
   // A non-2xx is as unusable as an exception, and both must read as "down"
   // rather than propagating and killing the command.
-  expect(await checkRelay("wss://relay.example.com", async () => new Response("", { status: 500 }))).toBe(false);
+  expect(
+    await checkRelay("wss://relay.example.com", async () => new Response("", { status: 500 })),
+  ).toBe(false);
   expect(
     await checkRelay("wss://relay.example.com", async () => {
       throw new Error("getaddrinfo ENOTFOUND");

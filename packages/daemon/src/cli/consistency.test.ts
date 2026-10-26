@@ -172,7 +172,11 @@ test("all screens degrade to ASCII together", () => {
       ascii,
     ),
     registryView(
-      { ...syncResult, conflicts: ["devin"], skipped: [{ id: "x", kind: "unsupported", reason: "no build" }] },
+      {
+        ...syncResult,
+        conflicts: ["devin"],
+        skipped: [{ id: "x", kind: "unsupported", reason: "no build" }],
+      },
       ascii,
     ),
     renderPair(pairView, undefined, ascii),

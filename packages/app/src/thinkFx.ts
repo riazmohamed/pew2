@@ -92,7 +92,13 @@ export function energy(level: number): number {
  * Orbits are ellipses tilted per spark, so together they read as a sphere of
  * thought round him; the count and speed follow the energy.
  */
-export function orbiter(g: DialGeometry, i: number, t: number, level: number, out: Float32Array): void {
+export function orbiter(
+  g: DialGeometry,
+  i: number,
+  t: number,
+  level: number,
+  out: Float32Array,
+): void {
   "worklet";
   const e = energy(level);
   const shown = ORBITERS * e;
@@ -163,7 +169,13 @@ function pulse(g: DialGeometry, m: DialMoment, pal: FxPalette, p: FxPainter): vo
 }
 
 /** Behind Pew: aura, track, stops, the far side of the orbits, the pulse ring. */
-export function paintDialBack(g: DialGeometry, m: DialMoment, pal: FxPalette, p: FxPainter, scratch: Float32Array): void {
+export function paintDialBack(
+  g: DialGeometry,
+  m: DialMoment,
+  pal: FxPalette,
+  p: FxPainter,
+  scratch: Float32Array,
+): void {
   "worklet";
   const c = g.size / 2;
   const e = energy(m.level);
@@ -197,7 +209,13 @@ export function paintDialBack(g: DialGeometry, m: DialMoment, pal: FxPalette, p:
     const just = i === m.stop && m.since < PULSE_S ? 1 - m.since / PULSE_S : 0;
     p.dot(scratch[0]!, scratch[1]!, 6, pal.off, 1 - lit);
     if (lit > 0) {
-      p.glow(scratch[0]!, scratch[1]!, 18 + 26 * just * (m.dir > 0 ? 1 : 0), pal.base, (0.5 + 0.5 * just) * lit);
+      p.glow(
+        scratch[0]!,
+        scratch[1]!,
+        18 + 26 * just * (m.dir > 0 ? 1 : 0),
+        pal.base,
+        (0.5 + 0.5 * just) * lit,
+      );
       p.dot(scratch[0]!, scratch[1]!, 6 + 2.5 * just * (m.dir > 0 ? 1 : 0), pal.light, lit);
       p.dot(scratch[0]!, scratch[1]!, 2.4, WHITE, lit * (0.5 + 0.5 * just));
     }
@@ -210,7 +228,13 @@ export function paintDialBack(g: DialGeometry, m: DialMoment, pal: FxPalette, p:
 }
 
 /** In front of Pew: the near side of the orbits (with trails) and the change's sparks. */
-export function paintDialFront(g: DialGeometry, m: DialMoment, pal: FxPalette, p: FxPainter, scratch: Float32Array): void {
+export function paintDialFront(
+  g: DialGeometry,
+  m: DialMoment,
+  pal: FxPalette,
+  p: FxPainter,
+  scratch: Float32Array,
+): void {
   "worklet";
   const e = energy(m.level);
   for (let i = 0; i < ORBITERS; i++) {
@@ -221,7 +245,13 @@ export function paintDialFront(g: DialGeometry, m: DialMoment, pal: FxPalette, p
       const z = scratch[2]!;
       const r = (1.5 + 1.5 * z) * (1 - k * 0.2);
       if (k === 0) p.glow(scratch[0]!, scratch[1]!, 10, pal.base, 0.35 * a * z);
-      p.dot(scratch[0]!, scratch[1]!, r, k === 0 ? pal.light : pal.base, a * (k === 0 ? 1 : 0.5 - k * 0.12));
+      p.dot(
+        scratch[0]!,
+        scratch[1]!,
+        r,
+        k === 0 ? pal.light : pal.base,
+        a * (k === 0 ? 1 : 0.5 - k * 0.12),
+      );
     }
   }
   if (m.since > PULSE_S) return;

@@ -70,7 +70,9 @@ describe("batch window", () => {
   });
 
   test("batchSeconds 0 rings at once", () => {
-    expect(at(initialState(), T0, [item("a")], { ...ON, batchSeconds: 0 }).ring?.reason).toBe("batch");
+    expect(at(initialState(), T0, [item("a")], { ...ON, batchSeconds: 0 }).ring?.reason).toBe(
+      "batch",
+    );
   });
 
   test("the window closes without a ring when everything was answered", () => {
@@ -128,7 +130,9 @@ describe("cooldown", () => {
   test("a ring with no report back still starts the cooldown", () => {
     const d = at(initialState(), T0, [item("a")], { ...ON, batchSeconds: 0 });
     const t = T0 + 2 * M;
-    expect(at(d.state, t, [item("a"), item("b", t)], { ...ON, batchSeconds: 0 }).ring).toBeUndefined();
+    expect(
+      at(d.state, t, [item("a"), item("b", t)], { ...ON, batchSeconds: 0 }).ring,
+    ).toBeUndefined();
   });
 });
 
@@ -282,7 +286,12 @@ describe("quiet hours", () => {
     const morning = at(night.state, london(8, 30), [item("a", eve)], prefs);
     expect(morning.ring).toBeUndefined();
     // Something new in the morning rings as usual.
-    const fresh = at(morning.state, london(8, 31), [item("a", eve), item("b", london(8, 31))], prefs);
+    const fresh = at(
+      morning.state,
+      london(8, 31),
+      [item("a", eve), item("b", london(8, 31))],
+      prefs,
+    );
     expect(fresh.ring?.itemIds).toEqual(["a", "b"]);
   });
 });

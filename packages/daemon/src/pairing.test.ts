@@ -184,7 +184,9 @@ test("token comparison rejects wrong, short, long and missing values", () => {
   expect(tokenMatches(token, token.slice(0, -1))).toBe(false);
   expect(tokenMatches(token, `${token}0`)).toBe(false);
   // A near-miss must not pass: the comparison is constant-time, not lenient.
-  expect(tokenMatches(token, `${token.slice(0, -1)}${token.endsWith("0") ? "1" : "0"}`)).toBe(false);
+  expect(tokenMatches(token, `${token.slice(0, -1)}${token.endsWith("0") ? "1" : "0"}`)).toBe(
+    false,
+  );
 });
 
 test("the pairing url round-trips through the app's parser", () => {
@@ -357,7 +359,9 @@ test("a relay makes the LAN address irrelevant", async () => {
 
   expect(report.problems.map((p) => p.id)).not.toContain("no-lan-address");
   expect(report.pairing.remote).toBe(true);
-  expect(report.pairing.url).toBe(`wss://relay.test/connect?pairing=${"t".repeat(48)}&role=app&deviceId=phone`);
+  expect(report.pairing.url).toBe(
+    `wss://relay.test/connect?pairing=${"t".repeat(48)}&role=app&deviceId=phone`,
+  );
 });
 
 test("without a relay, doctor warns that it is local-network only", async () => {

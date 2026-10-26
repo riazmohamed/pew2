@@ -56,10 +56,7 @@ function readDescription(source: string): string {
  * Earlier directories win, so a project's own copy overrides the user's global
  * one of the same name — the same precedence the agents themselves use.
  */
-export async function readCommandDirs(
-  dirs: string[],
-  cwd: string,
-): Promise<AvailableCommand[]> {
+export async function readCommandDirs(dirs: string[], cwd: string): Promise<AvailableCommand[]> {
   const found = new Map<string, AvailableCommand>();
 
   for (const dir of dirs) {
@@ -67,9 +64,7 @@ export async function readCommandDirs(
     // platform separator: `join`/`resolve` produce a backslash path on Windows
     // from the same manifest that works on macOS and Linux.
     const segments = dir.replace(/^~\//, "").split("/").filter(Boolean);
-    const path = dir.startsWith("~/")
-      ? join(homedir(), ...segments)
-      : resolve(cwd, ...segments);
+    const path = dir.startsWith("~/") ? join(homedir(), ...segments) : resolve(cwd, ...segments);
 
     let entries: string[];
     try {

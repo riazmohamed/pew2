@@ -81,7 +81,10 @@ test("draft throttle: trailing, latest text, clears immediately", () => {
 
   throttle.update("s1", "hell");
   throttle.update("s1", "");
-  expect(sent).toEqual([["s1", "hel"], ["s1", ""]]);
+  expect(sent).toEqual([
+    ["s1", "hel"],
+    ["s1", ""],
+  ]);
   expect(timers.pending()).toBe(false);
 
   throttle.update("s1", "x");
@@ -105,20 +108,29 @@ test("line editor: typing, paste, backspace, Ctrl-U, Enter, Ctrl-C", () => {
 test("events read as terminal lines", () => {
   expect(renderEvent({ kind: "user_message", text: "hi" })).toEqual({ kind: "user", text: "hi" });
   expect(
-    renderEvent({ update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } } }),
+    renderEvent({
+      update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } },
+    }),
   ).toEqual({ kind: "text", text: "ok" });
   expect(renderEvent({ update: { sessionUpdate: "tool_call", title: "Read file" } })).toEqual({
     kind: "tool",
     text: "Read file",
   });
-  expect(renderEvent({ update: { sessionUpdate: "agent_thought_chunk", content: { text: "hmm" } } })).toBeUndefined();
+  expect(
+    renderEvent({ update: { sessionUpdate: "agent_thought_chunk", content: { text: "hmm" } } }),
+  ).toBeUndefined();
   expect(
     renderEvent({
       kind: "permission_request",
       requestId: "r1",
       params: { toolCall: { title: "rm -rf" }, options: [{ optionId: "a", name: "Allow" }] },
     }),
-  ).toEqual({ kind: "permission", requestId: "r1", title: "rm -rf", options: [{ optionId: "a", name: "Allow" }] });
+  ).toEqual({
+    kind: "permission",
+    requestId: "r1",
+    title: "rm -rf",
+    options: [{ optionId: "a", name: "Allow" }],
+  });
 });
 
 test("agent choice, rows and backoff", () => {

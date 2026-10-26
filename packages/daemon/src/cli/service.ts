@@ -90,10 +90,7 @@ export function supervisorPath(
  *
  * Synchronous, because the update scheduler asks before arming anything.
  */
-export function supervisorInstalled(
-  osPlatform: string = platform(),
-  home = homedir(),
-): boolean {
+export function supervisorInstalled(osPlatform: string = platform(), home = homedir()): boolean {
   const path = supervisorPath(osPlatform, home);
   if (!path) return false;
   try {
@@ -110,7 +107,6 @@ export function supervisorInstalled(
 // launchd goes on appending to another.
 export { logDir };
 
-
 interface ReloadLaunchdJobOptions {
   domain: string;
   path: string;
@@ -123,7 +119,8 @@ export async function reloadLaunchdJob({
   domain,
   path,
   runCommand = run,
-  sleep = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)),
+  sleep = (milliseconds) =>
+    new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)),
 }: ReloadLaunchdJobOptions): Promise<CommandResult> {
   // `bootout` returns before launchd has finished tearing the job down, and
   // bootstrapping into a domain that still holds the old one fails with a bare
@@ -142,7 +139,6 @@ export async function reloadLaunchdJob({
   }
   return boot;
 }
-
 
 export function buildPlist(options: InstallOptions = {}): string {
   const program = programArguments(options.bunPath);

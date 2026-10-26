@@ -31,7 +31,13 @@ export function plainText(markdown: string): string {
       .replace(/~~(?=\S)([^\n]*?\S)~~/g, "$1")
       // Table rows: cells as a list; separator rows go.
       .replace(/^[ \t]*\|?([ \t]*:?-{2,}:?[ \t]*\|)+[ \t]*(:?-{2,}:?)?[ \t]*$/gm, "")
-      .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, row: string) => row.split("|").map((cell) => cell.trim()).filter(Boolean).join(" · "))
+      .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, row: string) =>
+        row
+          .split("|")
+          .map((cell) => cell.trim())
+          .filter(Boolean)
+          .join(" · "),
+      )
       // Bare HTML tags.
       .replace(/<\/?[a-z][a-z0-9-]*(\s[^<>]*)?\/?>/gi, "")
       // Escapes.

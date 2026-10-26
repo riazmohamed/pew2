@@ -146,12 +146,7 @@ export default function ComposerHarness() {
           </Slot>
 
           <Slot label="LISTENING">
-            <Composer
-              value=""
-              onChangeText={() => {}}
-              onSend={() => {}}
-              dictation={LISTENING}
-            />
+            <Composer value="" onChangeText={() => {}} onSend={() => {}} dictation={LISTENING} />
           </Slot>
 
           {/* The real hook, not a stub: this is the only way to see whether the

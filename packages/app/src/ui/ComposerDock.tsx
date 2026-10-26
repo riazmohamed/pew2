@@ -248,7 +248,11 @@ function ComposerDockView(
         selectors={selectors}
         changes={
           workspace?.uncommitted !== undefined
-            ? { count: workspace.uncommitted, accessibilityLabel: changesAccessibilityLabel(workspace.uncommitted), onPress: onProjectDetails }
+            ? {
+                count: workspace.uncommitted,
+                accessibilityLabel: changesAccessibilityLabel(workspace.uncommitted),
+                onPress: onProjectDetails,
+              }
             : undefined
         }
         attachments={attachments}

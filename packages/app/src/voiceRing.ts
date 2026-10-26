@@ -74,9 +74,17 @@ export function armingSupported(status: Status | undefined): boolean {
  * This conversation may ring. Without `now`, the daemon's list is trusted as
  * is: it drops an expired arming and broadcasts the change itself.
  */
-export function isArmed(status: Status | undefined, sessionId: string | undefined, now?: number): boolean {
+export function isArmed(
+  status: Status | undefined,
+  sessionId: string | undefined,
+  now?: number,
+): boolean {
   if (!sessionId) return false;
-  return status?.armed?.some((entry) => entry.sessionId === sessionId && (now === undefined || now < entry.until)) === true;
+  return (
+    status?.armed?.some(
+      (entry) => entry.sessionId === sessionId && (now === undefined || now < entry.until),
+    ) === true
+  );
 }
 
 /** Armed sessions still running, for the sheet's list. */
@@ -104,7 +112,12 @@ export const RING_SCOPES: readonly { scope: RingScope; label: string }[] = [
 
 /** The Settings row on the connection sheet: what calls will do, in a few words. */
 export function callsLine(status: Status | undefined, now: number): string {
-  if (!status?.available) return status?.login ? "Waiting for sign-in" : status?.canLogin ? "Sign in to OpenAI" : "Not available";
+  if (!status?.available)
+    return status?.login
+      ? "Waiting for sign-in"
+      : status?.canLogin
+        ? "Sign in to OpenAI"
+        : "Not available";
   const prefs = status.prefs;
   if (!ringing(prefs, now)) return "Ring me off";
   const left = ringTimeLeft(prefs, now);

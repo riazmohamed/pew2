@@ -139,7 +139,11 @@ export function QrScanner({ visible, onClose, onScan, error, busy }: Props) {
                   onPress={() => setTorch((on) => !on)}
                   feel={torch ? () => haptics.toggleOff() : () => haptics.toggleOn()}
                 >
-                  <Ionicons name={torch ? "flashlight" : "flashlight-outline"} size={18} color={theme.color.text} />
+                  <Ionicons
+                    name={torch ? "flashlight" : "flashlight-outline"}
+                    size={18}
+                    color={theme.color.text}
+                  />
                 </CircleButton>
               ) : null
             }
@@ -199,7 +203,7 @@ export function QrScanner({ visible, onClose, onScan, error, busy }: Props) {
                       void requestPermission();
                     }}
                     style={({ pressed }) => [styles.allow, pressed && styles.pressed]}
->
+                  >
                     <Text style={styles.allowText}>Allow camera</Text>
                   </Pressable>
                 </Glass>
@@ -219,7 +223,7 @@ const CORNER = 44;
 /** Stage's coral for the viewfinder: no theme token, local to the scanner. */
 const CORAL = "#ff7a66";
 
-function Corner({ at, color }: { at: "tl" | "tr" | "bl" | "br"; color: string; }) {
+function Corner({ at, color }: { at: "tl" | "tr" | "bl" | "br"; color: string }) {
   const top = at[0] === "t";
   const left = at[1] === "l";
   return (
@@ -250,7 +254,11 @@ function Viewfinder({ read }: { read: boolean }) {
       cancelAnimation(t);
       return;
     }
-    t.value = withRepeat(withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.quad) }), -1, true);
+    t.value = withRepeat(
+      withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    );
     return () => cancelAnimation(t);
   }, [sweeping, t]);
   const line = useAnimatedStyle(() => ({ transform: [{ translateY: t.value * (RETICLE - 2) }] }));

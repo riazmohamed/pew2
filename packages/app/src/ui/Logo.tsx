@@ -18,12 +18,7 @@ interface LogoProps {
 
 export function Logo({ size = 72 }: LogoProps) {
   return (
-    <View
-      style={styles.root}
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel="pew2"
-    >
+    <View style={styles.root} accessible accessibilityRole="image" accessibilityLabel="pew2">
       {/* Pew, pew2's own living mark, in its own coral. Its box has room
           for bounce and shadow around the globe, so it is drawn larger than
           the old orb's diameter to read at the same size. */}

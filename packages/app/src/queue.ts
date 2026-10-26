@@ -29,8 +29,13 @@ export type QueueSummary =
 export function summariseQueue(queued: readonly QueuedMessage[]): QueueSummary {
   const first = queued[0];
   if (!first) return { kind: "none" };
-  if (queued.length === 1) return { kind: "single", message: first, preview: queuePreview(first.text) };
-  return { kind: "several", count: queued.length, label: `${queued.length} messages ${QUEUED_WHEN}` };
+  if (queued.length === 1)
+    return { kind: "single", message: first, preview: queuePreview(first.text) };
+  return {
+    kind: "several",
+    count: queued.length,
+    label: `${queued.length} messages ${QUEUED_WHEN}`,
+  };
 }
 
 /**

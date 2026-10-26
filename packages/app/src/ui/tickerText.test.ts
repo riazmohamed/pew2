@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
 import { IDLE_ACTIVITY, type Activity } from "../activity";
-import { TICKER_STEPS_MAX, receiptLength, receiptParts, revealParts, tickerLine, tickerSteps } from "./tickerText";
+import {
+  TICKER_STEPS_MAX,
+  receiptLength,
+  receiptParts,
+  revealParts,
+  tickerLine,
+  tickerSteps,
+} from "./tickerText";
 
 const busy: Activity = {
   startedAt: 0,
@@ -33,17 +40,35 @@ test("steps keep only the most recent ten, live one last", () => {
 
 test("working line joins the recent steps", () => {
   const line = tickerLine({ working: true, activity: busy, offline: false });
-  expect(line).toEqual({ text: "READ cursors.ts · SEARCH advanceCursor …", tone: "agent", mood: "working" });
+  expect(line).toEqual({
+    text: "READ cursors.ts · SEARCH advanceCursor …",
+    tone: "agent",
+    mood: "working",
+  });
 });
 
 test("needs you beats everything, offline beats ready", () => {
-  expect(tickerLine({ working: true, activity: busy, offline: true, needs: "Run tests" }).tone).toBe("attention");
-  expect(tickerLine({ working: false, activity: IDLE_ACTIVITY, offline: true }).text).toBe("OFFLINE · MESSAGES WAIT");
+  expect(
+    tickerLine({ working: true, activity: busy, offline: true, needs: "Run tests" }).tone,
+  ).toBe("attention");
+  expect(tickerLine({ working: false, activity: IDLE_ACTIVITY, offline: true }).text).toBe(
+    "OFFLINE · MESSAGES WAIT",
+  );
 });
 
 test("ready names the project and changes", () => {
-  expect(tickerLine({ working: false, activity: IDLE_ACTIVITY, offline: false, project: "pew2", changes: 3 }).text).toBe("READY · pew2 · +3");
-  expect(tickerLine({ working: false, activity: IDLE_ACTIVITY, offline: false }).text).toBe("READY");
+  expect(
+    tickerLine({
+      working: false,
+      activity: IDLE_ACTIVITY,
+      offline: false,
+      project: "pew2",
+      changes: 3,
+    }).text,
+  ).toBe("READY · pew2 · +3");
+  expect(tickerLine({ working: false, activity: IDLE_ACTIVITY, offline: false }).text).toBe(
+    "READY",
+  );
 });
 
 test("receipt types on segment by segment", () => {
@@ -56,7 +81,9 @@ test("receipt types on segment by segment", () => {
 
 test("a goal's ticker carries Ken's latest line while idle", () => {
   const idle = { working: false, activity: IDLE_ACTIVITY, offline: false, project: "pew2" };
-  expect(tickerLine({ ...idle, say: "Builder is wiring the sidebar." }).text).toBe("KEN · Builder is wiring the sidebar.");
+  expect(tickerLine({ ...idle, say: "Builder is wiring the sidebar." }).text).toBe(
+    "KEN · Builder is wiring the sidebar.",
+  );
   expect(tickerLine({ ...idle, say: "  " }).text).toBe("READY · pew2");
   expect(tickerLine({ ...idle, say: "hi", needs: "Run tests" }).tone).toBe("attention");
 });

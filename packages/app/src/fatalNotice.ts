@@ -51,7 +51,9 @@ function stripTicks(text: string): string {
 function runs(text: string): NoticeRun[] {
   const parts = text.split("`");
   if (parts.length % 2 === 0) return [{ text: stripTicks(text) }];
-  return parts.flatMap((part, i) => (part === "" ? [] : [i % 2 === 1 ? { text: part, command: true as const } : { text: part }]));
+  return parts.flatMap((part, i) =>
+    part === "" ? [] : [i % 2 === 1 ? { text: part, command: true as const } : { text: part }],
+  );
 }
 
 /**

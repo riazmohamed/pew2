@@ -43,7 +43,7 @@ test("a sealed message comes back exactly as it went in", () => {
   const key = directionKey(KEY_A, "app-to-daemon");
   const message = {
     t: "session.prompt",
-    text: "hello — ünicode, \u0000 nulls, and \"quotes\"",
+    text: 'hello — ünicode, \u0000 nulls, and "quotes"',
     nested: { list: [1, 2, 3], flag: true, missing: null },
   };
 

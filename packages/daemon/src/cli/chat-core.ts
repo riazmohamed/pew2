@@ -5,7 +5,12 @@
  * those and this stays testable.
  */
 import { CLI_DEVICE_PREFIX } from "../device-claim.js";
-import { imagesFromAttachments, imagesFromContent, imagesFromToolContent, type ChatImage } from "./chat-images.js";
+import {
+  imagesFromAttachments,
+  imagesFromContent,
+  imagesFromToolContent,
+  type ChatImage,
+} from "./chat-images.js";
 import type { DiffView } from "./chat-theme.js";
 
 /**
@@ -112,7 +117,10 @@ export class Follow {
     return active
       .filter((sessionId) => this.inScope(sessionId))
       .map((sessionId) => ({ sessionId, meta: this.meta(sessionId) }))
-      .sort((a, b) => b.meta.lastActivity - a.meta.lastActivity || a.sessionId.localeCompare(b.sessionId));
+      .sort(
+        (a, b) =>
+          b.meta.lastActivity - a.meta.lastActivity || a.sessionId.localeCompare(b.sessionId),
+      );
   }
 }
 
@@ -299,7 +307,12 @@ export type Rendered =
   | { kind: "tool"; text: string; id?: string; status?: string }
   | { kind: "toolResult"; id?: string; status?: string; diff?: DiffView }
   | { kind: "image"; image: ChatImage }
-  | { kind: "permission"; requestId: string; title: string; options: { optionId: string; name: string }[] }
+  | {
+      kind: "permission";
+      requestId: string;
+      title: string;
+      options: { optionId: string; name: string }[];
+    }
   | { kind: "exit"; text: string };
 
 function blockText(content: unknown): string {
@@ -321,10 +334,14 @@ export function permissionView(
     toolCall?: { title?: unknown };
     options?: { optionId?: unknown; name?: unknown }[];
   } | null;
-  const title = typeof p?.toolCall?.title === "string" ? p.toolCall.title : "The agent wants to continue";
+  const title =
+    typeof p?.toolCall?.title === "string" ? p.toolCall.title : "The agent wants to continue";
   const options = (Array.isArray(p?.options) ? p.options : [])
     .filter((o) => typeof o?.optionId === "string")
-    .map((o) => ({ optionId: o.optionId as string, name: typeof o.name === "string" ? o.name : String(o.optionId) }));
+    .map((o) => ({
+      optionId: o.optionId as string,
+      name: typeof o.name === "string" ? o.name : String(o.optionId),
+    }));
   return { kind: "permission", requestId, title, options };
 }
 
@@ -332,7 +349,11 @@ export function permissionView(
  * A line-level diff simple enough for a terminal: lines only in the old text
  * are removed, lines only in the new are added (counted, so repeats survive).
  */
-export function simpleDiff(path: string, oldText: string | null | undefined, newText: string): DiffView {
+export function simpleDiff(
+  path: string,
+  oldText: string | null | undefined,
+  newText: string,
+): DiffView {
   const before = oldText ? oldText.split("\n") : [];
   const after = newText.split("\n");
   const counts = new Map<string, number>();
@@ -357,9 +378,25 @@ export function simpleDiff(path: string, oldText: string | null | undefined, new
 function diffsFrom(content: unknown): DiffView[] {
   if (!Array.isArray(content)) return [];
   const out: DiffView[] = [];
-  for (const entry of content as { type?: unknown; path?: unknown; oldText?: unknown; newText?: unknown }[]) {
-    if (entry?.type !== "diff" || typeof entry.path !== "string" || typeof entry.newText !== "string") continue;
-    out.push(simpleDiff(entry.path, typeof entry.oldText === "string" ? entry.oldText : undefined, entry.newText));
+  for (const entry of content as {
+    type?: unknown;
+    path?: unknown;
+    oldText?: unknown;
+    newText?: unknown;
+  }[]) {
+    if (
+      entry?.type !== "diff" ||
+      typeof entry.path !== "string" ||
+      typeof entry.newText !== "string"
+    )
+      continue;
+    out.push(
+      simpleDiff(
+        entry.path,
+        typeof entry.oldText === "string" ? entry.oldText : undefined,
+        entry.newText,
+      ),
+    );
   }
   return out;
 }
@@ -393,14 +430,20 @@ export function renderEvents(payload: unknown): Rendered[] {
   if (p.kind === "permission_request" && typeof p.requestId === "string") {
     return [permissionView(p.requestId, p.params)];
   }
-  if (p.kind === "exit") return [{ kind: "exit", text: `agent exited${typeof p.code === "number" ? ` (${p.code})` : ""}` }];
+  if (p.kind === "exit")
+    return [
+      { kind: "exit", text: `agent exited${typeof p.code === "number" ? ` (${p.code})` : ""}` },
+    ];
   const update = p.update;
   const id = typeof update?.toolCallId === "string" ? update.toolCallId : undefined;
   const status = typeof update?.status === "string" ? update.status : undefined;
   switch (update?.sessionUpdate) {
     case "agent_message_chunk": {
       const text = blockText(update.content);
-      const images = imagesFromContent(update.content).map((image): Rendered => ({ kind: "image", image }));
+      const images = imagesFromContent(update.content).map((image): Rendered => ({
+        kind: "image",
+        image,
+      }));
       return [...(text ? [{ kind: "text", text } as Rendered] : []), ...images];
     }
     case "user_message_chunk": {
@@ -411,12 +454,23 @@ export function renderEvents(payload: unknown): Rendered[] {
       const title = typeof update.title === "string" ? update.title : "tool";
       return [
         { kind: "tool", text: title, ...(id && { id }), ...(status && { status }) },
-        ...diffsFrom(update.content).map((diff): Rendered => ({ kind: "toolResult", ...(id && { id }), diff })),
-        ...imagesFromToolContent(update.content).map((image): Rendered => ({ kind: "image", image })),
+        ...diffsFrom(update.content).map((diff): Rendered => ({
+          kind: "toolResult",
+          ...(id && { id }),
+          diff,
+        })),
+        ...imagesFromToolContent(update.content).map((image): Rendered => ({
+          kind: "image",
+          image,
+        })),
       ];
     }
     case "tool_call_update": {
-      const out: Rendered[] = diffsFrom(update.content).map((diff) => ({ kind: "toolResult", ...(id && { id }), diff }));
+      const out: Rendered[] = diffsFrom(update.content).map((diff) => ({
+        kind: "toolResult",
+        ...(id && { id }),
+        diff,
+      }));
       if (status === "failed") out.push({ kind: "toolResult", ...(id && { id }), status });
       for (const image of imagesFromToolContent(update.content)) out.push({ kind: "image", image });
       return out;
@@ -435,7 +489,10 @@ export function renderEvent(payload: unknown): Rendered | undefined {
 export function rowsFor(text: string, columns: number): number {
   const width = Math.max(1, columns);
   let rows = 0;
-  for (const line of text.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b\][^\x07]*\x07/g, "").split("\n")) {
+  for (const line of text
+    .replace(/\x1b\[[0-9;]*m/g, "")
+    .replace(/\x1b\][^\x07]*\x07/g, "")
+    .split("\n")) {
     rows += Math.max(1, Math.ceil([...line].length / width));
   }
   return rows;

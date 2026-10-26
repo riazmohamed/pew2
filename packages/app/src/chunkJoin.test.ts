@@ -115,9 +115,9 @@ test("messages separated by tool calls are separated on screen", () => {
 test("a token stream that spaces and breaks itself is left exactly alone", () => {
   // GG Coder streaming, captured live: it emits its own "  \n" break, so the
   // seam is already whitespace and nothing may be added.
-  expect(fold(["Let", " me", " check", " that", ".", "  \n", "Ah", ",", " I", " found", " it"])).toBe(
-    "Let me check that.  \nAh, I found it",
-  );
+  expect(
+    fold(["Let", " me", " check", " that", ".", "  \n", "Ah", ",", " I", " found", " it"]),
+  ).toBe("Let me check that.  \nAh, I found it");
 });
 
 test("every connected agent renders correctly from its real capture", () => {

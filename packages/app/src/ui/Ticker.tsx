@@ -26,7 +26,15 @@ import { Pixel } from "./stage/Pixel";
 import { haptics } from "./haptics";
 import { useReducedMotion } from "./useReducedMotion";
 import { useAppActive } from "./useAppActive";
-import { receiptLength, receiptParts, receiptText, revealParts, tickerLine, tickerSteps, type TickerInput } from "./tickerText";
+import {
+  receiptLength,
+  receiptParts,
+  receiptText,
+  revealParts,
+  tickerLine,
+  tickerSteps,
+  type TickerInput,
+} from "./tickerText";
 import type { TurnReceipt } from "../activity";
 import { useStatusRowHeight } from "./useStatusRowHeight";
 import { SPRING } from "../motion";
@@ -62,7 +70,15 @@ type Props = TickerInput & {
   onOpenTools?: () => void;
 };
 
-function Marquee({ text, tone, color }: { text: string; tone: "agent" | "attention" | "dim"; color?: string }) {
+function Marquee({
+  text,
+  tone,
+  color,
+}: {
+  text: string;
+  tone: "agent" | "attention" | "dim";
+  color?: string;
+}) {
   const reduced = useReducedMotion();
   const appActive = useAppActive();
   const [box, setBox] = useState(0);
@@ -76,7 +92,10 @@ function Marquee({ text, tone, color }: { text: string; tone: "agent" | "attenti
     const distance = width - box + theme.space(4);
     x.value = withRepeat(
       withSequence(
-        withDelay(1200, withTiming(-distance, { duration: (distance / SPEED) * 1000, easing: Easing.linear })),
+        withDelay(
+          1200,
+          withTiming(-distance, { duration: (distance / SPEED) * 1000, easing: Easing.linear }),
+        ),
         withDelay(1200, withTiming(0, { duration: 300 })),
       ),
       -1,
@@ -84,10 +103,15 @@ function Marquee({ text, tone, color }: { text: string; tone: "agent" | "attenti
   }, [overflow, reduced, appActive, width, box, x, text]);
   const moving = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
   return (
-    <View style={styles.marquee} onLayout={(e: LayoutChangeEvent) => setBox(e.nativeEvent.layout.width)}>
+    <View
+      style={styles.marquee}
+      onLayout={(e: LayoutChangeEvent) => setBox(e.nativeEvent.layout.width)}
+    >
       <Animated.View style={[styles.marqueeRun, moving]}>
         <View onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}>
-          <Led tone={tone} color={tone === "agent" ? color : undefined}>{text}</Led>
+          <Led tone={tone} color={tone === "agent" ? color : undefined}>
+            {text}
+          </Led>
         </View>
       </Animated.View>
     </View>
@@ -150,7 +174,10 @@ function TickerView({ color, onOpenChange, onOpenTools, ...input }: Props) {
           growing that area moved the whole chat down every time the list
           opened. Absolute, so the ticker's own height never changes. */}
       <Animated.View style={[styles.drop, drop]} pointerEvents={open ? "auto" : "none"}>
-        <View style={styles.list} onLayout={(e: LayoutChangeEvent) => setListHeight(e.nativeEvent.layout.height)}>
+        <View
+          style={styles.list}
+          onLayout={(e: LayoutChangeEvent) => setListHeight(e.nativeEvent.layout.height)}
+        >
           {/* The strip's texture, carried on. Inside the list rather than the
               animated box, so it is drawn once at the list's size instead of
               re-recorded on every frame of the drop. */}
@@ -171,7 +198,10 @@ function TickerView({ color, onOpenChange, onOpenTools, ...input }: Props) {
                     />
                   )}
                 </View>
-                <Led tone={step.state === "live" ? "agent" : "dim"} color={step.state === "live" ? color : undefined}>
+                <Led
+                  tone={step.state === "live" ? "agent" : "dim"}
+                  color={step.state === "live" ? color : undefined}
+                >
                   {step.verb}
                 </Led>
                 <View style={styles.stepTarget}>
@@ -244,7 +274,16 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 10 },
   },
-  list: { position: "absolute", left: 0, right: 0, top: 0, gap: theme.space(2), paddingHorizontal: theme.space(3), paddingTop: theme.space(3), paddingBottom: theme.space(3) },
+  list: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    gap: theme.space(2),
+    paddingHorizontal: theme.space(3),
+    paddingTop: theme.space(3),
+    paddingBottom: theme.space(3),
+  },
   listGrid: { top: GRID_SHIFT },
   step: { flexDirection: "row", alignItems: "center", gap: theme.space(2) },
   stepMark: { width: 16, alignItems: "center" },
@@ -252,7 +291,14 @@ const styles = StyleSheet.create({
   // On the thread's rail like the replies above it: the list's footer spans
   // the full width, so the row carries the gutter itself (the receipt it
   // replaced did too; without it the LED line ran off the left edge).
-  receipt: { marginTop: theme.space(5), paddingHorizontal: theme.gutter, flexDirection: "row", alignItems: "center", gap: theme.space(2), overflow: "hidden" },
+  receipt: {
+    marginTop: theme.space(5),
+    paddingHorizontal: theme.gutter,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(2),
+    overflow: "hidden",
+  },
 });
 
 /** Per character of the receipt's type-on. */
@@ -292,7 +338,9 @@ function LedReceiptView({ receipt, onPress }: { receipt: TurnReceipt; onPress?: 
       onPress={onPress}
     >
       {revealParts(parts, shown).map((part, i) => (
-        <Led key={i} tone={part.tone}>{part.text}</Led>
+        <Led key={i} tone={part.tone}>
+          {part.text}
+        </Led>
       ))}
     </Pressable>
   );

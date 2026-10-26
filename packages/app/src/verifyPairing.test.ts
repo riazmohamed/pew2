@@ -15,7 +15,8 @@ import type { Pairing } from "./pairingLink";
 const KEY = "a".repeat(64);
 
 const pairing: Pairing = {
-  url: "wss://relay.example.com/connect?pairing=" + "b".repeat(48) + "&role=app&deviceId=phone-aaaa",
+  url:
+    "wss://relay.example.com/connect?pairing=" + "b".repeat(48) + "&role=app&deviceId=phone-aaaa",
   label: "relay.example.com",
   remote: true,
   deviceId: "phone-aaaa",

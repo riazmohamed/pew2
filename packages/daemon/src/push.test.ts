@@ -3,7 +3,14 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon } from "./index.js";
-import { PushRegistry, applyTickets, pushMessages, pushVoiceRing, relayOrigin, voiceRingMessages } from "./push.js";
+import {
+  PushRegistry,
+  applyTickets,
+  pushMessages,
+  pushVoiceRing,
+  relayOrigin,
+  voiceRingMessages,
+} from "./push.js";
 
 const TOKEN = "ExponentPushToken[abcdef123456]";
 
@@ -54,7 +61,10 @@ describe("PushRegistry", () => {
         phone: { token: TOKEN, platform: "ios" },
         junk: { token: "not-a-token", platform: "ios" },
       },
-      voip: { phone: { token: "ab".repeat(32), env: "sandbox" }, junk: { token: "zz", env: "sandbox" } },
+      voip: {
+        phone: { token: "ab".repeat(32), env: "sandbox" },
+        junk: { token: "zz", env: "sandbox" },
+      },
     });
     expect(registry.snapshot()).toEqual({
       targets: { phone: { token: TOKEN, platform: "ios" } },
@@ -97,7 +107,11 @@ describe("pushMessages", () => {
   });
 
   it("calls a failed turn a failure, not a finish", () => {
-    const [message] = pushMessages(registry, { sessionId: "s1", kind: "failed", lastText: "Rate limited" });
+    const [message] = pushMessages(registry, {
+      sessionId: "s1",
+      kind: "failed",
+      lastText: "Rate limited",
+    });
     expect(message?.body).toBe("Stopped on an error: Rate limited");
     expect(message?.data.kind).toBe("failed");
   });
@@ -134,7 +148,11 @@ describe("pushMessages", () => {
   });
 
   it("quotes the question an agent asked", () => {
-    const [message] = pushMessages(registry, { sessionId: "s1", kind: "question", lastText: "Which database?" });
+    const [message] = pushMessages(registry, {
+      sessionId: "s1",
+      kind: "question",
+      lastText: "Which database?",
+    });
     expect(message?.body).toBe("Asks: Which database?");
   });
 
@@ -192,13 +210,18 @@ describe("notifyPhones", () => {
       sent.push(...(JSON.parse(String(init?.body)) as Array<Record<string, unknown>>));
       return new Response(JSON.stringify({ data: [] }), { status: 200 });
     }) as unknown as typeof fetch;
-    const sessions = (daemon as unknown as { sessions: Map<string, Record<string, unknown>> }).sessions;
+    const sessions = (daemon as unknown as { sessions: Map<string, Record<string, unknown>> })
+      .sessions;
     return { daemon, sent, sessions };
   }
 
   it("badges the icon with every conversation stopped on an answer", async () => {
     const { daemon, sent, sessions } = daemonWithPhone();
-    sessions.set("a", { cwd: "/work/pew2", providerId: "echo", permissions: new Map([["r1", {}]]) });
+    sessions.set("a", {
+      cwd: "/work/pew2",
+      providerId: "echo",
+      permissions: new Map([["r1", {}]]),
+    });
     sessions.set("b", { cwd: "/work/site", providerId: "echo", asks: new Map([["q1", []]]) });
     sessions.set("c", { cwd: "/work/idle", providerId: "echo", permissions: new Map() });
     expect(daemon.waitingOnYou()).toBe(2);
@@ -252,13 +275,19 @@ describe("voice rings: CallKit through the relay, banners for the rest", () => {
       return new Response(JSON.stringify({ data: [] }), { status: 200 });
     }) as unknown as typeof fetch;
     try {
-      const rung = await pushVoiceRing(registry, ring, { relay: "https://relay.example", fetchImpl, ringId: "r1" });
+      const rung = await pushVoiceRing(registry, ring, {
+        relay: "https://relay.example",
+        fetchImpl,
+        ringId: "r1",
+      });
       expect(rung).toEqual(["callkit-phone"]);
       expect(calls[0]?.url).toBe("https://relay.example/voip");
       expect(calls[0]?.body).toEqual({
         token: VOIP,
         env: "sandbox",
-        payload: { pew: { title: "Pew", body: "2 things waiting", focus: "s1:approval:p1", ring: "r1" } },
+        payload: {
+          pew: { title: "Pew", body: "2 things waiting", focus: "s1:approval:p1", ring: "r1" },
+        },
       });
       expect(banners.map((m) => m.to)).toEqual(["ExponentPushToken[b]"]);
     } finally {
@@ -276,8 +305,13 @@ describe("voice rings: CallKit through the relay, banners for the rest", () => {
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
       }) as unknown as typeof fetch;
       try {
-        expect(await pushVoiceRing(registry, ring, { relay: "https://relay.example", fetchImpl })).toEqual([]);
-        expect(banners.map((m) => m.to).sort()).toEqual(["ExponentPushToken[a]", "ExponentPushToken[b]"]);
+        expect(
+          await pushVoiceRing(registry, ring, { relay: "https://relay.example", fetchImpl }),
+        ).toEqual([]);
+        expect(banners.map((m) => m.to).sort()).toEqual([
+          "ExponentPushToken[a]",
+          "ExponentPushToken[b]",
+        ]);
         expect(registry.voipList().length).toBe(status === 410 ? 0 : 1);
       } finally {
         globalThis.fetch = realFetch;
@@ -286,7 +320,9 @@ describe("voice rings: CallKit through the relay, banners for the rest", () => {
   });
 
   it("relay origin from the pairing URL", () => {
-    expect(relayOrigin("wss://pew2-relay.example.workers.dev")).toBe("https://pew2-relay.example.workers.dev");
+    expect(relayOrigin("wss://pew2-relay.example.workers.dev")).toBe(
+      "https://pew2-relay.example.workers.dev",
+    );
     expect(relayOrigin("ws://localhost:8799/x")).toBe("http://localhost:8799");
     expect(relayOrigin(undefined)).toBeUndefined();
     expect(relayOrigin("nonsense")).toBeUndefined();
@@ -298,11 +334,21 @@ describe("Android native ringing", () => {
   it("sends a ring as a data-only push to an app that rings like a call itself", () => {
     const registry = new PushRegistry();
     registry.register("phone", TOKEN, "android", "native");
-    const [ring] = voiceRingMessages(registry, { body: "1 thing waiting", who: "billing", focus: "f1" }, "ring_1");
+    const [ring] = voiceRingMessages(
+      registry,
+      { body: "1 thing waiting", who: "billing", focus: "f1" },
+      "ring_1",
+    );
     // No title or body: Android shows nothing for it, and the app's service rings.
     expect(ring).toEqual({
       to: TOKEN,
-      data: { pewRing: true, ring: "ring_1", title: "billing needs you", text: "1 thing waiting", focus: "f1" },
+      data: {
+        pewRing: true,
+        ring: "ring_1",
+        title: "billing needs you",
+        text: "1 thing waiting",
+        focus: "f1",
+      },
       priority: "high",
       ttl: 45,
     });
@@ -324,6 +370,9 @@ describe("Android native ringing", () => {
   it("never sends an iPhone a data-only ring", () => {
     const registry = new PushRegistry();
     registry.register("phone", TOKEN, "ios", "native");
-    expect(voiceRingMessages(registry, { body: "x" })[0]).toMatchObject({ title: "pew2 needs you", body: "x" });
+    expect(voiceRingMessages(registry, { body: "x" })[0]).toMatchObject({
+      title: "pew2 needs you",
+      body: "x",
+    });
   });
 });

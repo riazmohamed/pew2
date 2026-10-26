@@ -21,9 +21,7 @@ function slot(
 ): ConfigOption | undefined {
   return (
     options.find((o) => o.category === category) ??
-    options.find(
-      (o) => !o.category && pattern.test(`${o.id} ${o.name}`.replace(/_/g, " ")),
-    )
+    options.find((o) => !o.category && pattern.test(`${o.id} ${o.name}`.replace(/_/g, " ")))
   );
 }
 
@@ -37,18 +35,12 @@ export function summarise(options: ConfigOption[]): {
   // \b matters: an unanchored /mode/ also matches "model", which put the model
   // selector behind both pills.
   const mode = slot(selectable, "mode", /\bmodes?\b|permission/i);
-  const level = slot(
-    selectable,
-    "thought_level",
-    /\b(think|thinking|reason|reasoning|effort)\b/i,
-  );
+  const level = slot(selectable, "thought_level", /\b(think|thinking|reason|reasoning|effort)\b/i);
   // Only the model slot falls back to "whatever is left", so an agent that sets
   // no categories still gets one usable pill.
   const model =
     selectable.find((o) => o.category === "model") ??
-    selectable.find(
-      (o) => o !== mode && o !== level && /model/i.test(`${o.id} ${o.name}`),
-    ) ??
+    selectable.find((o) => o !== mode && o !== level && /model/i.test(`${o.id} ${o.name}`)) ??
     selectable.find((o) => o !== mode && o !== level);
 
   return { model, mode, level };

@@ -19,7 +19,8 @@ export interface IncomingRing {
   focus?: string;
 }
 
-const str = (value: unknown): string | undefined => (typeof value === "string" && value.length > 0 ? value : undefined);
+const str = (value: unknown): string | undefined =>
+  typeof value === "string" && value.length > 0 ? value : undefined;
 
 /** A `voice.ring` frame, or undefined for anything else or a malformed one. */
 export function readRing(message: unknown): IncomingRing | undefined {
@@ -47,7 +48,11 @@ export function readRing(message: unknown): IncomingRing | undefined {
  *   tap opens the call flow, which asks first.
  * - `ring`: tone, card and (in the background) a banner.
  */
-export function ringAction(options: { systemRings: boolean; consented: boolean; callActive: boolean }): "ignore" | "banner" | "ring" {
+export function ringAction(options: {
+  systemRings: boolean;
+  consented: boolean;
+  callActive: boolean;
+}): "ignore" | "banner" | "ring" {
   if (options.systemRings || options.callActive) return "ignore";
   return options.consented ? "ring" : "banner";
 }

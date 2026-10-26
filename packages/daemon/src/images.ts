@@ -130,12 +130,14 @@ export interface ImageBlock {
   data: string;
 }
 
-export type HistoryImage = ImageBlock | {
-  type: "resource_link";
-  uri: string;
-  name: string;
-  mimeType?: string;
-};
+export type HistoryImage =
+  | ImageBlock
+  | {
+      type: "resource_link";
+      uri: string;
+      name: string;
+      mimeType?: string;
+    };
 
 /**
  * Pictures inside a message read from an agent's own on-disk history.
@@ -146,7 +148,10 @@ export type HistoryImage = ImageBlock | {
  * without this a resumed conversation silently lost every picture it contained
  * while the live stream showed them fine.
  */
-export function historyImages(content: unknown, resolveData?: (data: string) => string | undefined): HistoryImage[] {
+export function historyImages(
+  content: unknown,
+  resolveData?: (data: string) => string | undefined,
+): HistoryImage[] {
   if (!Array.isArray(content)) return [];
   const images: HistoryImage[] = [];
   for (const part of content) {
@@ -155,7 +160,11 @@ export function historyImages(content: unknown, resolveData?: (data: string) => 
     // OG Coder keeps a picture's bytes beside the conversation and leaves a
     // marker in their place. Resolved when the caller can; otherwise skipped,
     // because painting the marker would show a broken image.
-    if (part.type === "image" && typeof part.data === "string" && part.data.startsWith(SESSION_ASSET_PREFIX)) {
+    if (
+      part.type === "image" &&
+      typeof part.data === "string" &&
+      part.data.startsWith(SESSION_ASSET_PREFIX)
+    ) {
       const data = resolveData?.(part.data);
       if (data) {
         images.push({ type: "image", mimeType: imageMime(part) ?? "image/png", data });
@@ -186,7 +195,8 @@ export function historyImages(content: unknown, resolveData?: (data: string) => 
 
     if (part.type === "resource_link" && typeof part.uri === "string") {
       images.push({
-        type: "resource_link", uri: part.uri,
+        type: "resource_link",
+        uri: part.uri,
         name: typeof part.name === "string" ? part.name : "Image",
         ...(typeof part.mimeType === "string" ? { mimeType: part.mimeType } : {}),
       });
@@ -210,7 +220,8 @@ export function historyImages(content: unknown, resolveData?: (data: string) => 
 
 /** OG Coder's marker for a picture it read from a file: the bytes stay in the file. */
 export const SESSION_ASSET_PREFIX = "gg-session-asset:";
-const OMITTED_IMAGE_NOTE = /^\[Session storage omitted duplicated image data; read the source again at (.+)\.\]$/;
+const OMITTED_IMAGE_NOTE =
+  /^\[Session storage omitted duplicated image data; read the source again at (.+)\.\]$/;
 
 function imageMime(part: { mimeType?: unknown; mediaType?: unknown }): string | undefined {
   if (typeof part.mimeType === "string") return part.mimeType;
@@ -226,7 +237,10 @@ function imageMime(part: { mimeType?: unknown; mediaType?: unknown }): string | 
  * its bytes. The note is OG Coder's own exact sentence, so it is turned back
  * into the picture by path — fetched like any other, under the same rules.
  */
-export function historyToolImages(content: unknown, resolveData?: (data: string) => string | undefined): HistoryImage[] {
+export function historyToolImages(
+  content: unknown,
+  resolveData?: (data: string) => string | undefined,
+): HistoryImage[] {
   if (!Array.isArray(content)) return [];
   return content.flatMap((part) => {
     if (part?.type !== "tool_result") return [];
@@ -237,7 +251,12 @@ export function historyToolImages(content: unknown, resolveData?: (data: string)
         const path = OMITTED_IMAGE_NOTE.exec(item.text.trim())?.[1];
         const mimeType = path ? imageMimeType(path) : undefined;
         if (path && mimeType) {
-          images.push({ type: "resource_link", uri: path, name: path.split("/").pop() ?? "Image", mimeType });
+          images.push({
+            type: "resource_link",
+            uri: path,
+            name: path.split("/").pop() ?? "Image",
+            mimeType,
+          });
         }
       }
     }

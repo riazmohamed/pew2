@@ -13,7 +13,12 @@ export interface PagingHold {
   target?: number;
 }
 
-export function pageForScroll(x: number, width: number, count: number, hold: PagingHold): number | undefined {
+export function pageForScroll(
+  x: number,
+  width: number,
+  count: number,
+  hold: PagingHold,
+): number | undefined {
   if (width <= 0 || count <= 0) return undefined;
   const at = Math.max(0, Math.min(count - 1, Math.round(x / width)));
   if (hold.target === undefined) return at;

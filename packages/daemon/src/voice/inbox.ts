@@ -37,8 +37,15 @@ export function approvalChoices(params: unknown): NonNullable<wire.VoiceInboxIte
   if (!Array.isArray(raw)) return [];
   return raw.flatMap((option) => {
     const typed = option as { optionId?: unknown; kind?: unknown; name?: unknown } | null;
-    if (typeof typed?.optionId !== "string" || typeof typed.name !== "string" || !typed.name.trim()) return [];
-    return [{ optionId: typed.optionId, name: typed.name, ...(typeof typed.kind === "string" ? { kind: typed.kind } : {}) }];
+    if (typeof typed?.optionId !== "string" || typeof typed.name !== "string" || !typed.name.trim())
+      return [];
+    return [
+      {
+        optionId: typed.optionId,
+        name: typed.name,
+        ...(typeof typed.kind === "string" ? { kind: typed.kind } : {}),
+      },
+    ];
   });
 }
 
@@ -107,7 +114,13 @@ export function buildInbox(
     }
     for (const [requestId, questions] of source.asks ?? []) {
       const card = cardQuestions(questions);
-      add(source, "question", requestId, questionTitle(questions), card.length > 0 ? { questions: card } : {});
+      add(
+        source,
+        "question",
+        requestId,
+        questionTitle(questions),
+        card.length > 0 ? { questions: card } : {},
+      );
     }
     const pending = source.plan?.pending;
     if (pending) add(source, "plan", String(pending.generation), "Plan ready for review");

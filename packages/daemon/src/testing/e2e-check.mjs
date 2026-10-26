@@ -66,12 +66,17 @@ ws.send(
 await wait(500);
 check(
   "the handshake is accepted",
-  !inbox.some((m) => m.t === "error" && ["unpaired", "device-refused", "wire-version"].includes(m.code)),
+  !inbox.some(
+    (m) => m.t === "error" && ["unpaired", "device-refused", "wire-version"].includes(m.code),
+  ),
 );
 
 const announce = inbox.find((m) => m.t === "providers");
 check("daemon announces providers", !!announce);
-check("echo is available", announce?.providers.some((p) => p.id === "echo" && p.available));
+check(
+  "echo is available",
+  announce?.providers.some((p) => p.id === "echo" && p.available),
+);
 // Named `codex` once, which made this a check on what happens to be installed
 // on the machine running it — an agent whose command is missing entirely is not
 // announced at all, so it failed for a reason that had nothing to do with the
@@ -180,13 +185,26 @@ const imageDir = mkdtempSync(join(tmpdir(), "pew2-e2e-image-"));
 writeFileSync(join(imageDir, "plot.png"), PNG);
 
 inbox.length = 0;
-send({ t: "image.fetch", requestId: "img-1", sessionId: started.sessionId, uri: join(imageDir, "plot.png") });
+send({
+  t: "image.fetch",
+  requestId: "img-1",
+  sessionId: started.sessionId,
+  uri: join(imageDir, "plot.png"),
+});
 await wait(800);
 const image = inbox.find((m) => m.t === "image" && m.requestId === "img-1");
-check("daemon inlines an image the agent named by path", image?.dataUri?.startsWith("data:image/png;base64,"));
+check(
+  "daemon inlines an image the agent named by path",
+  image?.dataUri?.startsWith("data:image/png;base64,"),
+);
 
 inbox.length = 0;
-send({ t: "image.fetch", requestId: "img-2", sessionId: started.sessionId, uri: join(imageDir, "missing.png") });
+send({
+  t: "image.fetch",
+  requestId: "img-2",
+  sessionId: started.sessionId,
+  uri: join(imageDir, "missing.png"),
+});
 await wait(800);
 const missing = inbox.find((m) => m.t === "image" && m.requestId === "img-2");
 // A failure must come back as a reason, or the app shows a blank frame forever.

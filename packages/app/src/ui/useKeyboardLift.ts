@@ -141,20 +141,14 @@ export function useTypingState() {
   // only ever emits `did`, and listening for `will` there would never fire.
   useEffect(() => {
     const willShow = Platform.OS === "ios";
-    const shown = Keyboard.addListener(
-      willShow ? "keyboardWillShow" : "keyboardDidShow",
-      () => {
-        typingRef.current = true;
-        setTyping(true);
-      },
-    );
-    const hidden = Keyboard.addListener(
-      willShow ? "keyboardWillHide" : "keyboardDidHide",
-      () => {
-        typingRef.current = false;
-        setTyping(false);
-      },
-    );
+    const shown = Keyboard.addListener(willShow ? "keyboardWillShow" : "keyboardDidShow", () => {
+      typingRef.current = true;
+      setTyping(true);
+    });
+    const hidden = Keyboard.addListener(willShow ? "keyboardWillHide" : "keyboardDidHide", () => {
+      typingRef.current = false;
+      setTyping(false);
+    });
     return () => {
       shown.remove();
       hidden.remove();

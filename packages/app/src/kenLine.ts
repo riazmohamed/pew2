@@ -37,7 +37,10 @@ const STRAY_MARKER = /(^|\n)[ \t]*`?\[ken:[a-z]+\]`?[ \t]*/gi;
 const OPENING_KEN_LINE = /^[ \t]*`?\[ken:([a-z]+)\]`?[ \t]*([^\n]*)/i;
 
 /** The message without Ken's line, and the line itself if it has one. */
-export function splitKenLine(text: string): { readonly body: string; readonly line: KenSaying | null } {
+export function splitKenLine(text: string): {
+  readonly body: string;
+  readonly line: KenSaying | null;
+} {
   const match = KEN_LINE.exec(text.trimEnd());
   if (!match) {
     const opening = OPENING_KEN_LINE.exec(text.trimStart());
@@ -85,7 +88,9 @@ function clipAtWord(text: string, max: number): string {
 }
 
 /** Ken's latest line from a transcript: the newest agent turn that has one. */
-export function latestKenSaying(turns: readonly { role: string; text: string }[]): KenSaying | null {
+export function latestKenSaying(
+  turns: readonly { role: string; text: string }[],
+): KenSaying | null {
   for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i];
     if (turn?.role !== "agent") continue;
@@ -99,7 +104,9 @@ export function latestKenSaying(turns: readonly { role: string; text: string }[]
  * The transcript with Ken's lines taken out of agent bubbles. Untouched turns
  * keep their identity, so memoised cells do not re-render.
  */
-export function withoutKenLines<T extends { role: string; text: string }>(turns: readonly T[]): T[] {
+export function withoutKenLines<T extends { role: string; text: string }>(
+  turns: readonly T[],
+): T[] {
   return turns.map((turn) => {
     if (turn.role !== "agent" || !/\[k/i.test(turn.text)) return turn;
     const text = hidePartialKenLine(turn.text);

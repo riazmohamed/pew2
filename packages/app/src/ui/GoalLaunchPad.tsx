@@ -52,7 +52,22 @@ const KEN_SIZE = 180;
  * drawn round where he sits); let go early and it drains; hold to the end and
  * he blows. With Reduce Motion or a screen reader it is a plain button.
  */
-export function LaunchPad({ ready, pending, plain, fx, onFire, onLaunch, onScene, color = KEN_COLOR, idleMood = "happy", labels, plainLabel = "Launch goal", a11yLabel = "Hold to launch goal", size = KEN_SIZE, captionBelow = false }: {
+export function LaunchPad({
+  ready,
+  pending,
+  plain,
+  fx,
+  onFire,
+  onLaunch,
+  onScene,
+  color = KEN_COLOR,
+  idleMood = "happy",
+  labels,
+  plainLabel = "Launch goal",
+  a11yLabel = "Hold to launch goal",
+  size = KEN_SIZE,
+  captionBelow = false,
+}: {
   ready: boolean;
   pending: boolean;
   plain: boolean;
@@ -74,7 +89,12 @@ export function LaunchPad({ ready, pending, plain, fx, onFire, onLaunch, onScene
 }) {
   const radius = size * 0.3;
   const ringBox = Math.ceil(radius * RING_SCALE * 2 + 48);
-  const words = labels ?? { idle: "Hold anywhere here", holding: "Keep holding", pending: "Launching", notReady: "Name and goal first" };
+  const words = labels ?? {
+    idle: "Hold anywhere here",
+    holding: "Keep holding",
+    pending: "Launching",
+    notReady: "Name and goal first",
+  };
   const [holding, setHolding] = useState(false);
   const ken = useRef<View>(null);
   // Loaded as the step opens, so the first hold is not a beat late.
@@ -116,13 +136,17 @@ export function LaunchPad({ ready, pending, plain, fx, onFire, onLaunch, onScene
     haptics.tap(plain ? undefined : null);
     if (!plain) sounds.charge(fx.charge.value, HOLD_MS);
     const { charge, burst } = fx;
-    charge.value = withTiming(1, { duration: HOLD_MS * (1 - charge.value), easing: Easing.linear }, (done) => {
-      if (!done) return;
-      // The blast starts here, on the UI thread, on the very frame the charge
-      // completes; React hears about it after.
-      burst.value = 0;
-      runOnJS(onFire)();
-    });
+    charge.value = withTiming(
+      1,
+      { duration: HOLD_MS * (1 - charge.value), easing: Easing.linear },
+      (done) => {
+        if (!done) return;
+        // The blast starts here, on the UI thread, on the very frame the charge
+        // completes; React hears about it after.
+        burst.value = 0;
+        runOnJS(onFire)();
+      },
+    );
   };
   const release = () => {
     if (plain || fx.burst.value >= 0) return;
@@ -152,11 +176,21 @@ export function LaunchPad({ ready, pending, plain, fx, onFire, onLaunch, onScene
     const t = fx.clock.value;
     return {
       opacity: fx.burst.value >= COVER_LAG_S ? 0 : 1,
-      transform: [{ translateX: fxShake(t, c) }, { translateY: fxShake(t + 0.37, c) * 0.6 }, { scale: fxKenScale(c) }],
+      transform: [
+        { translateX: fxShake(t, c) },
+        { translateY: fxShake(t + 0.37, c) * 0.6 },
+        { scale: fxKenScale(c) },
+      ],
     };
   });
 
-  const caption = pending ? words.pending : ready ? (holding ? words.holding : words.idle) : words.notReady;
+  const caption = pending
+    ? words.pending
+    : ready
+      ? holding
+        ? words.holding
+        : words.idle
+      : words.notReady;
   return (
     <Pressable
       accessibilityRole="button"
@@ -169,7 +203,12 @@ export function LaunchPad({ ready, pending, plain, fx, onFire, onLaunch, onScene
       <View style={[styles.ring, { width: ringBox, height: ringBox }]}>
         <Reanimated.View style={kenStyle}>
           <View ref={ken} collapsable={false} onLayout={measure}>
-            <Pew size={size} mood={holding || pending ? "working" : idleMood} color={color} accessibilityLabel="Pew" />
+            <Pew
+              size={size}
+              mood={holding || pending ? "working" : idleMood}
+              color={color}
+              accessibilityLabel="Pew"
+            />
           </View>
         </Reanimated.View>
       </View>
@@ -179,12 +218,22 @@ export function LaunchPad({ ready, pending, plain, fx, onFire, onLaunch, onScene
         tone={ready ? "agent" : "dim"}
         color={ready ? color : undefined}
         numberOfLines={1}
-        style={captionBelow ? [styles.captionBelow, { top: "50%", marginTop: ringBox / 2 + theme.space(2) }] : undefined}
+        style={
+          captionBelow
+            ? [styles.captionBelow, { top: "50%", marginTop: ringBox / 2 + theme.space(2) }]
+            : undefined
+        }
       >
         {caption}
       </Led>
       {plain && (
-        <StageButton color={color} disabled={!ready} feel="sent" label={pending ? `${words.pending}…` : plainLabel} onPress={onLaunch} />
+        <StageButton
+          color={color}
+          disabled={!ready}
+          feel="sent"
+          label={pending ? `${words.pending}…` : plainLabel}
+          onPress={onLaunch}
+        />
       )}
     </Pressable>
   );
@@ -192,7 +241,13 @@ export function LaunchPad({ ready, pending, plain, fx, onFire, onLaunch, onScene
 
 const styles = StyleSheet.create({
   // The hold area: everything under the title, so a thumb can't miss it.
-  pad: { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center", gap: theme.space(4) },
+  pad: {
+    flex: 1,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.space(4),
+  },
   padOff: { opacity: 0.45 },
   ring: { alignItems: "center", justifyContent: "center" },
   captionBelow: { position: "absolute" },

@@ -42,7 +42,9 @@ test("runtime bookkeeping markers are omitted from ACP replay", () => {
     replayed("user_message_chunk", " [Previous conversation summary]\nGenerated context"),
   ).toBeUndefined();
   expect(replayed("user_message_chunk", "[Autopilot] Continue with the next task")).toBeUndefined();
-  expect(replayed("user_message_chunk", "[Status update] Dev server is still running")).toBeUndefined();
+  expect(
+    replayed("user_message_chunk", "[Status update] Dev server is still running"),
+  ).toBeUndefined();
   expect(
     replayed(
       "agent_message_chunk",
@@ -108,24 +110,37 @@ test("an image generation tool's result reaches the transcript", () => {
 
 test.each([
   ["screenshot", { type: "image", mimeType: "image/png", data: "AA" }, "data:image/png;base64,AA"],
-  ["generated image", { type: "resource_link", uri: ".gg/generated/result.png" }, ".gg/generated/result.png"],
-  ["image read", { type: "resource", resource: { uri: "file:///tmp/shot.jpg" } }, "file:///tmp/shot.jpg"],
-] as const)("%s tool results survive folding and row visibility without Markdown", (_name, content, src) => {
-  const turns: Turn[] = [];
-  for (const [index, sessionUpdate] of ["tool_call", "tool_call_update"].entries()) {
-    const chunk = readChunk({ update: {
-      sessionUpdate,
-      content: [{ type: "content", content }],
-    } });
-    expect(chunk).toBeDefined();
-    applyChunk(turns, `session:${index + 1}`, chunk!);
-  }
-  expect(turns).toHaveLength(1);
-  expect(turns[0]!.text).toBe("");
-  expect(turns[0]!.images).toHaveLength(1);
-  expect(turns[0]!.images![0]!.src).toBe(src);
-  expect(isEmptyTurn(turns[0]!)).toBe(false);
-});
+  [
+    "generated image",
+    { type: "resource_link", uri: ".gg/generated/result.png" },
+    ".gg/generated/result.png",
+  ],
+  [
+    "image read",
+    { type: "resource", resource: { uri: "file:///tmp/shot.jpg" } },
+    "file:///tmp/shot.jpg",
+  ],
+] as const)(
+  "%s tool results survive folding and row visibility without Markdown",
+  (_name, content, src) => {
+    const turns: Turn[] = [];
+    for (const [index, sessionUpdate] of ["tool_call", "tool_call_update"].entries()) {
+      const chunk = readChunk({
+        update: {
+          sessionUpdate,
+          content: [{ type: "content", content }],
+        },
+      });
+      expect(chunk).toBeDefined();
+      applyChunk(turns, `session:${index + 1}`, chunk!);
+    }
+    expect(turns).toHaveLength(1);
+    expect(turns[0]!.text).toBe("");
+    expect(turns[0]!.images).toHaveLength(1);
+    expect(turns[0]!.images![0]!.src).toBe(src);
+    expect(isEmptyTurn(turns[0]!)).toBe(false);
+  },
+);
 
 test("a tool call with no picture stays out of the conversation", () => {
   expect(

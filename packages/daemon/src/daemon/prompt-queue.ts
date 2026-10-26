@@ -40,7 +40,8 @@ export abstract class DaemonPromptQueue extends DaemonGg {
     }
     if (session.working) {
       if (options.goalTurn) throw new Error("GG Goals is already working on this goal.");
-      if (options.planDecision) throw new Error("The agent is still working; decide the plan when it stops.");
+      if (options.planDecision)
+        throw new Error("The agent is still working; decide the plan when it stops.");
       this.enqueue(session, text, attachments);
       return "queued";
     }
@@ -70,8 +71,8 @@ export abstract class DaemonPromptQueue extends DaemonGg {
             planDecision?: PromptOptions["planDecision"];
           }
         | undefined = options.goalTurn
-          ? { texts: [], goalTurn: options.goalTurn }
-          : options.planDecision
+        ? { texts: [], goalTurn: options.goalTurn }
+        : options.planDecision
           ? { texts: [], planDecision: options.planDecision }
           : { texts: [{ text, stored: await storeAttachments(sessionId, attachments) }] };
       try {
@@ -275,7 +276,9 @@ export abstract class DaemonPromptQueue extends DaemonGg {
     }
     if (!this.sessions.has(sessionId)) return;
     void this.prompt(sessionId, text)
-      .catch((error: unknown) => console.error(`[${session.providerId}] returned prompt failed:`, error))
+      .catch((error: unknown) =>
+        console.error(`[${session.providerId}] returned prompt failed:`, error),
+      )
       .finally(() => this.send({ t: "session.idle", sessionId, ...this.sessionOrigin(sessionId) }));
   }
 

@@ -49,7 +49,10 @@ export function onToken(listener: (token: VoipToken) => void): EventSubscription
 }
 
 /** Listen, and get what happened before JavaScript was ready (a ring answered from a cold launch). */
-export function listen(listener: (event: CallEvent) => void): { missed: CallEvent[]; remove: () => void } {
+export function listen(listener: (event: CallEvent) => void): {
+  missed: CallEvent[];
+  remove: () => void;
+} {
   if (!native) return { missed: [], remove: () => {} };
   const subscription = native.addListener("onCall", listener);
   return { missed: native.ready(), remove: () => subscription.remove() };

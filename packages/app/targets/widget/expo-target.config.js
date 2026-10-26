@@ -20,6 +20,7 @@ module.exports = (config) => ({
     pew: "../../assets/widget-pew.png",
   },
   entitlements: {
-    "com.apple.security.application-groups": config.ios.entitlements["com.apple.security.application-groups"],
+    "com.apple.security.application-groups":
+      config.ios.entitlements["com.apple.security.application-groups"],
   },
 });

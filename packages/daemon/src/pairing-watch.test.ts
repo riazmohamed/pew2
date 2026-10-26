@@ -41,7 +41,11 @@ test("sockets sealed with the old key are dropped, after the swap", () => {
   // longer applies. Order matters — closing first would race the new key in.
   const { calls, spy } = targets();
 
-  applyPairing(pairing({ token: "c".repeat(48) }), { token: "a".repeat(48), key: "b".repeat(64) }, spy);
+  applyPairing(
+    pairing({ token: "c".repeat(48) }),
+    { token: "a".repeat(48), key: "b".repeat(64) },
+    spy,
+  );
 
   expect(calls.indexOf("disconnect")).toBeGreaterThan(calls.indexOf("pairing:cccc"));
 });

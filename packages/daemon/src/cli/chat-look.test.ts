@@ -43,7 +43,17 @@ const color = painter("truecolor");
 
 test("markdown loses its markers and keeps its meaning", () => {
   const lines = renderMarkdown(
-    ["# Title", "Some **bold** and `code` and *it* and snake_case_name.", "- one", "1. first", "> quoted", "```ts", "const a = 1;", "```", "[docs](https://x.y)"].join("\n"),
+    [
+      "# Title",
+      "Some **bold** and `code` and *it* and snake_case_name.",
+      "- one",
+      "1. first",
+      "> quoted",
+      "```ts",
+      "const a = 1;",
+      "```",
+      "[docs](https://x.y)",
+    ].join("\n"),
     plain,
   );
   expect(lines).toEqual([
@@ -67,12 +77,16 @@ test("a streamed reply draws whole lines, previews the tail, and prefixes like O
   expect(stream.feed("Hello **wor")).toEqual([]);
   expect(stream.preview().slice(2)).toBe("Hello **wor");
   const outs = stream.feed("ld**\n\n\nnext ![shot](/tmp/a.png)\n");
-  const texts = outs.filter((o) => o.kind === "line").map((o) => (o.kind === "line" ? o.text.slice(2) : ""));
+  const texts = outs
+    .filter((o) => o.kind === "line")
+    .map((o) => (o.kind === "line" ? o.text.slice(2) : ""));
   expect(texts).toEqual(["Hello world", "", "next [image: shot]"]);
   expect(outs.some((o) => o.kind === "image" && o.src === "/tmp/a.png")).toBe(true);
   expect(stream.feed("tail")).toEqual([]);
   expect(stream.flush()).toEqual([{ kind: "line", text: "  tail" }]);
-  expect(markdownImages("![](notes.md) ![x](data:image/png;base64,AA)")).toEqual([{ src: "data:image/png;base64,AA", alt: "x" }]);
+  expect(markdownImages("![](notes.md) ![x](data:image/png;base64,AA)")).toEqual([
+    { src: "data:image/png;base64,AA", alt: "x" },
+  ]);
 });
 
 test("colours: truecolor, 256 fallback, NO_COLOR", () => {
@@ -86,7 +100,11 @@ test("colours: truecolor, 256 fallback, NO_COLOR", () => {
 });
 
 test("banner, user message, tool line and footer read like OG Coder", () => {
-  const banner = bannerLines({ version: "1.2.3", project: "pew2", agent: "Echo (test)", model: "Echo Pro", path: "~/p" }, plain, 100).map(stripAnsi);
+  const banner = bannerLines(
+    { version: "1.2.3", project: "pew2", agent: "Echo (test)", model: "Echo Pro", path: "~/p" },
+    plain,
+    100,
+  ).map(stripAnsi);
   expect(banner[1]).toContain("pew2 · pew2 v1.2.3");
   expect(banner[2]).toContain("Echo (test) · Echo Pro  ~/p");
   expect(banner[3]).toContain("/model switch model");
@@ -95,7 +113,11 @@ test("banner, user message, tool line and footer read like OG Coder", () => {
   expect(shaded[0]).toContain("▄");
   expect(stripAnsi(shaded[1]!)).toStartWith(" > hi [Image #1]");
   expect(stripAnsi(toolLine("Read src/a.ts", plain, 80)).slice(2)).toBe(" Read src/a.ts");
-  const footer = footerLines({ status: "→ Echo · pew2", model: "Echo Pro", thinking: "Think", keys: "Esc quit" }, plain, 80);
+  const footer = footerLines(
+    { status: "→ Echo · pew2", model: "Echo Pro", thinking: "Think", keys: "Esc quit" },
+    plain,
+    80,
+  );
   expect(footer[0]).toStartWith(" → Echo · pew2");
   expect(footer[0]).toEndWith("Echo Pro │ Thinking Think");
   expect(footer[1]).toBe(" Esc quit");
@@ -148,7 +170,11 @@ test("slash commands route local first, then the agent's as a prompt, else unkno
   expect(agent.map((c) => c.name)).toEqual(["compact", "model", "review"]);
   expect(readAgentCommands({ update: { sessionUpdate: "plan" } })).toBeUndefined();
   expect(routeSlash("/model 2", agent)).toEqual({ kind: "local", name: "model", arg: "2" });
-  expect(routeSlash("/compact keep tests", agent)).toEqual({ kind: "agent", name: "compact", text: "/compact keep tests" });
+  expect(routeSlash("/compact keep tests", agent)).toEqual({
+    kind: "agent",
+    name: "compact",
+    text: "/compact keep tests",
+  });
   expect(routeSlash("/nope", agent)).toEqual({ kind: "unknown", name: "nope" });
   const help = helpLines(agent, "Echo").join("\n");
   expect(help).toContain("/compact");
@@ -172,11 +198,22 @@ test("images are found in agent blocks, links, tool output and the user's attach
   expect(imagesFromContent({ type: "image", mimeType: "image/png", data: "AAA" })).toEqual([
     { src: "data:image/png;base64,AAA", name: "image" },
   ]);
-  expect(imagesFromContent([{ type: "resource_link", uri: "/x/plot.png", name: "plot.png" }, { type: "resource_link", uri: "/x/a.md" }])).toEqual([
-    { src: "/x/plot.png", name: "plot.png" },
-  ]);
-  expect(imagesFromAttachments([{ name: "shot.png", mimeType: "image/png", uri: "/tmp/pew2-attachments/s/0-shot.png" }])).toHaveLength(1);
-  const user = renderEvents({ kind: "user_message", text: "look", attachments: [{ name: "a.png", mimeType: "image/png", uri: "/t/a.png" }] });
+  expect(
+    imagesFromContent([
+      { type: "resource_link", uri: "/x/plot.png", name: "plot.png" },
+      { type: "resource_link", uri: "/x/a.md" },
+    ]),
+  ).toEqual([{ src: "/x/plot.png", name: "plot.png" }]);
+  expect(
+    imagesFromAttachments([
+      { name: "shot.png", mimeType: "image/png", uri: "/tmp/pew2-attachments/s/0-shot.png" },
+    ]),
+  ).toHaveLength(1);
+  const user = renderEvents({
+    kind: "user_message",
+    text: "look",
+    attachments: [{ name: "a.png", mimeType: "image/png", uri: "/t/a.png" }],
+  });
   expect(user).toEqual([
     { kind: "user", text: "look", images: 1 },
     { kind: "image", image: { src: "/t/a.png", name: "a.png" } },
@@ -189,7 +226,9 @@ test("images are found in agent blocks, links, tool output and the user's attach
       content: [{ type: "diff", path: "/a/b.ts", oldText: "x\ny", newText: "x\nz" }],
     },
   });
-  expect(tool).toEqual([{ kind: "toolResult", id: "t1", diff: { path: "/a/b.ts", added: ["z"], removed: ["y"] } }]);
+  expect(tool).toEqual([
+    { kind: "toolResult", id: "t1", diff: { path: "/a/b.ts", added: ["z"], removed: ["y"] } },
+  ]);
   expect(simpleDiff("f", undefined, "a")).toEqual({ path: "f", added: ["a"], removed: [] });
 });
 
@@ -201,7 +240,10 @@ test("iTerm2 inline images: detection and OSC 1337", () => {
   expect(osc1337(base64, "a.png", 100)).toBe(
     `\x1b]1337;File=name=${Buffer.from("a.png").toString("base64")};size=7;width=60;preserveAspectRatio=1;inline=1:${base64}\x07`,
   );
-  expect(parseDataUri("data:image/jpeg;base64,QUJD")).toEqual({ mimeType: "image/jpeg", base64: "QUJD" });
+  expect(parseDataUri("data:image/jpeg;base64,QUJD")).toEqual({
+    mimeType: "image/jpeg",
+    base64: "QUJD",
+  });
   expect(parseDataUri("nope")).toBeUndefined();
 });
 
@@ -217,11 +259,17 @@ test("attachments: dropped paths, mime types and the wire limits", () => {
   expect(imageMimeForPath("x.txt")).toBeUndefined();
   const ok = buildAttachment("a.png", "image/png", new Uint8Array([1, 2, 3]));
   expect(ok).toEqual({ attachment: { name: "a.png", mimeType: "image/png", data: "AQID" } });
-  expect(buildAttachment("big.png", "image/png", new Uint8Array(wire.MAX_ATTACHMENT_BYTES + 1))).toHaveProperty("error");
-  expect(buildAttachment("e.png", "image/png", new Uint8Array())).toEqual({ error: "'e.png' is empty" });
+  expect(
+    buildAttachment("big.png", "image/png", new Uint8Array(wire.MAX_ATTACHMENT_BYTES + 1)),
+  ).toHaveProperty("error");
+  expect(buildAttachment("e.png", "image/png", new Uint8Array())).toEqual({
+    error: "'e.png' is empty",
+  });
   const one = { name: "a", mimeType: "image/png", data: "AQID" };
   expect(attachmentsError([one])).toBeUndefined();
-  expect(attachmentsError(Array.from({ length: wire.MAX_ATTACHMENTS + 1 }, () => one))).toContain("too many");
+  expect(attachmentsError(Array.from({ length: wire.MAX_ATTACHMENTS + 1 }, () => one))).toContain(
+    "too many",
+  );
   expect(needsDownscale(1000, 3024)).toBe(true);
   expect(needsDownscale(1000, 1200)).toBe(false);
   expect(screenshotName(new Date(2026, 9, 13, 9, 5, 7))).toBe("screenshot-20261013-090507.png");

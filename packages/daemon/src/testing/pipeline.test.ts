@@ -40,9 +40,7 @@ test("streams incremental updates and records them in order", async () => {
   const seqs = log.events.map((e) => e.seq);
   expect(seqs).toEqual(seqs.map((_, i) => i));
 
-  const text = log.events
-    .map((e) => (e as any).payload?.update?.content?.text ?? "")
-    .join("");
+  const text = log.events.map((e) => (e as any).payload?.update?.content?.text ?? "").join("");
   expect(text).toContain("hello world");
 }, 60_000);
 
@@ -64,9 +62,7 @@ test("permission request round-trips through the client", async () => {
   handle.close();
 
   expect(sawRequest).toBe(true);
-  const text = log.events
-    .map((e) => (e as any).payload?.update?.content?.text ?? "")
-    .join("");
+  const text = log.events.map((e) => (e as any).payload?.update?.content?.text ?? "").join("");
   expect(text).toContain("You chose: allow");
 }, 60_000);
 
@@ -191,20 +187,15 @@ test("no session event ever precedes session.started", async () => {
   const frames: any[] = [];
   daemon.attach((message) => frames.push(message));
 
-  await handleMessage(
-    JSON.stringify({ t: "session.start", providerId: "echo", requestId: "r1" }),
-    {
-      daemon,
-      reply: (message) => frames.push(message),
-      broadcast: (message) => frames.push(message),
-    },
-  );
+  await handleMessage(JSON.stringify({ t: "session.start", providerId: "echo", requestId: "r1" }), {
+    daemon,
+    reply: (message) => frames.push(message),
+    broadcast: (message) => frames.push(message),
+  });
 
   const started = frames.find((f) => f.t === "session.started");
   expect(started).toBeDefined();
-  const events = frames.filter(
-    (f) => f.t === "session.event" && f.sessionId === started.sessionId,
-  );
+  const events = frames.filter((f) => f.t === "session.event" && f.sessionId === started.sessionId);
   for (const event of events) {
     expect(frames.indexOf(event)).toBeGreaterThan(frames.indexOf(started));
   }

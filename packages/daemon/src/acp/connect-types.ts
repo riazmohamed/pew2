@@ -151,20 +151,19 @@ export interface AvailableCommand {
  */
 export function readAvailableCommands(raw: unknown): AvailableCommand[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .flatMap((entry: unknown) => {
-      const command = asRecord(entry);
-      const name = asString(command?.name)?.trim();
-      if (!command || !name) return [];
-      const hint = asString(asRecord(command.input)?.hint);
-      return [
-        {
-          name,
-          description: asString(command.description) ?? "",
-          ...(hint !== undefined ? { hint } : {}),
-        },
-      ];
-    });
+  return raw.flatMap((entry: unknown) => {
+    const command = asRecord(entry);
+    const name = asString(command?.name)?.trim();
+    if (!command || !name) return [];
+    const hint = asString(asRecord(command.input)?.hint);
+    return [
+      {
+        name,
+        description: asString(command.description) ?? "",
+        ...(hint !== undefined ? { hint } : {}),
+      },
+    ];
+  });
 }
 
 /**
@@ -213,8 +212,7 @@ export interface GgCallbacks {
 
 /** What an `_gg/ask_user` request is answered with. */
 export type AskAnswer =
-  | { action: "answer"; answers: Record<string, string | string[]> }
-  | { action: "cancel" };
+  { action: "answer"; answers: Record<string, string | string[]> } | { action: "cancel" };
 
 /** A GG Goals turn: a `session/prompt` with an empty prompt and `_meta.gg.goalTurn`. */
 export interface PromptOptions {

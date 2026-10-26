@@ -15,15 +15,55 @@ import type { LiveStreamIdentity } from "../smoothText";
 
 const noop = () => {};
 function initial() {
-  const session: Session = { id: "metrics", providerId: "fixture", title: "Synthetic burst", startedAt: 1, turns: [], configOptions: [] };
-  return { sessionId: session.id, sessions: [session], turns: [] as Turn[], busy: false, activity: IDLE_ACTIVITY, activeStream: undefined as LiveStreamIdentity | undefined };
+  const session: Session = {
+    id: "metrics",
+    providerId: "fixture",
+    title: "Synthetic burst",
+    startedAt: 1,
+    turns: [],
+    configOptions: [],
+  };
+  return {
+    sessionId: session.id,
+    sessions: [session],
+    turns: [] as Turn[],
+    busy: false,
+    activity: IDLE_ACTIVITY,
+    activeStream: undefined as LiveStreamIdentity | undefined,
+  };
 }
-function Run({ mode, cycle, onDone }: { mode: "raw" | "batched"; cycle: number; onDone: () => void }) {
+function Run({
+  mode,
+  cycle,
+  onDone,
+}: {
+  mode: "raw" | "batched";
+  cycle: number;
+  onDone: () => void;
+}) {
   const [state, setState] = useState(initial);
-  const [projection, setProjection] = useState(() => ({ source: state.sessions, rows: projectDrawerRows([], state.sessions) }));
-  if (projection.source !== state.sessions) setProjection({ source: state.sessions, rows: projectDrawerRows(projection.rows, state.sessions) });
-  const metrics = useRef({ updates: 0, commits: 0, metadataChanges: 0, firstCommitMs: -1, maxFrameGapMs: 0, frameGapsOver32Ms: 0, actualDurationMs: 0, started: 0 });
-  useEffect(() => { metrics.current.metadataChanges++; }, [projection.rows]);
+  const [projection, setProjection] = useState(() => ({
+    source: state.sessions,
+    rows: projectDrawerRows([], state.sessions),
+  }));
+  if (projection.source !== state.sessions)
+    setProjection({
+      source: state.sessions,
+      rows: projectDrawerRows(projection.rows, state.sessions),
+    });
+  const metrics = useRef({
+    updates: 0,
+    commits: 0,
+    metadataChanges: 0,
+    firstCommitMs: -1,
+    maxFrameGapMs: 0,
+    frameGapsOver32Ms: 0,
+    actualDurationMs: 0,
+    started: 0,
+  });
+  useEffect(() => {
+    metrics.current.metadataChanges++;
+  }, [projection.rows]);
   useEffect(() => {
     let alive = true;
     let seq = 0;
@@ -47,12 +87,25 @@ function Run({ mode, cycle, onDone }: { mode: "raw" | "batched"; cycle: number; 
         return mode === "raw" ? { ...next, activeStream: undefined } : next;
       });
     }
-    const batch = createStreamBatch(commit, (callback, ms) => setTimeout(callback, ms), clearTimeout);
+    const batch = createStreamBatch(
+      commit,
+      (callback, ms) => setTimeout(callback, ms),
+      clearTimeout,
+    );
     const timer = setInterval(() => {
       seq++;
       const text = seq === 1 ? "A repeatable reply. " : `word${seq} `;
-      const event: StreamChunk = { id: `metrics:${seq}`, sessionId: "metrics", chunk: { role: "agent", text }, payload: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } }, now: Date.now() };
-      if (mode === "raw") commit([event]); else batch.push(event);
+      const event: StreamChunk = {
+        id: `metrics:${seq}`,
+        sessionId: "metrics",
+        chunk: { role: "agent", text },
+        payload: {
+          update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
+        },
+        now: Date.now(),
+      };
+      if (mode === "raw") commit([event]);
+      else batch.push(event);
       if (seq === 200) {
         clearInterval(timer);
         batch.boundary();
@@ -61,7 +114,15 @@ function Run({ mode, cycle, onDone }: { mode: "raw" | "batched"; cycle: number; 
           if (!alive) return;
           cancelAnimationFrame(frame);
           alive = false;
-          console.info("STREAM_METRIC", JSON.stringify({ mode, cycle, ...metrics.current, elapsedMs: performance.now() - metrics.current.started }));
+          console.info(
+            "STREAM_METRIC",
+            JSON.stringify({
+              mode,
+              cycle,
+              ...metrics.current,
+              elapsedMs: performance.now() - metrics.current.started,
+            }),
+          );
           if (mode === "batched" && cycle === 1) {
             console.info("STREAM_METRICS_FIRST_PAIR");
             done = setTimeout(onDone, 5000);
@@ -79,14 +140,33 @@ function Run({ mode, cycle, onDone }: { mode: "raw" | "batched"; cycle: number; 
       batch.dispose();
     };
   }, [mode, cycle, onDone]);
-  return <Profiler id="thread" onRender={(_id, _phase, duration) => {
-    const m = metrics.current;
-    m.commits++;
-    m.actualDurationMs += duration;
-    if (state.turns.length && m.firstCommitMs < 0) m.firstCommitMs = performance.now() - m.started;
-  }}>
-    <ChatThread turns={state.turns} activeStream={state.activeStream} threadTop={120} threadBottom={80} indicatorTop={120} indicatorBottom={80} working={false} activity={state.activity} onOpenThought={noop} onAtBottomChange={noop} onRetry={noop} onOpenTools={noop} />
-  </Profiler>;
+  return (
+    <Profiler
+      id="thread"
+      onRender={(_id, _phase, duration) => {
+        const m = metrics.current;
+        m.commits++;
+        m.actualDurationMs += duration;
+        if (state.turns.length && m.firstCommitMs < 0)
+          m.firstCommitMs = performance.now() - m.started;
+      }}
+    >
+      <ChatThread
+        turns={state.turns}
+        activeStream={state.activeStream}
+        threadTop={120}
+        threadBottom={80}
+        indicatorTop={120}
+        indicatorBottom={80}
+        working={false}
+        activity={state.activity}
+        onOpenThought={noop}
+        onAtBottomChange={noop}
+        onRetry={noop}
+        onOpenTools={noop}
+      />
+    </Profiler>
+  );
 }
 export default function StreamingMetricsHarness() {
   const [run, setRun] = useState(0);
@@ -96,9 +176,33 @@ export default function StreamingMetricsHarness() {
     if (run === 20) console.info("STREAM_METRICS_DONE");
   }, [run]);
   const activeRun = Math.min(run, 19);
-  return <SafeAreaProvider><View style={styles.screen}>
-    <Text style={styles.label}>Synthetic {run >= 20 ? "complete" : `${run % 2 ? "batched" : "raw"}, cycle ${Math.floor(run / 2) + 1}`}</Text>
-    <Run key={activeRun} mode={activeRun % 2 ? "batched" : "raw"} cycle={Math.floor(activeRun / 2) + 1} onDone={done} />
-  </View></SafeAreaProvider>;
+  return (
+    <SafeAreaProvider>
+      <View style={styles.screen}>
+        <Text style={styles.label}>
+          Synthetic{" "}
+          {run >= 20
+            ? "complete"
+            : `${run % 2 ? "batched" : "raw"}, cycle ${Math.floor(run / 2) + 1}`}
+        </Text>
+        <Run
+          key={activeRun}
+          mode={activeRun % 2 ? "batched" : "raw"}
+          cycle={Math.floor(activeRun / 2) + 1}
+          onDone={done}
+        />
+      </View>
+    </SafeAreaProvider>
+  );
 }
-const styles = StyleSheet.create({ screen: { flex: 1, backgroundColor: theme.color.bg }, label: { position: "absolute", top: 70, left: theme.gutter, color: theme.color.text, fontSize: theme.font.small, lineHeight: 18 } });
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.color.bg },
+  label: {
+    position: "absolute",
+    top: 70,
+    left: theme.gutter,
+    color: theme.color.text,
+    fontSize: theme.font.small,
+    lineHeight: 18,
+  },
+});

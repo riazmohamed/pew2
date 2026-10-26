@@ -41,19 +41,19 @@ export function HomeView({
   emptyReason: (providerCount: number) => string;
 }) {
   return (
-          // Cancels half the pane's lift, so the greeting settles in the middle
-          // of the shrunken screen instead of riding the composer all the way up.
-          <Reanimated.View style={[styles.greetingLift, keyboard.centred]}>
-            {/* Tapping the empty state dismisses the keyboard, which collapses
+    // Cancels half the pane's lift, so the greeting settles in the middle
+    // of the shrunken screen instead of riding the composer all the way up.
+    <Reanimated.View style={[styles.greetingLift, keyboard.centred]}>
+      {/* Tapping the empty state dismisses the keyboard, which collapses
                 the composer. Without this the greeting is inert and the only way
                 out of the expanded state is the keyboard's own dismiss control. */}
-            <Pressable
-              style={styles.greeting}
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss keyboard"
-              onPress={Keyboard.dismiss}
-            >
-              {/* Not scaled as a whole any more: HomeGreeting dissolves its text
+      <Pressable
+        style={styles.greeting}
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss keyboard"
+        onPress={Keyboard.dismiss}
+      >
+        {/* Not scaled as a whole any more: HomeGreeting dissolves its text
                   away and shrinks only Pew while the keyboard is up.
 
                   Mounted only once an agent is known (from the machine or the
@@ -62,22 +62,22 @@ export function HomeView({
                   recoloured and the greeting arrived beneath it a beat later.
                   A launch with no agent at all (a fresh pairing, a machine
                   with none turned on) still shows after a short wait. */}
-              {(active || homeWaited) && (
-              <Reanimated.View entering={reduceMotion ? undefined : FadeIn.duration(260)}>
-                <HomeGreeting
-                  typing={keyboard.progress}
-                  providerId={active?.id}
-                  color={active?.color}
-                  busy={daemon.busy}
-                  online={daemon.status === "online" && !daemon.unreachable}
-                  failed={Boolean(daemon.fatal)}
-                  status={homeStatus}
-                  onPressPew={active ? openCarousel : undefined}
-                  hint={hint}
-                  smiling={pewSmiling}
-                  chats={homeChats}
-                  onOpenChat={openSession}
-                  /* A refusal the daemon explained outranks the connecting
+        {(active || homeWaited) && (
+          <Reanimated.View entering={reduceMotion ? undefined : FadeIn.duration(260)}>
+            <HomeGreeting
+              typing={keyboard.progress}
+              providerId={active?.id}
+              color={active?.color}
+              busy={daemon.busy}
+              online={daemon.status === "online" && !daemon.unreachable}
+              failed={Boolean(daemon.fatal)}
+              status={homeStatus}
+              onPressPew={active ? openCarousel : undefined}
+              hint={hint}
+              smiling={pewSmiling}
+              chats={homeChats}
+              onOpenChat={openSession}
+              /* A refusal the daemon explained outranks the connecting
                     state: reconnecting cannot fix a rotated key or a version
                     mismatch, so "Connecting..." would loop forever while
                     telling the one person who can act nothing at all.
@@ -94,7 +94,8 @@ export function HomeView({
                     advice most of the times they are read, and unfollowable
                     anyway from wherever the user is standing. What can be done
                     from here is keep typing, which the composer now says. */
-                  text={daemon.fatal
+              text={
+                daemon.fatal
                   ? daemon.fatal
                   : daemon.unreachable
                     ? "Can't reach your machine."
@@ -102,11 +103,12 @@ export function HomeView({
                       ? "Connecting to your machine..."
                       : active
                         ? greeting
-                        : emptyReason(daemon.providers.length)}
-                />
-              </Reanimated.View>
-              )}
-            </Pressable>
+                        : emptyReason(daemon.providers.length)
+              }
+            />
           </Reanimated.View>
+        )}
+      </Pressable>
+    </Reanimated.View>
   );
 }

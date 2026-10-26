@@ -82,7 +82,13 @@ export function applyChunk(turns: Turn[], key: string, chunk: Chunk): void {
     // evidence, and a bubble must never keep the label after the agent has it.
     const { queued: _queued, ...adopted } = turns[optimistic]!;
     turns[optimistic] = { ...adopted, id: key };
-  } else if (last && last.role === chunk.role && chunk.role !== "user" && chunk.role !== "ken" && chunk.role !== "note") {
+  } else if (
+    last &&
+    last.role === chunk.role &&
+    chunk.role !== "user" &&
+    chunk.role !== "ken" &&
+    chunk.role !== "note"
+  ) {
     // Coalesce consecutive chunks of the same role into one bubble.
     turns[turns.length - 1] = mergeChunk(last, chunk);
   } else {
@@ -210,7 +216,8 @@ export function foldCatchUp<S extends CatchUpState>(
   // what takes down a sheet answered from the desktop while this phone was off
   // the air.
   const open = pendingPermission(permissions);
-  const permission = open === undefined ? (prev.permission as PermissionRequest | undefined) : (open ?? undefined);
+  const permission =
+    open === undefined ? (prev.permission as PermissionRequest | undefined) : (open ?? undefined);
   const next = {
     ...folded,
     loadingSession: false,
@@ -329,10 +336,7 @@ export function foldBackgroundCatchUp<S extends { sessions: Session[] }>(
   return { ...next, sessions };
 }
 
-export function foldSessionEvents<S extends FoldState>(
-  prev: S,
-  events: readonly ReplayEvent[],
-): S {
+export function foldSessionEvents<S extends FoldState>(prev: S, events: readonly ReplayEvent[]): S {
   if (events.length === 0) return prev;
 
   const turns = [...prev.turns];

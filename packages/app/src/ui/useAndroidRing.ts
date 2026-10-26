@@ -13,7 +13,14 @@ import { AppState, Linking } from "react-native";
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import type { wire } from "@pew2/protocol";
 import { canRing } from "../../modules/pew-call";
-import { answeredRing, claimRing, nativeRinger, ringClaimed, stopNativeRing, takeEndedRings } from "../../modules/pew-ring";
+import {
+  answeredRing,
+  claimRing,
+  nativeRinger,
+  ringClaimed,
+  stopNativeRing,
+  takeEndedRings,
+} from "../../modules/pew-ring";
 import { RING_MS, readRing, ringAction, ringEnded, type IncomingRing } from "../androidRing";
 import { dismissRing, notifyRing } from "./notifier";
 
@@ -101,7 +108,11 @@ export function useAndroidRing({ post, online, consented, callActive, onAnswer }
     (message: unknown) => {
       const ring = readRing(message);
       if (!ring) return;
-      const action = ringAction({ systemRings: canRing, consented: opts.current.consented, callActive: opts.current.callActive });
+      const action = ringAction({
+        systemRings: canRing,
+        consented: opts.current.consented,
+        callActive: opts.current.callActive,
+      });
       if (action === "ignore") return;
       const inBackground = AppState.currentState !== "active";
       if (action === "banner") {
@@ -146,7 +157,15 @@ export function useAndroidRing({ post, online, consented, callActive, onAnswer }
     if (!nativeRinger) return;
     const collect = () => {
       const ended = takeEndedRings();
-      if (ended.length > 0) setUnsent((list) => [...list, ...ended.map((item) => ({ t: "voice.end" as const, callId: item.ringId, reason: item.reason }))]);
+      if (ended.length > 0)
+        setUnsent((list) => [
+          ...list,
+          ...ended.map((item) => ({
+            t: "voice.end" as const,
+            callId: item.ringId,
+            reason: item.reason,
+          })),
+        ]);
     };
     collect();
     const subscription = AppState.addEventListener("change", (state) => {

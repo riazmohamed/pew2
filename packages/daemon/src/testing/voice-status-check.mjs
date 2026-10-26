@@ -23,11 +23,32 @@ ws.addEventListener("error", () => {
   process.exit(1);
 });
 await new Promise((r) => ws.addEventListener("open", r));
-ws.send(JSON.stringify({ t: "hello", wire: wire.WIRE_VERSION, role: "app", deviceId, proof: channel.proof(deviceId), cursors: {} }));
+ws.send(
+  JSON.stringify({
+    t: "hello",
+    wire: wire.WIRE_VERSION,
+    role: "app",
+    deviceId,
+    proof: channel.proof(deviceId),
+    cursors: {},
+  }),
+);
 await new Promise((r) => setTimeout(r, 300));
 send({ t: "voice.status", requestId: "check" });
-const status = await Promise.race([answer, new Promise((r) => setTimeout(() => r({ timeout: true }), 8000))]);
+const status = await Promise.race([
+  answer,
+  new Promise((r) => setTimeout(() => r({ timeout: true }), 8000)),
+]);
 const { login, ...rest } = status;
-console.log(JSON.stringify({ ...rest, ...(login ? { login: { verificationUrl: login.verificationUrl, userCode: "(hidden)" } } : {}) }, null, 1));
+console.log(
+  JSON.stringify(
+    {
+      ...rest,
+      ...(login ? { login: { verificationUrl: login.verificationUrl, userCode: "(hidden)" } } : {}),
+    },
+    null,
+    1,
+  ),
+);
 ws.close();
 process.exit(0);

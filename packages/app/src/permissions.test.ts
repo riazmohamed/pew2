@@ -28,8 +28,12 @@ test("the agent's own wording and choices are used when it sends them", () => {
 });
 
 test("only a permission event reads as one", () => {
-  expect(readPermissionRequest({ kind: "permission_request", requestId: "p3" })?.requestId).toBe("p3");
-  expect(readPermissionRequest({ update: { sessionUpdate: "agent_message_chunk" } })).toBeUndefined();
+  expect(readPermissionRequest({ kind: "permission_request", requestId: "p3" })?.requestId).toBe(
+    "p3",
+  );
+  expect(
+    readPermissionRequest({ update: { sessionUpdate: "agent_message_chunk" } }),
+  ).toBeUndefined();
   // An event with no id is unanswerable, so it is not a request.
   expect(readPermissionRequest({ kind: "permission_request" })).toBeUndefined();
   expect(readPermissionRequest(undefined)).toBeUndefined();

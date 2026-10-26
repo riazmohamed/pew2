@@ -78,7 +78,9 @@ describe("attachmentBlock", () => {
   });
 
   test("a link carries the name and size the agent needs to decide", () => {
-    expect(attachmentBlock(stored({ mimeType: "application/pdf", name: "spec.pdf" }), {})).toMatchObject({
+    expect(
+      attachmentBlock(stored({ mimeType: "application/pdf", name: "spec.pdf" }), {}),
+    ).toMatchObject({
       type: "resource_link",
       name: "spec.pdf",
       size: 12,

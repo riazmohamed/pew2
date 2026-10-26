@@ -70,10 +70,7 @@ function ProjectSelectView({ selected, count, open, onToggle, onLayout }: Projec
             size={15}
             color={selected ? theme.color.text : theme.color.textDim}
           />
-          <Text
-            style={[styles.label, !selected && styles.labelAll]}
-            numberOfLines={1}
-          >
+          <Text style={[styles.label, !selected && styles.labelAll]} numberOfLines={1}>
             {projectLabel(selected)}
           </Text>
           {/* Points at the menu it opens, and flips once it is open, so the row

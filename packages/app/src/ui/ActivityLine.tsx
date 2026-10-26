@@ -114,7 +114,11 @@ function ActivityLineView({
   );
   if (!onPress) return row;
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityHint="Shows what each tool is doing">
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityHint="Shows what each tool is doing"
+    >
       {row}
     </Pressable>
   );

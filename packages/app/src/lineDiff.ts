@@ -87,7 +87,11 @@ export function hunks(lines: DiffLine[]): (DiffLine | { kind: "skip"; count: num
   const keep = new Array<boolean>(lines.length).fill(false);
   lines.forEach((line, index) => {
     if (line.kind === "same") return;
-    for (let k = Math.max(0, index - CONTEXT); k <= Math.min(lines.length - 1, index + CONTEXT); k++) {
+    for (
+      let k = Math.max(0, index - CONTEXT);
+      k <= Math.min(lines.length - 1, index + CONTEXT);
+      k++
+    ) {
       keep[k] = true;
     }
   });

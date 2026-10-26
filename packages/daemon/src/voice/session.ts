@@ -33,7 +33,12 @@ export interface SessionStatus {
   limit?: string;
 }
 
-const fn = (name: string, description: string, properties: Record<string, unknown> = {}, required: string[] = []) => ({
+const fn = (
+  name: string,
+  description: string,
+  properties: Record<string, unknown> = {},
+  required: string[] = [],
+) => ({
   type: "function",
   name,
   description,
@@ -49,7 +54,10 @@ export function voiceTools() {
       {
         item_id: { type: "string", description: "The inbox item id." },
         decision: { type: "string", enum: ["allow", "deny"] },
-        confirmed: { type: "boolean", description: "The user confirmed a read-back of a destructive action." },
+        confirmed: {
+          type: "boolean",
+          description: "The user confirmed a read-back of a destructive action.",
+        },
       },
       ["item_id", "decision"],
     ),
@@ -60,8 +68,11 @@ export function voiceTools() {
         item_id: { type: "string" },
         answers: {
           type: "object",
-          description: "Question id to the chosen option value or typed text (array for multi-select).",
-          additionalProperties: { anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] },
+          description:
+            "Question id to the chosen option value or typed text (array for multi-select).",
+          additionalProperties: {
+            anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+          },
         },
         cancel: { type: "boolean" },
       },
@@ -81,7 +92,11 @@ export function voiceTools() {
       "tell_agent",
       "Send a message to a coding agent's session, as if the user typed it into that chat. Use it for anything about their project, code or documents: the agent can see them, you can't. Write it as a clear instruction (no greeting, no names). Queued if the agent is busy.",
       {
-        session_id: { type: "string", description: "The session's id from the briefing (its folder name also works). Leave it out for the chat they called from or you last worked with." },
+        session_id: {
+          type: "string",
+          description:
+            "The session's id from the briefing (its folder name also works). Leave it out for the chat they called from or you last worked with.",
+        },
         text: {
           type: "string",
           description:
@@ -99,17 +114,37 @@ export function voiceTools() {
       "call_me_back",
       "The user wants a call later: you'll ring them then, even if nothing is waiting. For \"call me when it's done\", pass when_done (no time) and you'll ring when that session finishes. Then say goodbye; the call ends.",
       {
-        when_done: { type: "string", description: "The session to wait for (tool id or project name): ring when its turn ends or it needs them." },
-        minutes: { type: "number", minimum: 0.5, maximum: 240, description: "When to call back, in minutes." },
-        seconds: { type: "integer", minimum: 30, maximum: 600, description: "Use instead of minutes for under a few minutes (\"in 30 seconds\")." },
+        when_done: {
+          type: "string",
+          description:
+            "The session to wait for (tool id or project name): ring when its turn ends or it needs them.",
+        },
+        minutes: {
+          type: "number",
+          minimum: 0.5,
+          maximum: 240,
+          description: "When to call back, in minutes.",
+        },
+        seconds: {
+          type: "integer",
+          minimum: 30,
+          maximum: 600,
+          description: 'Use instead of minutes for under a few minutes ("in 30 seconds").',
+        },
       },
     ),
-    fn("cancel_callback", "Cancel any callback that is booked (a time, or when a chat is done), including the automatic ring for work handed over on this call."),
+    fn(
+      "cancel_callback",
+      "Cancel any callback that is booked (a time, or when a chat is done), including the automatic ring for work handed over on this call.",
+    ),
     fn(
       "set_ring",
-      "Let a session ring the user's phone when it next needs them (on), or stop it (off). For \"call me if billing-api needs anything\" or \"don't call me about docs\". Ringing also needs Ring me switched on in the app; say so if the result says it's off.",
+      'Let a session ring the user\'s phone when it next needs them (on), or stop it (off). For "call me if billing-api needs anything" or "don\'t call me about docs". Ringing also needs Ring me switched on in the app; say so if the result says it\'s off.',
       {
-        session_id: { type: "string", description: "The session's id from the briefing (its folder name also works)." },
+        session_id: {
+          type: "string",
+          description: "The session's id from the briefing (its folder name also works).",
+        },
         on: { type: "boolean" },
       },
       ["session_id", "on"],
@@ -120,7 +155,10 @@ export function voiceTools() {
       {
         project: { type: "string", description: "The project's folder name, as they said it." },
         agent: { type: "string", description: "Only if they named the agent." },
-        about: { type: "string", description: "A few words of what the chat was about, if they said." },
+        about: {
+          type: "string",
+          description: "A few words of what the chat was about, if they said.",
+        },
       },
     ),
     fn(
@@ -130,25 +168,41 @@ export function voiceTools() {
         project: { type: "string", description: "The project's folder name, as they said it." },
         new_chat: { type: "boolean", description: "Only when they asked for a new or fresh chat." },
         agent: { type: "string", description: "Only if they named the agent." },
-        text: { type: "string", description: "The first message for the agent, close to their own words." },
-        model: { type: "string", description: "Only if they named a model for it (\"on GPT\", \"use kimi\")." },
+        text: {
+          type: "string",
+          description: "The first message for the agent, close to their own words.",
+        },
+        model: {
+          type: "string",
+          description: 'Only if they named a model for it ("on GPT", "use kimi").',
+        },
       },
       ["project"],
     ),
     fn(
       "list_models",
-      "The models an open session can switch to, and the one it is on. For \"which models are there?\" or \"what else could it use?\": read three or four out. Changes nothing.",
+      'The models an open session can switch to, and the one it is on. For "which models are there?" or "what else could it use?": read three or four out. Changes nothing.',
       {
-        session_id: { type: "string", description: "The session's id from the briefing (its folder name also works)." },
+        session_id: {
+          type: "string",
+          description: "The session's id from the briefing (its folder name also works).",
+        },
       },
       ["session_id"],
     ),
     fn(
       "set_model",
-      "Switch an open session's model, as the model pill on the phone does. For \"switch billing to GPT\" or \"use sonnet\". With no model given, switches off Claude to the first GPT model.",
+      'Switch an open session\'s model, as the model pill on the phone does. For "switch billing to GPT" or "use sonnet". With no model given, switches off Claude to the first GPT model.',
       {
-        session_id: { type: "string", description: "The session's id from the briefing (its folder name also works)." },
-        model: { type: "string", description: "The model as they said it: a maker (\"GPT\", \"Claude\", \"Gemini\") or a name (\"sonnet\", \"sol\", \"kimi\")." },
+        session_id: {
+          type: "string",
+          description: "The session's id from the briefing (its folder name also works).",
+        },
+        model: {
+          type: "string",
+          description:
+            'The model as they said it: a maker ("GPT", "Claude", "Gemini") or a name ("sonnet", "sol", "kimi").',
+        },
       },
       ["session_id"],
     ),
@@ -237,13 +291,16 @@ export function buildInstructions(
   place?: { folder: string; agentName?: string },
   remembered: readonly string[] = [],
 ): string {
-  const ordered = focus ? [...items].sort((a, b) => Number(b.id === focus) - Number(a.id === focus)) : [...items];
+  const ordered = focus
+    ? [...items].sort((a, b) => Number(b.id === focus) - Number(a.id === focus))
+    : [...items];
   // Nothing waiting is not news: a "0 items" line got read out at every call.
   // Why this call is happening (a callback) leads the briefing: the greeting reads it first.
   const lead = remembered.filter((line) => line.startsWith("THIS CALL:"));
   const rest = remembered.filter((line) => !line.startsWith("THIS CALL:"));
   const lines = [INSTRUCTIONS, "", ...(lead.length > 0 ? [...lead, ""] : [])];
-  if (items.length > 0) lines.push(`Briefing: ${items.length} item${items.length === 1 ? "" : "s"} waiting.`);
+  if (items.length > 0)
+    lines.push(`Briefing: ${items.length} item${items.length === 1 ? "" : "s"} waiting.`);
   const from = context ? statuses.find((status) => status.sessionId === context) : undefined;
   if (from) {
     lines.push(
@@ -257,13 +314,16 @@ export function buildInstructions(
   if (focus && ordered[0]?.id === focus) lines.push(`Lead with item ${focus}.`);
   for (const item of ordered) {
     const mins = Math.max(0, Math.round((now - item.since) / 60_000));
-    lines.push(`- [${item.id}] (${item.kind}, session ${item.sessionId}, waiting ${mins} min) ${describeItem(item)}`);
+    lines.push(
+      `- [${item.id}] (${item.kind}, session ${item.sessionId}, waiting ${mins} min) ${describeItem(item)}`,
+    );
   }
   // Every open session, so Pew can answer "what are my agents doing?" from
   // here and address any of them by id. Waiting and working first; their
   // recent lines in full, an idle one's last line only.
   const relevant = new Set(items.map((item) => item.sessionId));
-  const rank = (status: SessionStatus) => (relevant.has(status.sessionId) ? 0 : status.working ? 1 : 2);
+  const rank = (status: SessionStatus) =>
+    relevant.has(status.sessionId) ? 0 : status.working ? 1 : 2;
   const listed = [...statuses].sort((a, b) => rank(a) - rank(b)).slice(0, BRIEFING_SESSIONS);
   if (listed.length > 0) {
     lines.push("", `Sessions (${statuses.length} open):`);
@@ -273,7 +333,9 @@ export function buildInstructions(
       const name = status.folder ?? status.agentName ?? "a session";
       const agent = status.agentName && status.agentName !== name ? ` (${status.agentName})` : "";
       const doing = status.working && status.activity ? `, ${status.activity}` : "";
-      lines.push(`- ${name}${agent}: ${status.working ? "working" : "idle"}${doing}${status.limit ? `. HIT A USAGE LIMIT: ${status.limit}` : ""}. [tool id: ${status.sessionId}]`);
+      lines.push(
+        `- ${name}${agent}: ${status.working ? "working" : "idle"}${doing}${status.limit ? `. HIT A USAGE LIMIT: ${status.limit}` : ""}. [tool id: ${status.sessionId}]`,
+      );
       const recent = rank(status) < 2 ? status.lastLines : status.lastLines.slice(-1);
       for (const line of recent) lines.push(`    ${line}`);
     }
@@ -370,8 +432,13 @@ export async function mintClientSecret(
     return { ok: false, status: response.status, error };
   }
   try {
-    const body = JSON.parse(text) as { value?: unknown; expires_at?: unknown; session?: { model?: unknown } };
-    if (typeof body.value !== "string") return { ok: false, error: "OpenAI returned no call secret." };
+    const body = JSON.parse(text) as {
+      value?: unknown;
+      expires_at?: unknown;
+      session?: { model?: unknown };
+    };
+    if (typeof body.value !== "string")
+      return { ok: false, error: "OpenAI returned no call secret." };
     const expiresAt =
       typeof body.expires_at === "number" ? body.expires_at * 1000 : Date.now() + 600_000;
     const model = typeof body.session?.model === "string" ? body.session.model : session.model;

@@ -76,7 +76,11 @@ export function useDevOpenSession({
       ];
       return () => probe.forEach(clearTimeout);
     }
-    const timers = [setTimeout(open, 6000), setTimeout(() => startNewChat(), 16000), setTimeout(open, 20000)];
+    const timers = [
+      setTimeout(open, 6000),
+      setTimeout(() => startNewChat(), 16000),
+      setTimeout(open, 20000),
+    ];
     return () => timers.forEach(clearTimeout);
   }, [devOpen, openSession, startNewChat, setNewChatOpen]);
 }
@@ -111,14 +115,40 @@ export function useDevSheetCycle(
     if (devSheet !== "cycle") return;
     const steps: Array<() => void> = [
       () => setConnectionOpen(true),
-      () => { setConnectionOpen(false); setContextOpen(true); },
-      () => { setContextOpen(false); setPicker("model"); },
-      () => { setPicker(null); setCommandsOpen(true); },
-      () => { setCommandsOpen(false); setAttachOpen(true); },
-      () => { setAttachOpen(false); setNewChatOpen(true); },
-      () => { setNewChatOpen(false); setThought("The chunk is there on reopen, so the daemon has it. The phone drops it.\n\nReplay and live stream overlap at the cursor."); },
-      () => { setThought(null); setCarouselOpen(true); },
-      () => { setCarouselOpen(false); setMenuOpen(true); },
+      () => {
+        setConnectionOpen(false);
+        setContextOpen(true);
+      },
+      () => {
+        setContextOpen(false);
+        setPicker("model");
+      },
+      () => {
+        setPicker(null);
+        setCommandsOpen(true);
+      },
+      () => {
+        setCommandsOpen(false);
+        setAttachOpen(true);
+      },
+      () => {
+        setAttachOpen(false);
+        setNewChatOpen(true);
+      },
+      () => {
+        setNewChatOpen(false);
+        setThought(
+          "The chunk is there on reopen, so the daemon has it. The phone drops it.\n\nReplay and live stream overlap at the cursor.",
+        );
+      },
+      () => {
+        setThought(null);
+        setCarouselOpen(true);
+      },
+      () => {
+        setCarouselOpen(false);
+        setMenuOpen(true);
+      },
       () => setMenuOpen(false),
     ];
     let i = 0;

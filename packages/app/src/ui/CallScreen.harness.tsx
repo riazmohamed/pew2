@@ -46,7 +46,9 @@ export default function CallScreenHarness() {
   const board = WAITED_MS
     ? {
         ...demo.board,
-        sessions: demo.board.sessions.map((s) => (s.status === "asks" || s.status === "needs" ? { ...s, since: s.since - WAITED_MS } : s)),
+        sessions: demo.board.sessions.map((s) =>
+          s.status === "asks" || s.status === "needs" ? { ...s, since: s.since - WAITED_MS } : s,
+        ),
       }
     : demo.board;
   const restart = () => {
@@ -69,7 +71,7 @@ export default function CallScreenHarness() {
               onDismiss={restart}
               onRetry={restart}
               onSpeaker={() => true}
-            color="#d97757"
+              color="#d97757"
             />
             <Pressable
               accessibilityLabel="Restart the demo call"

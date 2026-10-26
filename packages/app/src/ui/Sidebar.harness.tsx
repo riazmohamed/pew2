@@ -106,11 +106,46 @@ function NativeDrawer() {
   const [open, setOpen] = useState(false);
   const [provider, setProvider] = useState("claude-code");
   const [unpaired, setUnpaired] = useState(false);
-  return <SafeAreaProvider><GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.color.bg }}>
-    <StatusBar style="light" />
-    {unpaired ? <Text style={{ color: theme.color.text, marginTop: 100 }}>Fixture unpaired</Text> : <Sidebar open providers={PROVIDERS} sessions={SESSIONS} activeProviderId={provider} onSelectProvider={setProvider} onOpenSession={() => {}} onCloseSession={() => {}} onNewConversation={() => {}} projects={PROJECTS} onSelectProject={() => {}} machineLabel="studio.local:8787" machineRemote connectionStatus="online" update={{ latest: "0.9.19", automatic: false }} onOpenConnection={() => setOpen(true)} />}
-    <ConnectionSheet visible={open} machineLabel="studio.local:8787" machineRemote status="online" update={{ latest: "0.9.19", automatic: false }} onClose={() => setOpen(false)} onUnpair={() => { setOpen(false); setUnpaired(true); }} />
-  </GestureHandlerRootView></SafeAreaProvider>;
+  return (
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.color.bg }}>
+        <StatusBar style="light" />
+        {unpaired ? (
+          <Text style={{ color: theme.color.text, marginTop: 100 }}>Fixture unpaired</Text>
+        ) : (
+          <Sidebar
+            open
+            providers={PROVIDERS}
+            sessions={SESSIONS}
+            activeProviderId={provider}
+            onSelectProvider={setProvider}
+            onOpenSession={() => {}}
+            onCloseSession={() => {}}
+            onNewConversation={() => {}}
+            projects={PROJECTS}
+            onSelectProject={() => {}}
+            machineLabel="studio.local:8787"
+            machineRemote
+            connectionStatus="online"
+            update={{ latest: "0.9.19", automatic: false }}
+            onOpenConnection={() => setOpen(true)}
+          />
+        )}
+        <ConnectionSheet
+          visible={open}
+          machineLabel="studio.local:8787"
+          machineRemote
+          status="online"
+          update={{ latest: "0.9.19", automatic: false }}
+          onClose={() => setOpen(false)}
+          onUnpair={() => {
+            setOpen(false);
+            setUnpaired(true);
+          }}
+        />
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
+  );
 }
 
 export default function SidebarHarness() {

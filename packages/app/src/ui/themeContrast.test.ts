@@ -41,8 +41,12 @@ function alpha(color: string): number {
 }
 
 test("approval button labels meet WCAG AA contrast", () => {
-  expect(contrast(approvalActionColors.allowText, approvalActionColors.allowFill)).toBeGreaterThanOrEqual(4.5);
-  expect(contrast(approvalActionColors.rejectText, approvalActionColors.rejectFill)).toBeGreaterThanOrEqual(4.5);
+  expect(
+    contrast(approvalActionColors.allowText, approvalActionColors.allowFill),
+  ).toBeGreaterThanOrEqual(4.5);
+  expect(
+    contrast(approvalActionColors.rejectText, approvalActionColors.rejectFill),
+  ).toBeGreaterThanOrEqual(4.5);
 });
 
 test("the connected-apps count is legible on its badge", () => {

@@ -51,9 +51,7 @@ test("ignores anything that is not markdown", async () => {
     ".gg/commands/real.md": withFrontMatter("real", "A command"),
   });
 
-  expect((await readCommandDirs([".gg/commands"], root)).map((c) => c.name)).toEqual([
-    "real",
-  ]);
+  expect((await readCommandDirs([".gg/commands"], root)).map((c) => c.name)).toEqual(["real"]);
 });
 
 test("a missing directory is no commands, never an error", async () => {
@@ -61,9 +59,7 @@ test("a missing directory is no commands, never an error", async () => {
 
   // This runs while a session opens, and a project with no commands folder is
   // the normal case rather than a fault.
-  expect(await readCommandDirs([".gg/commands", "~/nope-does-not-exist"], root)).toEqual(
-    [],
-  );
+  expect(await readCommandDirs([".gg/commands", "~/nope-does-not-exist"], root)).toEqual([]);
 });
 
 test("no configured directories means no work", async () => {

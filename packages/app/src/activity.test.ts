@@ -84,7 +84,10 @@ describe("foldActivity", () => {
         locations: [{ path: "/repo/a.ts", line: 3 }],
         content: [{ type: "diff", path: "/repo/a.ts", oldText: "x\n", newText: "y\n" }],
       }),
-      call("b", { kind: "execute", content: [{ type: "content", content: { type: "text", text: "1 of 1" } }] }),
+      call("b", {
+        kind: "execute",
+        content: [{ type: "content", content: { type: "text", text: "1 of 1" } }],
+      }),
       update("b", {
         status: "completed",
         content: [

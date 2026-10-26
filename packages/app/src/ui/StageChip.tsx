@@ -32,20 +32,60 @@ export interface StageChipProps {
   maxLabelWidth?: number;
 }
 
-function StageChipView({ label, lit = false, compact = false, tone, leading, trailing, onPress, feel = "tap", maxLabelWidth, ...a11y }: StageChipProps) {
+function StageChipView({
+  label,
+  lit = false,
+  compact = false,
+  tone,
+  leading,
+  trailing,
+  onPress,
+  feel = "tap",
+  maxLabelWidth,
+  ...a11y
+}: StageChipProps) {
   const agent = useAgentColor();
-  const ink = tone === "attention" ? theme.color.attention : tone === "danger" ? theme.color.danger : agent;
+  const ink =
+    tone === "attention" ? theme.color.attention : tone === "danger" ? theme.color.danger : agent;
   const ledTone = tone ?? (lit ? "agent" : "dim");
   const body = (
     <>
       {leading}
-      <Led tone={ledTone} unlit={!lit} style={maxLabelWidth ? { maxWidth: maxLabelWidth, flexShrink: 1 } : undefined}>{label}</Led>
+      <Led
+        tone={ledTone}
+        unlit={!lit}
+        style={maxLabelWidth ? { maxWidth: maxLabelWidth, flexShrink: 1 } : undefined}
+      >
+        {label}
+      </Led>
       {trailing}
     </>
   );
-  const style = [styles.chip, compact && styles.compact, lit && { borderStyle: "solid" as const, borderColor: ink, backgroundColor: withAlpha(ink, 0.1) }];
-  if (!onPress) return <View style={style} accessible accessibilityRole="text" accessibilityLabel={a11y.accessibilityLabel}>{body}</View>;
-  return <PressScale style={style} feel={feel} onPress={onPress} {...a11y}>{body}</PressScale>;
+  const style = [
+    styles.chip,
+    compact && styles.compact,
+    lit && {
+      borderStyle: "solid" as const,
+      borderColor: ink,
+      backgroundColor: withAlpha(ink, 0.1),
+    },
+  ];
+  if (!onPress)
+    return (
+      <View
+        style={style}
+        accessible
+        accessibilityRole="text"
+        accessibilityLabel={a11y.accessibilityLabel}
+      >
+        {body}
+      </View>
+    );
+  return (
+    <PressScale style={style} feel={feel} onPress={onPress} {...a11y}>
+      {body}
+    </PressScale>
+  );
 }
 export const StageChip = memo(StageChipView);
 

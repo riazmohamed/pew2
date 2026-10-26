@@ -27,7 +27,7 @@ export const DEVICE_USER_AGENT = "codex_cli_rs/0.146.0";
 const DEFAULT_LIFETIME_MS = 15 * 60_000;
 
 export const REASON_NEVER_REDEEMED =
-  "The sign-in code expired before it was used. If you entered it, turn on \"Device code authorization\" in ChatGPT Settings → Security and try again.";
+  'The sign-in code expired before it was used. If you entered it, turn on "Device code authorization" in ChatGPT Settings → Security and try again.';
 
 export interface LoginDeps {
   voiceAuthPath: string;
@@ -92,7 +92,8 @@ export class DeviceLogin {
       body: JSON.stringify({ client_id: OPENAI_CLIENT_ID }),
       signal: AbortSignal.timeout(15_000),
     });
-    if (!response.ok) throw new Error(`OpenAI sign-in is unavailable right now (${response.status}).`);
+    if (!response.ok)
+      throw new Error(`OpenAI sign-in is unavailable right now (${response.status}).`);
     const body = (await response.json()) as Record<string, unknown>;
     const deviceAuthId = body.device_auth_id;
     const userCode = body.user_code ?? body.usercode;
@@ -162,7 +163,10 @@ export class DeviceLogin {
           return;
         }
         const grant = (await response.json()) as Record<string, unknown>;
-        if (typeof grant.authorization_code !== "string" || typeof grant.code_verifier !== "string") {
+        if (
+          typeof grant.authorization_code !== "string" ||
+          typeof grant.code_verifier !== "string"
+        ) {
           this.finish(signal, { ok: false, reason: "OpenAI sign-in returned no authorization." });
           return;
         }
@@ -177,7 +181,10 @@ export class DeviceLogin {
   private async exchange(code: string, verifier: string, signal: AbortSignal) {
     const response = await this.fetchImpl(OPENAI_TOKEN_URL, {
       method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": DEVICE_USER_AGENT },
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "user-agent": DEVICE_USER_AGENT,
+      },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code,
@@ -203,7 +210,9 @@ export class DeviceLogin {
       accessToken: body.access_token,
       ...(typeof body.refresh_token === "string" ? { refreshToken: body.refresh_token } : {}),
       ...(idToken ? { idToken } : {}),
-      ...(typeof body.expires_in === "number" ? { expiresAt: this.now() + body.expires_in * 1000 } : {}),
+      ...(typeof body.expires_in === "number"
+        ? { expiresAt: this.now() + body.expires_in * 1000 }
+        : {}),
       ...(typeof email === "string" ? { account: email } : {}),
     });
     this.finish(signal, { ok: true });

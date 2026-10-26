@@ -49,7 +49,9 @@ test("junk from an older build is ignored rather than half-read", () => {
 test("an agent is only ready if the record explicitly says so", () => {
   // A build that never wrote `available` must not promise an agent is there.
   expect(fromCachedProviders('[{"id":"a","name":"A"}]')[0]?.available).toBe(false);
-  expect(fromCachedProviders('[{"id":"a","name":"A","available":"yes"}]')[0]?.available).toBe(false);
+  expect(fromCachedProviders('[{"id":"a","name":"A","available":"yes"}]')[0]?.available).toBe(
+    false,
+  );
 });
 
 test("a rename changes the payload, so it can drive the write", () => {

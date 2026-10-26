@@ -8,11 +8,24 @@
  * and the timing live in `ui/CallScreen.tsx`.
  */
 import type { CallState, VoiceInboxItem } from "./voiceCall";
-import { EMPTY_DRAFT, optionValue, pickOption, questionOptions, typeOther, type AskDraft, type AskQuestion, type AskResult } from "./askUser";
+import {
+  EMPTY_DRAFT,
+  optionValue,
+  pickOption,
+  questionOptions,
+  typeOther,
+  type AskDraft,
+  type AskQuestion,
+  type AskResult,
+} from "./askUser";
 import { isDenyApprovalOption, selectApprovalOptions } from "./approvalOptions";
 
 /** An inbox item the call can draw: a question with its questions, or an approval with its choices. */
-export type CardItem = VoiceInboxItem & ({ kind: "question"; questions: AskQuestion[] } | { kind: "approval"; options: NonNullable<VoiceInboxItem["options"]> });
+export type CardItem = VoiceInboxItem &
+  (
+    | { kind: "question"; questions: AskQuestion[] }
+    | { kind: "approval"; options: NonNullable<VoiceInboxItem["options"]> }
+  );
 
 /** Whether the daemon sent enough to draw this item (an older one sends titles only). */
 export function isCardItem(item: VoiceInboxItem): item is CardItem {
@@ -22,7 +35,10 @@ export function isCardItem(item: VoiceInboxItem): item is CardItem {
 }
 
 /** The answering tool in flight for an item, with its parsed arguments. */
-function answeringTool(call: Pick<CallState, "tools">, itemId: string): { name: string; args: Record<string, unknown> } | undefined {
+function answeringTool(
+  call: Pick<CallState, "tools">,
+  itemId: string,
+): { name: string; args: Record<string, unknown> } | undefined {
   for (const tool of call.tools) {
     if (tool.name !== "answer_question" && tool.name !== "answer_permission") continue;
     let args: unknown;
@@ -31,7 +47,11 @@ function answeringTool(call: Pick<CallState, "tools">, itemId: string): { name: 
     } catch {
       continue;
     }
-    if (typeof args === "object" && args !== null && (args as { item_id?: unknown }).item_id === itemId) {
+    if (
+      typeof args === "object" &&
+      args !== null &&
+      (args as { item_id?: unknown }).item_id === itemId
+    ) {
       return { name: tool.name, args: args as Record<string, unknown> };
     }
   }
@@ -44,7 +64,10 @@ function answeringTool(call: Pick<CallState, "tools">, itemId: string): { name: 
  * also the order Pew is told to take them in, so the card and the voice stay
  * on the same item. `hidden` holds ids the user put away this call.
  */
-export function cardFor(call: Pick<CallState, "inbox" | "tools" | "focus">, hidden: ReadonlySet<string>): CardItem | undefined {
+export function cardFor(
+  call: Pick<CallState, "inbox" | "tools" | "focus">,
+  hidden: ReadonlySet<string>,
+): CardItem | undefined {
   const open = (call.inbox ?? []).filter(isCardItem);
   const answering = open.find((item) => answeringTool(call, item.id));
   if (answering) return answering;
@@ -58,8 +81,14 @@ export function cardFor(call: Pick<CallState, "inbox" | "tools" | "focus">, hidd
  * user put away. Undefined when there is none (nothing waits, or it is
  * already on screen), so the lane is only tappable when a tap does something.
  */
-export function reopenable(inbox: readonly VoiceInboxItem[] | undefined, sessionId: string, hidden: ReadonlySet<string>): string | undefined {
-  return (inbox ?? []).find((item) => item.sessionId === sessionId && isCardItem(item) && hidden.has(item.id))?.id;
+export function reopenable(
+  inbox: readonly VoiceInboxItem[] | undefined,
+  sessionId: string,
+  hidden: ReadonlySet<string>,
+): string | undefined {
+  return (inbox ?? []).find(
+    (item) => item.sessionId === sessionId && isCardItem(item) && hidden.has(item.id),
+  )?.id;
 }
 
 /** What Pew's in-flight tool is choosing on this card: a question's draft, or an approval's option. */
@@ -99,13 +128,23 @@ export function draftFromAnswers(questions: readonly AskQuestion[], answers: unk
  * The option an approval decision lands on, the way the daemon picks it:
  * allow is allow-once only (never "always"), deny is reject-once first.
  */
-export function optionForDecision(options: NonNullable<VoiceInboxItem["options"]>, decision: unknown): string | undefined {
+export function optionForDecision(
+  options: NonNullable<VoiceInboxItem["options"]>,
+  decision: unknown,
+): string | undefined {
   if (decision !== "allow" && decision !== "deny") return undefined;
   const byKind = (kind: string) => options.find((o) => o.kind === kind)?.optionId;
   if (decision === "allow") {
-    return byKind("allow_once") ?? selectApprovalOptions(options).find((o) => !isDenyApprovalOption(o))?.optionId;
+    return (
+      byKind("allow_once") ??
+      selectApprovalOptions(options).find((o) => !isDenyApprovalOption(o))?.optionId
+    );
   }
-  return byKind("reject_once") ?? byKind("reject_always") ?? selectApprovalOptions(options).find(isDenyApprovalOption)?.optionId;
+  return (
+    byKind("reject_once") ??
+    byKind("reject_always") ??
+    selectApprovalOptions(options).find(isDenyApprovalOption)?.optionId
+  );
 }
 
 /** What Pew is choosing on `item`, while its tool is in flight; undefined otherwise. */
@@ -113,7 +152,9 @@ export function voicePick(call: Pick<CallState, "tools">, item: CardItem): Voice
   const tool = answeringTool(call, item.id);
   if (!tool) return undefined;
   if (item.kind === "question" && tool.name === "answer_question") {
-    return tool.args.cancel === true ? undefined : { draft: draftFromAnswers(item.questions, tool.args.answers) };
+    return tool.args.cancel === true
+      ? undefined
+      : { draft: draftFromAnswers(item.questions, tool.args.answers) };
   }
   if (item.kind === "approval" && tool.name === "answer_permission") {
     const optionId = optionForDecision(item.options, tool.args.decision);
@@ -128,18 +169,24 @@ function where(item: VoiceInboxItem): string {
 
 /** The system line Pew gets when the user answered a question by tapping. */
 export function tappedAnswerText(item: CardItem & { kind: "question" }, result: AskResult): string {
-  if (result.action === "cancel") return `The user dismissed ${where(item)} question on screen (item_id ${item.id}). Skip it; don't ask again.`;
+  if (result.action === "cancel")
+    return `The user dismissed ${where(item)} question on screen (item_id ${item.id}). Skip it; don't ask again.`;
   const parts = item.questions.map((question) => {
     const answer = result.answers[question.id];
     const values = Array.isArray(answer) ? answer : answer === undefined ? [] : [answer];
-    const words = values.map((value) => questionOptions(question).find((o) => optionValue(o) === value)?.label ?? value);
+    const words = values.map(
+      (value) => questionOptions(question).find((o) => optionValue(o) === value)?.label ?? value,
+    );
     return words.join(", ");
   });
   return `The user answered ${where(item)} question on screen (item_id ${item.id}): ${parts.filter(Boolean).join("; ")}. It is sent; confirm in a few words and move on.`;
 }
 
 /** The system line Pew gets when the user tapped an approval's button. */
-export function tappedApprovalText(item: CardItem & { kind: "approval" }, optionId: string): string {
+export function tappedApprovalText(
+  item: CardItem & { kind: "approval" },
+  optionId: string,
+): string {
   const option = item.options.find((o) => o.optionId === optionId);
   const choice = option?.name ?? optionId;
   return `The user tapped "${choice}" on screen for ${where(item)} request: ${item.title} (item_id ${item.id}). It is sent; confirm in a few words and move on.`;

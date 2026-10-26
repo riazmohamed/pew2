@@ -13,13 +13,21 @@ import {
   type KeepAwakeStatus,
 } from "./keep-awake.js";
 
-const base = { enabled: true, supported: true, working: false, permissionPending: false, now: 1_000_000 };
+const base = {
+  enabled: true,
+  supported: true,
+  working: false,
+  permissionPending: false,
+  now: 1_000_000,
+};
 
 test("policy: holds only when enabled, supported and in use", () => {
   expect(holdReason(base)).toBeUndefined();
   expect(holdReason({ ...base, working: true })).toBe("agent working");
   expect(holdReason({ ...base, permissionPending: true })).toBe("permission pending");
-  expect(holdReason({ ...base, lastClientAt: base.now - ACTIVITY_WINDOW_MS + 1 })).toBe("client active");
+  expect(holdReason({ ...base, lastClientAt: base.now - ACTIVITY_WINDOW_MS + 1 })).toBe(
+    "client active",
+  );
   expect(holdReason({ ...base, lastClientAt: base.now - ACTIVITY_WINDOW_MS })).toBeUndefined();
   expect(holdReason({ ...base, working: true, enabled: false })).toBeUndefined();
   expect(holdReason({ ...base, working: true, supported: false })).toBeUndefined();
@@ -56,7 +64,11 @@ class FakeChild implements AwakeChild {
 }
 
 function controller(options: { enabled?: boolean } = {}) {
-  const state = { working: false, permissionPending: false, lastClientAt: undefined as number | undefined };
+  const state = {
+    working: false,
+    permissionPending: false,
+    lastClientAt: undefined as number | undefined,
+  };
   const children: FakeChild[] = [];
   const spawned: string[][] = [];
   const changes: KeepAwakeStatus[] = [];

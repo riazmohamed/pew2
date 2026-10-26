@@ -33,9 +33,7 @@ export function registryView(result: SyncResult, options: RegistryViewOptions = 
   const r = rail(options);
   const dryRun = options.dryRun ?? false;
 
-  const out = [
-    ...r.intro("pew2 registry", `the public ACP registry, v${result.registryVersion}`),
-  ];
+  const out = [...r.intro("pew2 registry", `the public ACP registry, v${result.registryVersion}`)];
 
   if (result.written.length > 0) {
     // The destination is named because it moves: it follows PEW2_HOME, and
@@ -58,7 +56,14 @@ export function registryView(result: SyncResult, options: RegistryViewOptions = 
     for (const id of result.conflicts) {
       out.push(r.line(`${s.hex(PALETTE.warning, g.dot)} ${s.bold(id)}`));
     }
-    out.push(r.line(s.hex(PALETTE.faint, `Run with --force to replace ${result.conflicts.length === 1 ? "it" : "them"}.`)));
+    out.push(
+      r.line(
+        s.hex(
+          PALETTE.faint,
+          `Run with --force to replace ${result.conflicts.length === 1 ? "it" : "them"}.`,
+        ),
+      ),
+    );
   }
 
   // Everything below is context, not action: things already handled, or agents
@@ -71,12 +76,19 @@ export function registryView(result: SyncResult, options: RegistryViewOptions = 
   if (unavailable.length > 0) notes.push(`${unavailable.length} not available on this platform`);
 
   if (notes.length > 0) {
-    out.push(...r.step("Skipped", plural(result.unchanged.length + result.skipped.length, "agent")));
+    out.push(
+      ...r.step("Skipped", plural(result.unchanged.length + result.skipped.length, "agent")),
+    );
     for (const note of notes) out.push(r.line(s.hex(PALETTE.faint, note)));
   }
 
   if (result.written.length === 0 && result.conflicts.length === 0) {
-    out.push(...r.outro(`${s.bold("Nothing to do.")} ${s.hex(PALETTE.faint, "You already have every agent in the registry.")}`, "ok"));
+    out.push(
+      ...r.outro(
+        `${s.bold("Nothing to do.")} ${s.hex(PALETTE.faint, "You already have every agent in the registry.")}`,
+        "ok",
+      ),
+    );
     return out;
   }
 

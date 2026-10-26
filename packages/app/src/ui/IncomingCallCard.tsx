@@ -13,7 +13,14 @@ interface Props {
 
 export function IncomingCallCard({ ring, onAnswer, onDecline }: Props) {
   return (
-    <Sheet visible={ring !== undefined} label="Incoming call" pewMood="talking" title={ring?.caller ?? "Pew"} onClose={onDecline} dismissLabel="Decline">
+    <Sheet
+      visible={ring !== undefined}
+      label="Incoming call"
+      pewMood="talking"
+      title={ring?.caller ?? "Pew"}
+      onClose={onDecline}
+      dismissLabel="Decline"
+    >
       <View style={styles.content} accessibilityLiveRegion="assertive">
         <Text style={styles.line}>{ring?.body ?? ""}</Text>
         <StageButton label="Answer" feel="chosen" onPress={onAnswer} />

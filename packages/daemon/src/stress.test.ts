@@ -34,7 +34,11 @@ let daemon: RunningDaemon;
 
   async function startSession(app: AppClient, requestId: string): Promise<string> {
     app.send({ t: "session.start", requestId, providerId: "echo" });
-    const started = await app.waitFor((f) => f.t === "session.started" && f.requestId === requestId, `started ${requestId}`, 30_000);
+    const started = await app.waitFor(
+      (f) => f.t === "session.started" && f.requestId === requestId,
+      `started ${requestId}`,
+      30_000,
+    );
     return started.sessionId as string;
   }
 
@@ -50,22 +54,41 @@ let daemon: RunningDaemon;
 
   /** How many messages the session's queue last held (0 once drained). */
   const lastQueue = (app: AppClient, sessionId: string) =>
-    ((app.frames.filter((f) => f.t === "session.queue" && f.sessionId === sessionId).at(-1)?.queued as unknown[] | undefined) ?? []).length;
-  const idles = (app: AppClient, sessionId: string) => app.frames.filter((f) => f.t === "session.idle" && f.sessionId === sessionId).length;
+    (
+      (app.frames.filter((f) => f.t === "session.queue" && f.sessionId === sessionId).at(-1)
+        ?.queued as unknown[] | undefined) ?? []
+    ).length;
+  const idles = (app: AppClient, sessionId: string) =>
+    app.frames.filter((f) => f.t === "session.idle" && f.sessionId === sessionId).length;
 
   test(`${SESSIONS} sessions × ${TURNS} prompts each, all at once: every prompt reaches its agent`, async () => {
     const app = await AppClient.connect(daemon, { deviceId: DEVICE });
-    const ids = await Promise.all(Array.from({ length: SESSIONS }, (_, i) => startSession(app, `s${i}`)));
+    const ids = await Promise.all(
+      Array.from({ length: SESSIONS }, (_, i) => startSession(app, `s${i}`)),
+    );
     const began = Date.now();
     // Every prompt at once: each session's later ones queue behind its first
     // and go out together as ONE follow-up turn (the queue's design), so a
     // session ends after one or two turns with all four words answered.
     for (const [i, sessionId] of ids.entries()) {
-      for (let turn = 0; turn < TURNS; turn += 1) app.send({ t: "session.prompt", sessionId, text: `job-${i}-${turn}` });
+      for (let turn = 0; turn < TURNS; turn += 1)
+        app.send({ t: "session.prompt", sessionId, text: `job-${i}-${turn}` });
     }
-    const allAnswered = (i: number, id: string) => Array.from({ length: TURNS }, (_, turn) => `job-${i}-${turn}`).every((w) => said(app, id).includes(w));
+    const allAnswered = (i: number, id: string) =>
+      Array.from({ length: TURNS }, (_, turn) => `job-${i}-${turn}`).every((w) =>
+        said(app, id).includes(w),
+      );
     const deadline = Date.now() + 90_000;
-    while (Date.now() < deadline && ids.some((id, i) => !allAnswered(i, id) || app.frames.some((f) => f.t === "session.queue" && f.sessionId === id) && lastQueue(app, id) > 0)) await Bun.sleep(200);
+    while (
+      Date.now() < deadline &&
+      ids.some(
+        (id, i) =>
+          !allAnswered(i, id) ||
+          (app.frames.some((f) => f.t === "session.queue" && f.sessionId === id) &&
+            lastQueue(app, id) > 0),
+      )
+    )
+      await Bun.sleep(200);
     const elapsed = Date.now() - began;
     for (const [i, sessionId] of ids.entries()) {
       expect(idles(app, sessionId)).toBeGreaterThanOrEqual(1);
@@ -73,9 +96,12 @@ let daemon: RunningDaemon;
       const text = said(app, sessionId);
       for (let turn = 0; turn < TURNS; turn += 1) expect(text).toContain(`job-${i}-${turn}`);
       // Nobody else's reply leaked into this session.
-      for (let other = 0; other < SESSIONS; other += 1) if (other !== i) expect(text).not.toContain(`job-${other}-`);
+      for (let other = 0; other < SESSIONS; other += 1)
+        if (other !== i) expect(text).not.toContain(`job-${other}-`);
     }
-    console.log(`[stress] ${SESSIONS * TURNS} prompts over ${SESSIONS} sessions answered in ${elapsed} ms`);
+    console.log(
+      `[stress] ${SESSIONS * TURNS} prompts over ${SESSIONS} sessions answered in ${elapsed} ms`,
+    );
     app.close();
   }, 120_000);
 
@@ -88,8 +114,14 @@ let daemon: RunningDaemon;
       text = `${text}${String.fromCharCode(97 + (i % 26))}`;
       phone.send({ t: "session.draft", sessionId, text });
     }
-    await laptop.waitFor((f) => f.t === "session.draft" && f.sessionId === sessionId && f.text === text, "last draft", 15_000);
-    const seen = laptop.frames.filter((f) => f.t === "session.draft" && f.sessionId === sessionId).map((f) => (f.text as string).length);
+    await laptop.waitFor(
+      (f) => f.t === "session.draft" && f.sessionId === sessionId && f.text === text,
+      "last draft",
+      15_000,
+    );
+    const seen = laptop.frames
+      .filter((f) => f.t === "session.draft" && f.sessionId === sessionId)
+      .map((f) => (f.text as string).length);
     // Coalescing is allowed; going backwards is not.
     for (let i = 1; i < seen.length; i += 1) expect(seen[i]!).toBeGreaterThanOrEqual(seen[i - 1]!);
     console.log(`[stress] 300 drafts sent, ${seen.length} delivered, last ${seen.at(-1)} chars`);
@@ -103,14 +135,23 @@ let daemon: RunningDaemon;
     owner.send({ t: "session.prompt", sessionId, text: "tools please, the long one" });
     // A phone losing signal over and over: sockets dropped without a goodbye.
     for (let i = 0; i < 20; i += 1) {
-      const flaky = await AppClient.connect(daemon, { deviceId: DEVICE, cursors: { [sessionId]: 0 } });
+      const flaky = await AppClient.connect(daemon, {
+        deviceId: DEVICE,
+        cursors: { [sessionId]: 0 },
+      });
       await Bun.sleep(30);
       flaky.kill();
     }
-    await owner.waitFor((f) => f.t === "session.idle" && f.sessionId === sessionId, "churn idle", 30_000);
+    await owner.waitFor(
+      (f) => f.t === "session.idle" && f.sessionId === sessionId,
+      "churn idle",
+      30_000,
+    );
     const late = await AppClient.connect(daemon, { deviceId: DEVICE, cursors: { [sessionId]: 0 } });
     await late.waitFor(
-      (f) => (f.t === "session.replay" && f.sessionId === sessionId) || (f.t === "session.event" && f.sessionId === sessionId),
+      (f) =>
+        (f.t === "session.replay" && f.sessionId === sessionId) ||
+        (f.t === "session.event" && f.sessionId === sessionId),
       "catch-up",
       15_000,
     );
@@ -129,12 +170,15 @@ let daemon: RunningDaemon;
     }
     const deadline = Date.now() + 20_000;
     const finalOf = () =>
-      (app.frames.filter((f) => f.t === "session.config" && f.sessionId === sessionId).at(-1)?.configOptions as any[] | undefined)?.find(
-        (o) => o.id === "model",
-      )?.currentValue;
+      (
+        app.frames.filter((f) => f.t === "session.config" && f.sessionId === sessionId).at(-1)
+          ?.configOptions as any[] | undefined
+      )?.find((o) => o.id === "model")?.currentValue;
     while (Date.now() < deadline && finalOf() !== last) await Bun.sleep(100);
     const configs = app.frames.filter((f) => f.t === "session.config" && f.sessionId === sessionId);
-    const final = (configs.at(-1)?.configOptions as any[] | undefined)?.find((o) => o.id === "model")?.currentValue;
+    const final = (configs.at(-1)?.configOptions as any[] | undefined)?.find(
+      (o) => o.id === "model",
+    )?.currentValue;
     expect(final).toBe(last);
     app.close();
   }, 60_000);
@@ -153,16 +197,28 @@ describe("resume reuses a running conversation", () => {
     try {
       const app = await AppClient.connect(own, { deviceId: DEVICE });
       app.send({ t: "session.start", requestId: "first", providerId: "echo" });
-      const started = await app.waitFor((f) => f.t === "session.started" && f.requestId === "first", "started", 30_000);
+      const started = await app.waitFor(
+        (f) => f.t === "session.started" && f.requestId === "first",
+        "started",
+        30_000,
+      );
       const sessionId = started.sessionId as string;
       app.send({ t: "session.prompt", sessionId, text: "hello once" });
       await app.waitFor((f) => f.t === "session.idle" && f.sessionId === sessionId, "idle", 30_000);
-      const agentSessionId = (app.frames.filter((f) => f.t === "session.config" || f.t === "session.started").map((f) => f.agentSessionId).find(Boolean) ??
-        app.frames.find((f) => f.t === "providers" && Array.isArray(f.activeSessions))?.agentSessionId) as string | undefined;
-      const known = agentSessionId ?? (await app.waitFor((f) => typeof f.agentSessionId === "string", "agent id", 10_000)).agentSessionId;
+      const agentSessionId = (app.frames
+        .filter((f) => f.t === "session.config" || f.t === "session.started")
+        .map((f) => f.agentSessionId)
+        .find(Boolean) ??
+        app.frames.find((f) => f.t === "providers" && Array.isArray(f.activeSessions))
+          ?.agentSessionId) as string | undefined;
+      const known =
+        agentSessionId ??
+        (await app.waitFor((f) => typeof f.agentSessionId === "string", "agent id", 10_000))
+          .agentSessionId;
       // An app back from a crash, reopening the same conversation three times.
       const phone = await AppClient.connect(own, { deviceId: DEVICE });
-      for (let i = 0; i < 3; i += 1) phone.send({ t: "session.resume", providerId: "echo", agentSessionId: known });
+      for (let i = 0; i < 3; i += 1)
+        phone.send({ t: "session.resume", providerId: "echo", agentSessionId: known });
       await Bun.sleep(1500);
       const announced = phone.frames.filter((f) => f.t === "session.started" && f.resumed === true);
       expect(announced.length).toBe(3);

@@ -109,10 +109,7 @@ export function projectsForProvider(
  * filesystem allows, including whatever punctuation an ordinary delimiter would
  * have picked.
  */
-export function projectSourceKey(
-  sessions: Session[],
-  providerId: string | undefined,
-): string {
+export function projectSourceKey(sessions: Session[], providerId: string | undefined): string {
   if (!providerId) return "";
   let key = "";
   for (const session of sessions) {
@@ -132,13 +129,19 @@ export function projectSourceKey(
  * segment could collide there, which is why it is the fallback and not the
  * rule.
  */
-export function sessionInProject(session: Pick<Session, "cwd" | "folder">, project: Project): boolean {
+export function sessionInProject(
+  session: Pick<Session, "cwd" | "folder">,
+  project: Project,
+): boolean {
   if (session.cwd) return session.cwd === project.path;
   return session.folder !== undefined && session.folder === project.name;
 }
 
 /** The history list, narrowed to one project. `undefined` means all of them. */
-export function sessionsInProject<T extends Pick<Session, "cwd" | "folder">>(sessions: T[], project: Project | undefined): T[] {
+export function sessionsInProject<T extends Pick<Session, "cwd" | "folder">>(
+  sessions: T[],
+  project: Project | undefined,
+): T[] {
   if (!project) return sessions;
   return sessions.filter((session) => sessionInProject(session, project));
 }
@@ -163,6 +166,10 @@ export interface ProjectTabItem {
 export function projectTabItems(projects: readonly Project[]): ProjectTabItem[] {
   return [
     { label: "All", a11y: "All projects" },
-    ...projects.map((project) => ({ path: project.path, label: project.name, a11y: `Project ${project.name}` })),
+    ...projects.map((project) => ({
+      path: project.path,
+      label: project.name,
+      a11y: `Project ${project.name}`,
+    })),
   ];
 }

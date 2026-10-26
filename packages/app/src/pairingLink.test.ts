@@ -31,7 +31,9 @@ test("tolerates surrounding whitespace from a paste", () => {
 });
 
 test("accepts a relay link, and marks it as working from anywhere", () => {
-  const result = parsePairing(`wss://relay.example.com/connect?pairing=${TOKEN}&role=app${FRAGMENT}`);
+  const result = parsePairing(
+    `wss://relay.example.com/connect?pairing=${TOKEN}&role=app${FRAGMENT}`,
+  );
 
   expect(result.ok).toBe(true);
   if (!result.ok) return;
@@ -81,7 +83,9 @@ test("replaces the device id carried by the link with this install's own", () =>
 test("corrects a relay link pasted with the daemon role", () => {
   // Copying the wrong line of terminal output would otherwise put the phone on
   // the daemon side of the relay, where it silently sees no traffic at all.
-  const result = parsePairing(`wss://relay.example.com/connect?pairing=${TOKEN}&role=daemon${FRAGMENT}`);
+  const result = parsePairing(
+    `wss://relay.example.com/connect?pairing=${TOKEN}&role=daemon${FRAGMENT}`,
+  );
 
   expect(result.ok).toBe(true);
   if (!result.ok) return;

@@ -61,7 +61,10 @@ export interface LifeBeat {
 export function nextLifeBeat(current: PewMood, last: PewMood | undefined, r: number): LifeBeat {
   const u = Math.min(Math.max(r, 0), 0.999999);
   if (current !== "idle") {
-    return { mood: "idle", ms: Math.round(LIFE_IDLE_MIN_MS + u * (LIFE_IDLE_MAX_MS - LIFE_IDLE_MIN_MS)) };
+    return {
+      mood: "idle",
+      ms: Math.round(LIFE_IDLE_MIN_MS + u * (LIFE_IDLE_MAX_MS - LIFE_IDLE_MIN_MS)),
+    };
   }
   const pool = LIFE_MOODS.filter((m) => m.mood !== last);
   const pick = pool[Math.floor(u * pool.length)] ?? LIFE_MOODS[0];
@@ -168,4 +171,3 @@ export function spinStage(speed: number, current = 0): number {
   if (current > stage && current < at.length && v >= at[current]! * 0.85) return current;
   return stage;
 }
-

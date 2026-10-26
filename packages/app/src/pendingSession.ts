@@ -140,5 +140,7 @@ export function dropPendingSessions(
   keep: ReadonlySet<string> = new Set(),
 ): Session[] {
   const stale = (session: Session) => isPendingSession(session.id) && !keep.has(session.id);
-  return existing.some(stale) ? existing.filter((session) => !stale(session)) : (existing as Session[]);
+  return existing.some(stale)
+    ? existing.filter((session) => !stale(session))
+    : (existing as Session[]);
 }

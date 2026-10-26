@@ -87,13 +87,7 @@ function useResolvedSource(src: string, origin?: "device"): Resolved {
   return { status: "ready", uri: entry.dataUri };
 }
 
-function Placeholder({
-  ratio,
-  children,
-}: {
-  ratio: number;
-  children: React.ReactNode;
-}) {
+function Placeholder({ ratio, children }: { ratio: number; children: React.ReactNode }) {
   return <View style={[styles.frame, styles.placeholder, { aspectRatio: ratio }]}>{children}</View>;
 }
 

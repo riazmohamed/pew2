@@ -17,7 +17,10 @@ test("the first sentence is the headline; the fix is the note, with its command 
 });
 
 test("one sentence is all headline", () => {
-  expect(fatalNotice("This device is no longer paired.")).toEqual({ headline: "This device is no longer paired.", detail: [] });
+  expect(fatalNotice("This device is no longer paired.")).toEqual({
+    headline: "This device is no longer paired.",
+    detail: [],
+  });
 });
 
 test("a full stop inside a command never splits the message", () => {
@@ -27,11 +30,15 @@ test("a full stop inside a command never splits the message", () => {
 });
 
 test("an unclosed backtick is plain text, not a runaway command", () => {
-  expect(fatalNotice("Broken. Run `pew2 pair and scan.").detail).toEqual([{ text: "Run pew2 pair and scan." }]);
+  expect(fatalNotice("Broken. Run `pew2 pair and scan.").detail).toEqual([
+    { text: "Run pew2 pair and scan." },
+  ]);
 });
 
 test("the unpaired refusal reads the same way", () => {
-  const notice = fatalNotice("This device is not paired with this machine. Run `pew2 pair` and scan again.");
+  const notice = fatalNotice(
+    "This device is not paired with this machine. Run `pew2 pair` and scan again.",
+  );
   expect(notice.headline).toBe("This device is not paired with this machine.");
   expect(notice.detail.find((run) => run.command)?.text).toBe("pew2 pair");
 });
@@ -39,13 +46,31 @@ test("the unpaired refusal reads the same way", () => {
 test("refusals the app knows get its own two short sentences, with the command picked out", () => {
   const refused = fatalNotice(refusalText("device-refused", REFUSED));
   expect(refused.headline).toBe("Paired to another device.");
-  expect(refused.detail).toEqual([{ text: "Run " }, { text: "pew2 pair --rotate", command: true }, { text: ", then scan." }]);
-  expect(fatalNotice(refusalText("unpaired", "long text")).headline).toBe("Not paired with this computer.");
-  expect(refusalText("wire-version", "This app speaks protocol v3, but this machine only has v2. Update pew2 on your computer.")).toContain("on your computer is out of date");
-  expect(refusalText("wire-version", "This app speaks protocol v1, but this machine needs v2. Update the app and pair again.")).toContain("This app is out of date");
+  expect(refused.detail).toEqual([
+    { text: "Run " },
+    { text: "pew2 pair --rotate", command: true },
+    { text: ", then scan." },
+  ]);
+  expect(fatalNotice(refusalText("unpaired", "long text")).headline).toBe(
+    "Not paired with this computer.",
+  );
+  expect(
+    refusalText(
+      "wire-version",
+      "This app speaks protocol v3, but this machine only has v2. Update pew2 on your computer.",
+    ),
+  ).toContain("on your computer is out of date");
+  expect(
+    refusalText(
+      "wire-version",
+      "This app speaks protocol v1, but this machine needs v2. Update the app and pair again.",
+    ),
+  ).toContain("This app is out of date");
 });
 
 test("a refusal this app doesn't know keeps the daemon's words", () => {
-  expect(refusalText("something-new", "A newer daemon explains itself.")).toBe("A newer daemon explains itself.");
+  expect(refusalText("something-new", "A newer daemon explains itself.")).toBe(
+    "A newer daemon explains itself.",
+  );
   expect(refusalText("something-new", undefined)).toBe("This device is no longer paired.");
 });

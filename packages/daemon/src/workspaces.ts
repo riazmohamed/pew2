@@ -200,7 +200,13 @@ export async function listDirectory(
     if (!(await isDirectory(child))) {
       // Folders first, files after, so files go to their own capped list.
       if (options.files && files.length < FILE_LIMIT && (await isFile(child))) {
-        files.push({ path: child, name, repo: false, updatedAt: await modifiedAt(child), kind: "file" });
+        files.push({
+          path: child,
+          name,
+          repo: false,
+          updatedAt: await modifiedAt(child),
+          kind: "file",
+        });
       }
       continue;
     }
@@ -213,7 +219,11 @@ export async function listDirectory(
     });
   }
 
-  return { path: resolved, parent: await parentOf(resolved, roots), entries: [...entries, ...files] };
+  return {
+    path: resolved,
+    parent: await parentOf(resolved, roots),
+    entries: [...entries, ...files],
+  };
 }
 
 async function isFile(path: string): Promise<boolean> {
@@ -286,7 +296,10 @@ export async function suggestionRoots(
 ): Promise<string[]> {
   const candidates: string[] = [...knownProjects];
   try {
-    const parsed = JSON.parse(await readFile(ggCoderProjectsFile, "utf8")) as Record<string, unknown>;
+    const parsed = JSON.parse(await readFile(ggCoderProjectsFile, "utf8")) as Record<
+      string,
+      unknown
+    >;
     for (const entry of Object.values(parsed ?? {})) {
       const path = (entry as { path?: unknown } | null)?.path;
       if (typeof path === "string" && isAbsolute(path)) candidates.push(path);

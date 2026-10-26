@@ -192,9 +192,7 @@ test("a checksum mismatch never exits, and is not fatal to later attempts", asyn
   let fail = true;
   const h = harness({
     apply: async () =>
-      fail
-        ? { ok: false, reason: "checksum-mismatch", detail: "bytes do not match" }
-        : APPLIED,
+      fail ? { ok: false, reason: "checksum-mismatch", detail: "bytes do not match" } : APPLIED,
   });
 
   await h.scheduler!.tick();

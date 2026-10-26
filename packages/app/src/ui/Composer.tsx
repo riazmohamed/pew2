@@ -24,7 +24,10 @@ import { pressStops } from "../composerState";
 
 const EMPTY_ATTACHMENTS: readonly PendingAttachment[] = [];
 const EMPTY_SELECTORS: readonly ComposerSelector[] = [];
-export interface ComposerAnchor { x: number; y: number }
+export interface ComposerAnchor {
+  x: number;
+  y: number;
+}
 export interface ComposerSelector {
   id: string;
   value: string;
@@ -36,7 +39,9 @@ export interface ComposerSelector {
    */
   toggle?: { on: boolean };
 }
-export interface ComposerHandle { focus(): void }
+export interface ComposerHandle {
+  focus(): void;
+}
 interface ComposerProps {
   value: string;
   onChangeText: (text: string) => void;
@@ -84,18 +89,35 @@ function Selector({ value, label, onPress, toggle }: ComposerSelector) {
         accessibilityLabel={label}
         accessibilityHint="Opens available options"
         trailing={<DotGlyph name="chevron-down" size={10} color={theme.composer.ink} />}
-        onPress={() => target.current?.measureInWindow((x, y) => { haptics.tap(); onPress({ x, y }); })}
+        onPress={() =>
+          target.current?.measureInWindow((x, y) => {
+            haptics.tap();
+            onPress({ x, y });
+          })
+        }
       />
     </View>
   );
 }
 
-function ComposerView({
-  value, onChangeText, onSend, busy = false, onStop,
-  placeholder = "Build anything...", editable = true,
-  attachments = EMPTY_ATTACHMENTS, onAttach, onRemoveAttachment,
-  dictation, selectors = EMPTY_SELECTORS, changes,
-}: ComposerProps, ref: React.Ref<ComposerHandle>) {
+function ComposerView(
+  {
+    value,
+    onChangeText,
+    onSend,
+    busy = false,
+    onStop,
+    placeholder = "Build anything...",
+    editable = true,
+    attachments = EMPTY_ATTACHMENTS,
+    onAttach,
+    onRemoveAttachment,
+    dictation,
+    selectors = EMPTY_SELECTORS,
+    changes,
+  }: ComposerProps,
+  ref: React.Ref<ComposerHandle>,
+) {
   const input = useRef<TextInput>(null);
   const agent = useAgentColor();
   // Lit while the keyboard is up, from the keyboard's own progress on the UI
@@ -111,7 +133,10 @@ function ComposerView({
   const [atCeiling, setAtCeiling] = useState(false);
   const { fontScale, height: viewportHeight } = useWindowDimensions();
   const minTextHeight = Math.max(theme.space(16), theme.line.body * fontScale);
-  const maxTextHeight = Math.max(minTextHeight, Math.min(8 * theme.line.body * fontScale, viewportHeight * 0.25));
+  const maxTextHeight = Math.max(
+    minTextHeight,
+    Math.min(8 * theme.line.body * fontScale, viewportHeight * 0.25),
+  );
   const split = splitCommand(value);
   // Sendable while still dictating (PR #1): send takes the mic's slot as soon
   // as there is something to send, and tapping it releases the recogniser
@@ -124,10 +149,20 @@ function ComposerView({
   const stopping = pressStops({ busy, canSend });
   const showMic = !busy && !canSend;
   const sendDisabled = stopping ? !onStop : showMic ? !dictation?.available || !editable : !canSend;
-  const actionLabel = stopping ? "Stop generating" : showMic ? dictation?.listening ? "Stop dictating" : dictation?.available ? "Dictate a message" : "Voice input unavailable" : "Send message";
+  const actionLabel = stopping
+    ? "Stop generating"
+    : showMic
+      ? dictation?.listening
+        ? "Stop dictating"
+        : dictation?.available
+          ? "Dictate a message"
+          : "Voice input unavailable"
+      : "Send message";
   return (
     <View style={styles.stack}>
-      {attachments.length > 0 && <AttachmentChips attachments={attachments} onRemove={onRemoveAttachment} />}
+      {attachments.length > 0 && (
+        <AttachmentChips attachments={attachments} onRemove={onRemoveAttachment} />
+      )}
       {/* A Stage panel: the dot texture on the strip colour, ruled in the
           agent's colour while you write (dim otherwise), with an LED prompt. */}
       <View style={styles.card}>
@@ -142,21 +177,28 @@ function ComposerView({
         />
         <Pressable
           style={StyleSheet.absoluteFill}
-          accessible={false} importantForAccessibility="no" disabled={!editable}
+          accessible={false}
+          importantForAccessibility="no"
+          disabled={!editable}
           onPress={() => input.current?.focus()}
         />
-          {split && (
-            <Pressable
-              style={({ pressed }) => [styles.commandTarget, pressed && styles.pressed]}
-              accessibilityRole="button" accessibilityLabel={`Remove ${split.command}`}
-              onPress={() => { haptics.tap(); onChangeText(split.rest.replace(/^ /, "")); input.current?.focus(); }}
-            >
-              <View style={styles.tag}>
-                <CommandToken text={split.command} size={theme.font.small} lineHeight={18} />
-                <Ionicons name="close" size={13} color={theme.composer.ink} />
-              </View>
-            </Pressable>
-          )}
+        {split && (
+          <Pressable
+            style={({ pressed }) => [styles.commandTarget, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${split.command}`}
+            onPress={() => {
+              haptics.tap();
+              onChangeText(split.rest.replace(/^ /, ""));
+              input.current?.focus();
+            }}
+          >
+            <View style={styles.tag}>
+              <CommandToken text={split.command} size={theme.font.small} lineHeight={18} />
+              <Ionicons name="close" size={13} color={theme.composer.ink} />
+            </View>
+          </Pressable>
+        )}
         {/* Do not constrain this wrapper's height: UIKit otherwise reports the
             clipped viewport as content height, hiding new lines and the caret. */}
         <View style={styles.textArea}>
@@ -169,36 +211,50 @@ function ComposerView({
             </Reanimated.View>
           </View>
           <TextInput
-            ref={input} style={[styles.input, { minHeight: minTextHeight, maxHeight: maxTextHeight }]}
+            ref={input}
+            style={[styles.input, { minHeight: minTextHeight, maxHeight: maxTextHeight }]}
             value={split ? split.rest.replace(/^ /, "") : value}
             onChangeText={(text) => onChangeText(split ? `${split.command} ${text}` : text)}
             onContentSizeChange={({ nativeEvent }) => {
               const capped = nativeEvent.contentSize.height >= maxTextHeight;
               if (capped !== atCeiling) setAtCeiling(capped);
             }}
-            placeholder={placeholder} placeholderTextColor={theme.composer.placeholder}
-            multiline editable={editable} accessibilityLabel="Message"
-            submitBehavior="newline" scrollEnabled={atCeiling}
+            placeholder={placeholder}
+            placeholderTextColor={theme.composer.placeholder}
+            multiline
+            editable={editable}
+            accessibilityLabel="Message"
+            submitBehavior="newline"
+            scrollEnabled={atCeiling}
           />
         </View>
         <View style={styles.bottomRow} pointerEvents="box-none">
           <Pressable
             style={({ pressed }) => [styles.iconTarget, pressed && styles.pressed]}
-            accessibilityRole="button" accessibilityLabel="Add attachment"
-            accessibilityState={{ disabled: !onAttach || !editable }} disabled={!onAttach || !editable}
-            onPress={() => { haptics.tap(); onAttach?.(); }}
+            accessibilityRole="button"
+            accessibilityLabel="Add attachment"
+            accessibilityState={{ disabled: !onAttach || !editable }}
+            disabled={!onAttach || !editable}
+            onPress={() => {
+              haptics.tap();
+              onAttach?.();
+            }}
           >
             <DotGlyph name="plus" size={18} color={theme.composer.ink} />
           </Pressable>
           <View style={styles.selectors} pointerEvents="box-none">
-            {selectors.map((selector) => <Selector key={selector.id} {...selector} />)}
+            {selectors.map((selector) => (
+              <Selector key={selector.id} {...selector} />
+            ))}
             {changes && changes.count > 0 ? (
               // Same dashed chip as Model and Autopilot beside it.
               <View style={styles.fixedTarget}>
                 <StageChip
                   label={String(changes.count)}
                   compact
-                  leading={<Ionicons name="git-compare-outline" size={12} color={theme.color.textDim} />}
+                  leading={
+                    <Ionicons name="git-compare-outline" size={12} color={theme.color.textDim} />
+                  }
                   accessibilityLabel={changes.accessibilityLabel}
                   onPress={changes.onPress}
                 />
@@ -207,27 +263,49 @@ function ComposerView({
           </View>
           <Pressable
             style={({ pressed }) => [styles.iconTarget, pressed && styles.pressed]}
-            accessibilityRole="button" accessibilityLabel={actionLabel}
-            accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled}
+            accessibilityRole="button"
+            accessibilityLabel={actionLabel}
+            accessibilityState={{ disabled: sendDisabled }}
+            disabled={sendDisabled}
             onPress={() => {
-              if (stopping) { haptics.warned(); onStop?.(); }
-              else if (showMic) dictation?.toggle();
+              if (stopping) {
+                haptics.warned();
+                onStop?.();
+              } else if (showMic) dictation?.toggle();
               else {
                 // Sending while dictating: release the recogniser first, or the
                 // mic stays open after the message is gone. The words are
                 // already in the draft, so cancel, not stop.
                 if (dictation?.listening) dictation.cancel();
-                haptics.sent(); onSend();
+                haptics.sent();
+                onSend();
               }
             }}
           >
-            <View style={[styles.sendPill, ((!showMic && !sendDisabled) || dictation?.listening) && { backgroundColor: agent, shadowColor: agent, shadowOpacity: 0.6 }]}>
+            <View
+              style={[
+                styles.sendPill,
+                ((!showMic && !sendDisabled) || dictation?.listening) && {
+                  backgroundColor: agent,
+                  shadowColor: agent,
+                  shadowOpacity: 0.6,
+                },
+              ]}
+            >
               {/* Send is the dot-matrix arrow; stop and the mic keep their glyphs
                   (no pixel version reads as well at this size). */}
               {!stopping && !showMic ? (
-                <DotGlyph name="up" size={16} color={!sendDisabled ? theme.color.bg : theme.composer.ink} />
+                <DotGlyph
+                  name="up"
+                  size={16}
+                  color={!sendDisabled ? theme.color.bg : theme.composer.ink}
+                />
               ) : (
-                <Ionicons name={stopping ? "square" : dictation?.listening ? "mic" : "mic-outline"} size={stopping ? 13 : 18} color={dictation?.listening ? theme.color.bg : theme.composer.ink} />
+                <Ionicons
+                  name={stopping ? "square" : dictation?.listening ? "mic" : "mic-outline"}
+                  size={stopping ? 13 : 18}
+                  color={dictation?.listening ? theme.color.bg : theme.composer.ink}
+                />
               )}
             </View>
           </Pressable>
@@ -259,19 +337,64 @@ const styles = StyleSheet.create({
     // offscreen every frame, and this one animates with the keyboard.
   },
   prompt: { position: "absolute", left: 0, top: 3 },
-  iconTarget: { width: theme.size.touch, height: theme.size.touch, alignItems: "center", justifyContent: "center" },
-  sendPill: { width: 32, height: 32, borderRadius: theme.radius.pill, borderWidth: 1, borderStyle: "dashed", borderColor: theme.stage.dash, alignItems: "center", justifyContent: "center", shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
+  iconTarget: {
+    width: theme.size.touch,
+    height: theme.size.touch,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendPill: {
+    width: 32,
+    height: 32,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: theme.stage.dash,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
   pressed: { opacity: 0.65 },
   // Room on the left for the LED prompt; the text starts after it.
-  textArea: { marginHorizontal: theme.space(2), marginTop: theme.space(2), paddingLeft: theme.space(4) },
-  input: { padding: 0, color: theme.color.text, fontSize: theme.font.body, lineHeight: theme.line.body, textAlignVertical: "top" },
+  textArea: {
+    marginHorizontal: theme.space(2),
+    marginTop: theme.space(2),
+    paddingLeft: theme.space(4),
+  },
+  input: {
+    padding: 0,
+    color: theme.color.text,
+    fontSize: theme.font.body,
+    lineHeight: theme.line.body,
+    textAlignVertical: "top",
+  },
   bottomRow: { flexDirection: "row", alignItems: "center", gap: theme.space(1) },
   selectors: { flex: 1, flexDirection: "row", alignItems: "center", minWidth: 0 },
   // Pills sit 4pt apart (2pt padding a side): three of them (Model, Autopilot,
   // the changes count) fit beside + and send without truncating.
-  selectorTarget: { minWidth: theme.size.touch, minHeight: theme.size.touch, flexShrink: 1, justifyContent: "center", paddingHorizontal: theme.space(0.5) },
-  fixedTarget: { minHeight: theme.size.touch, flexShrink: 0, justifyContent: "center", paddingHorizontal: theme.space(0.5) },
+  selectorTarget: {
+    minWidth: theme.size.touch,
+    minHeight: theme.size.touch,
+    flexShrink: 1,
+    justifyContent: "center",
+    paddingHorizontal: theme.space(0.5),
+  },
+  fixedTarget: {
+    minHeight: theme.size.touch,
+    flexShrink: 0,
+    justifyContent: "center",
+    paddingHorizontal: theme.space(0.5),
+  },
   commandTarget: { minHeight: theme.size.touch, flexShrink: 1, justifyContent: "center" },
-  tag: { flexDirection: "row", alignItems: "center", gap: theme.space(1), paddingHorizontal: theme.space(2), paddingVertical: theme.space(1.5), borderRadius: theme.radius.pill, backgroundColor: theme.composer.chip },
+  tag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(1),
+    paddingHorizontal: theme.space(2),
+    paddingVertical: theme.space(1.5),
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.composer.chip,
+  },
 });
 export const Composer = memo(forwardRef<ComposerHandle, ComposerProps>(ComposerView));

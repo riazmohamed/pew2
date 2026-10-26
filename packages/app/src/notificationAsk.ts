@@ -58,7 +58,12 @@ export function askDecision(input: AskInput): "register" | "card" | "none" {
   if (input.status === "granted") return "register";
   if (input.trigger !== "send") return "card";
   if (input.status === "denied") return "none";
-  if (input.dismissedAt !== undefined && input.now - input.dismissedAt < SNOOZE_MS && input.now >= input.dismissedAt) return "none";
+  if (
+    input.dismissedAt !== undefined &&
+    input.now - input.dismissedAt < SNOOZE_MS &&
+    input.now >= input.dismissedAt
+  )
+    return "none";
   return "card";
 }
 

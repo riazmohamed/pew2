@@ -289,7 +289,9 @@ test("the staging file is created beside the target, never in the temp dir", asy
       init,
     );
     if (!String(url).endsWith(".sha256")) {
-      staged.push(...(await Array.fromAsync(new Bun.Glob("**").scan({ cwd: dir, onlyFiles: false }))));
+      staged.push(
+        ...(await Array.fromAsync(new Bun.Glob("**").scan({ cwd: dir, onlyFiles: false }))),
+      );
     }
     return response;
   }) as unknown as typeof fetch;

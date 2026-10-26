@@ -15,7 +15,10 @@ import { StatusBar } from "expo-status-bar";
 import { theme } from "../theme";
 import { ContextBar } from "./ContextBar";
 
-const CASES: Array<{ note: string; props: Omit<React.ComponentProps<typeof ContextBar>, "onDetails"> }> = [
+const CASES: Array<{
+  note: string;
+  props: Omit<React.ComponentProps<typeof ContextBar>, "onDetails">;
+}> = [
   {
     note: "Everything — real Claude Code reading (21,325 / 1,000,000)",
     props: {
@@ -91,21 +94,35 @@ export default function ContextBarHarness() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={styles.screen}>
-      <StatusBar style="light" />
-      <SafeAreaView style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={styles.content}>
-        {CASES.map((testCase, index) => (
-          <View key={testCase.note} style={styles.case}>
-            <Text style={styles.note}>{testCase.note}</Text>
-            {/* Phone width, so truncation is exercised honestly. */}
-            <View style={{ width: Math.min(index === CASES.length - 1 ? 280 : 350, width - theme.gutter * 2) }}>
-              <ContextBar {...testCase.props} onDetails={() => setSelected(index)} />
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-      </SafeAreaView>
-      {Platform.OS !== "web" && <ContextDetailsSheet visible={selected !== undefined} workspace={selected === undefined ? undefined : CASES[selected]!.props.workspace} usage={selected === undefined ? undefined : CASES[selected]!.props.usage} onClose={() => setSelected(undefined)} />}
+        <StatusBar style="light" />
+        <SafeAreaView style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={styles.content}>
+            {CASES.map((testCase, index) => (
+              <View key={testCase.note} style={styles.case}>
+                <Text style={styles.note}>{testCase.note}</Text>
+                {/* Phone width, so truncation is exercised honestly. */}
+                <View
+                  style={{
+                    width: Math.min(
+                      index === CASES.length - 1 ? 280 : 350,
+                      width - theme.gutter * 2,
+                    ),
+                  }}
+                >
+                  <ContextBar {...testCase.props} onDetails={() => setSelected(index)} />
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
+        {Platform.OS !== "web" && (
+          <ContextDetailsSheet
+            visible={selected !== undefined}
+            workspace={selected === undefined ? undefined : CASES[selected]!.props.workspace}
+            usage={selected === undefined ? undefined : CASES[selected]!.props.usage}
+            onClose={() => setSelected(undefined)}
+          />
+        )}
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );
@@ -113,7 +130,11 @@ export default function ContextBarHarness() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.color.bg },
-  content: { paddingHorizontal: theme.gutter, paddingVertical: theme.sectionGap, gap: theme.sectionGap },
+  content: {
+    paddingHorizontal: theme.gutter,
+    paddingVertical: theme.sectionGap,
+    gap: theme.sectionGap,
+  },
   case: { gap: theme.space(2) },
   note: { color: theme.color.textFaint, fontSize: theme.font.tiny },
 });

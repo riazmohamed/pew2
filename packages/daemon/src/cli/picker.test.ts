@@ -5,7 +5,6 @@ import { stripAnsi, styler, glyphs } from "./ui.js";
 /** A line is on the layout if it is a section mark, a closing square, or hangs under one. */
 const onLayout = (line: string): boolean => /^(■|░|▓|▒|\s{2})/.test(line);
 
-
 const plain = { style: styler(0), glyph: glyphs(true), columns: 80 };
 
 const item = (over: Partial<PickerItem> & { id: string }): PickerItem => ({

@@ -120,8 +120,19 @@ test("a malformed record is skipped without taking the rest of the file with it"
   const restored = fromCachedSessions({
     version: 1,
     sessions: [
-      { id: "agent:ggcoder:a", providerId: "ggcoder", startedAt: NOW, agentSessionId: "a", title: "Kept" },
-      { id: "agent:ggcoder:b", providerId: "ggcoder", startedAt: "not a number", agentSessionId: "b" },
+      {
+        id: "agent:ggcoder:a",
+        providerId: "ggcoder",
+        startedAt: NOW,
+        agentSessionId: "a",
+        title: "Kept",
+      },
+      {
+        id: "agent:ggcoder:b",
+        providerId: "ggcoder",
+        startedAt: "not a number",
+        agentSessionId: "b",
+      },
       null,
       { providerId: "ggcoder", startedAt: NOW, agentSessionId: "c" },
     ],
@@ -139,7 +150,15 @@ test("a file from another era is an empty drawer, not a crash", () => {
 test("an untitled conversation still gets a row", () => {
   const restored = fromCachedSessions({
     version: 1,
-    sessions: [{ id: "agent:ggcoder:a", providerId: "ggcoder", startedAt: NOW, agentSessionId: "a", title: "   " }],
+    sessions: [
+      {
+        id: "agent:ggcoder:a",
+        providerId: "ggcoder",
+        startedAt: NOW,
+        agentSessionId: "a",
+        title: "   ",
+      },
+    ],
   });
 
   expect(restored[0]?.title).toBe("Untitled conversation");
@@ -156,9 +175,7 @@ test("streaming a reply does not ask for a rewrite", () => {
 });
 
 test("a renamed conversation does ask for a rewrite", () => {
-  expect(sessionCacheKey([session({ title: "Renamed" })])).not.toBe(
-    sessionCacheKey([session()]),
-  );
+  expect(sessionCacheKey([session({ title: "Renamed" })])).not.toBe(sessionCacheKey([session()]));
 });
 
 test("every stored field moves the key, so none can change unwritten", () => {

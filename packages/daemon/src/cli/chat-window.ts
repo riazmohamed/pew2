@@ -39,9 +39,8 @@ export function windowCommand(options: {
     const value = options.env[name];
     return value ? [`${name}=${shellQuote(value)}`] : [];
   });
-  const program = options.compiled || !options.script
-    ? [options.execPath]
-    : [options.execPath, options.script];
+  const program =
+    options.compiled || !options.script ? [options.execPath] : [options.execPath, options.script];
   const args = options.args.filter((arg) => arg !== HERE_FLAG);
   return [
     "exec",

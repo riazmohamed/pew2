@@ -40,13 +40,27 @@ test("shrinks dropdown width and height on a small viewport", () => {
 
 test("composer menus open upward, keeping the keyboard and trigger clear", () => {
   const layout = fitPickerToViewport({ ...base, anchorX: 24, menuBottom: 480 });
-  expect(layout).toEqual({ left: 24, width: 300, maxHeight: 360, bottom: 364, origin: "bottom left" });
-  expect(base.viewportHeight - layout.bottom! - layout.maxHeight).toBeGreaterThanOrEqual(base.insets.top + base.margin);
+  expect(layout).toEqual({
+    left: 24,
+    width: 300,
+    maxHeight: 360,
+    bottom: 364,
+    origin: "bottom left",
+  });
+  expect(base.viewportHeight - layout.bottom! - layout.maxHeight).toBeGreaterThanOrEqual(
+    base.insets.top + base.margin,
+  );
 });
 
 test("composer menus shrink above a raised keyboard and clamp stale anchors", () => {
   const layout = fitPickerToViewport({ ...base, anchorX: 310, menuBottom: 200 });
-  expect(layout).toEqual({ left: 70, width: 300, maxHeight: 133, bottom: 644, origin: "bottom right" });
+  expect(layout).toEqual({
+    left: 70,
+    width: 300,
+    maxHeight: 133,
+    bottom: 644,
+    origin: "bottom right",
+  });
   const low = fitPickerToViewport({ ...base, menuBottom: 2000 });
   expect(low.bottom).toBe(base.insets.bottom + base.margin);
   const high = fitPickerToViewport({ ...base, menuBottom: -100 });

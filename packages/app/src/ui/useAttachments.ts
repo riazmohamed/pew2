@@ -8,7 +8,10 @@ import type { CaptureResult } from "../daemonTypes";
 import { addAttachments, MAX_ATTACHMENTS, type PendingAttachment } from "../attachments";
 import { pickFiles, pickPhotos, takePhoto } from "./attachmentPicker";
 
-export function useAttachments(devSheet: string | undefined, captureComputer?: () => Promise<CaptureResult>) {
+export function useAttachments(
+  devSheet: string | undefined,
+  captureComputer?: () => Promise<CaptureResult>,
+) {
   // Files staged for the next message. Cleared with the draft on send, because
   // the two are one message.
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
@@ -44,7 +47,13 @@ export function useAttachments(devSheet: string | undefined, captureComputer?: (
           }
           const { name, mimeType, data } = shot.picture;
           const merged = addAttachments(attachmentsRef.current, [
-            { id: `screen-${Date.now().toString(36)}`, name, mimeType, data, size: Math.floor((data.length * 3) / 4) },
+            {
+              id: `screen-${Date.now().toString(36)}`,
+              name,
+              mimeType,
+              data,
+              size: Math.floor((data.length * 3) / 4),
+            },
           ]);
           setAttachments(merged.attachments);
           if (merged.rejected) Alert.alert("Attach", merged.rejected);

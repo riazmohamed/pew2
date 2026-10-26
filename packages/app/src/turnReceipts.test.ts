@@ -4,7 +4,13 @@ import { receiptOnOpen, receiptOnReplay, recordReceipt } from "./turnReceipts";
 import type { Session } from "./useDaemon";
 
 const answered: TurnReceipt = { verb: "Answered", duration: "3s", tools: 0, failed: 0, runs: [] };
-const edited: TurnReceipt = { verb: "Edited & ran", duration: "12s", tools: 4, failed: 0, runs: [] };
+const edited: TurnReceipt = {
+  verb: "Edited & ran",
+  duration: "12s",
+  tools: 4,
+  failed: 0,
+  runs: [],
+};
 
 const session = (over: Partial<Session> = {}): Session => ({
   id: "s1",

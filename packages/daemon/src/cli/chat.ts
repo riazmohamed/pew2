@@ -125,7 +125,11 @@ class Screen {
     const columns = this.columns();
     const prompt = promptLine(this.input, paint);
     const head = `${this.partial ? `${this.partial}\n` : ""}${ruleLine(paint, columns)}\n${prompt}`;
-    const tail = [ruleLine(paint, columns), ...this.menuOf(columns), ...this.footerOf(columns)].join("\n");
+    const tail = [
+      ruleLine(paint, columns),
+      ...this.menuOf(columns),
+      ...this.footerOf(columns),
+    ].join("\n");
     this.out.write(`${head}\n${tail}`);
     const tailRows = rowsFor(tail, columns);
     this.rows = rowsFor(head, columns) + tailRows;
@@ -185,7 +189,14 @@ function parseArgs(argv: string[]): {
   all: boolean;
   help: boolean;
 } {
-  const out: { session?: string; focus?: string; agent?: string; project?: string; all: boolean; help: boolean } = {
+  const out: {
+    session?: string;
+    focus?: string;
+    agent?: string;
+    project?: string;
+    all: boolean;
+    help: boolean;
+  } = {
     help: false,
     all: false,
   };
@@ -231,10 +242,13 @@ async function captureScreen(area: boolean): Promise<{ bytes: Uint8Array } | { e
   const dir = mkdtempSync(join(tmpdir(), "pew2-shot-"));
   const file = join(dir, "shot.png");
   try {
-    const shot = Bun.spawn(["/usr/bin/screencapture", "-x", ...(area ? ["-i"] : []), "-t", "png", file], {
-      stdout: "ignore",
-      stderr: "pipe",
-    });
+    const shot = Bun.spawn(
+      ["/usr/bin/screencapture", "-x", ...(area ? ["-i"] : []), "-t", "png", file],
+      {
+        stdout: "ignore",
+        stderr: "pipe",
+      },
+    );
     const code = await shot.exited;
     let size = 0;
     try {
@@ -245,19 +259,25 @@ async function captureScreen(area: boolean): Promise<{ bytes: Uint8Array } | { e
     if (size === 0) {
       if (area) return { error: "screenshot cancelled" };
       const detail = (await new Response(shot.stderr).text()).trim();
-      return { error: `screencapture failed${code ? ` (${code})` : ""}${detail ? `: ${detail}` : ""}` };
+      return {
+        error: `screencapture failed${code ? ` (${code})` : ""}${detail ? `: ${detail}` : ""}`,
+      };
     }
     const probe = Bun.spawnSync(["/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", file], {
       stdout: "pipe",
       stderr: "ignore",
     });
-    const dims = [...probe.stdout.toString().matchAll(/pixel(?:Width|Height):\s*(\d+)/g)].map((m) => Number(m[1]));
+    const dims = [...probe.stdout.toString().matchAll(/pixel(?:Width|Height):\s*(\d+)/g)].map((m) =>
+      Number(m[1]),
+    );
     if (needsDownscale(size, Math.max(0, ...dims))) {
       Bun.spawnSync(["/usr/bin/sips", "-Z", "1800", file], { stdout: "ignore", stderr: "ignore" });
     }
     return { bytes: new Uint8Array(readFileSync(file)) };
   } catch (error) {
-    return { error: `screenshot failed: ${error instanceof Error ? error.message : String(error)}` };
+    return {
+      error: `screenshot failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -322,7 +342,9 @@ async function openOwnWindow(argv: string[]): Promise<boolean> {
     const code = await child.exited;
     if (code !== 0) {
       const detail = (await new Response(child.stderr).text()).trim();
-      console.error(`Could not open a new window${detail ? ` (${detail})` : ""}. Running here instead.`);
+      console.error(
+        `Could not open a new window${detail ? ` (${detail})` : ""}. Running here instead.`,
+      );
       return false;
     }
     console.log(`pew2 chat opened in a new ${app === "iterm" ? "iTerm" : "Terminal"} window.`);
@@ -338,7 +360,9 @@ export async function cmdChat(argv: string[]): Promise<number> {
     console.log("pew2 chat [--project <dir> | --all] [--agent <id>] [--session <id>] [--here]\n");
     console.log("Opens in a new window of its own; --here runs it in this terminal instead.");
     console.log("Run inside a project and the window belongs to that project: it follows only");
-    console.log("that project's conversations and starts new ones there. --all follows every project.\n");
+    console.log(
+      "that project's conversations and starts new ones there. --all follows every project.\n",
+    );
     for (const line of HELP) console.log(line);
     return 0;
   }
@@ -351,7 +375,8 @@ export async function cmdChat(argv: string[]): Promise<number> {
       return 1;
     }
     // The new window starts in the home folder, so the project goes with it.
-    const forwarded = project && !args.project && !args.all ? [...argv, "--project", project] : argv;
+    const forwarded =
+      project && !args.project && !args.all ? [...argv, "--project", project] : argv;
     if (await openOwnWindow(forwarded)) return 0;
   }
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -396,17 +421,20 @@ export async function cmdChat(argv: string[]): Promise<number> {
   const shownDiffs = new Set<string>();
   let providers: ProviderRow[] = [];
   let active: string[] = [];
-  let keepAwake: { supported: boolean; enabled: boolean; active: boolean; reason?: string } | undefined;
+  let keepAwake:
+    { supported: boolean; enabled: boolean; active: boolean; reason?: string } | undefined;
   let draftsSupported = false;
   let lastAgent: string | undefined;
   let pendingStart: { requestId: string; text: string; attachments: Attachment[] } | undefined;
   // A new conversation waiting on the daemon to accept this window's project:
   // it honours a client-named cwd only once it has published that path itself,
   // which browsing to it does. Same rule the phone lives by.
-  let pendingProject: { requestId: string; text: string; agent: string; attachments: Attachment[] } | undefined;
+  let pendingProject:
+    { requestId: string; text: string; agent: string; attachments: Attachment[] } | undefined;
   // A conversation reopened because the daemon restarted under it (an update,
   // a reboot). Keyed by the agent's id, which is all that survives.
-  let pendingResume: { agentSessionId: string; text: string; attachments: Attachment[] } | undefined;
+  let pendingResume:
+    { agentSessionId: string; text: string; attachments: Attachment[] } | undefined;
   let socket: WebSocket | undefined;
   let channel: SecureChannel | undefined;
   let joined = false;
@@ -415,7 +443,11 @@ export async function cmdChat(argv: string[]): Promise<number> {
   let attempt = 0;
   let reconnecting = false;
   let quitting = false;
-  let replays: { sessionId: string; events: { seq: number; at: number; payload: unknown }[]; permissions?: { requestId: string; params: unknown }[] }[] = [];
+  let replays: {
+    sessionId: string;
+    events: { seq: number; at: number; payload: unknown }[];
+    permissions?: { requestId: string; params: unknown }[];
+  }[] = [];
   let resolveExit: (code: number) => void = () => {};
   const exited = new Promise<number>((resolve) => (resolveExit = resolve));
 
@@ -433,7 +465,8 @@ export async function cmdChat(argv: string[]): Promise<number> {
     send({ t: "session.draft", ...(key !== "" && { sessionId: key }), text });
   });
 
-  const agentName = (id?: string) => providers.find((p) => p.id === id)?.name ?? id ?? "conversation";
+  const agentName = (id?: string) =>
+    providers.find((p) => p.id === id)?.name ?? id ?? "conversation";
 
   /** The agent behind a conversation key ("" is the next new one). */
   const providerOf = (key: string): string | undefined => {
@@ -556,7 +589,9 @@ export async function cmdChat(argv: string[]): Promise<number> {
   const divider = (key: string) => {
     endReply();
     screen.print("");
-    screen.print(`${paint.fg(THEME.border, "──── ")}${paint.bold(describe(key))}${paint.fg(THEME.border, " ────")}`);
+    screen.print(
+      `${paint.fg(THEME.border, "──── ")}${paint.bold(describe(key))}${paint.fg(THEME.border, " ────")}`,
+    );
     const meta = key ? follow.meta(key) : undefined;
     if (key && !meta?.cwd && !meta?.folder) send({ t: "workspace.status", sessionId: key });
     askCapabilities(key);
@@ -573,7 +608,8 @@ export async function cmdChat(argv: string[]): Promise<number> {
     switch (item.kind) {
       case "user":
         screen.print("");
-        for (const line of userMessageLines(item.text, paint, screen.columns(), item.images ?? 0)) screen.print(line);
+        for (const line of userMessageLines(item.text, paint, screen.columns(), item.images ?? 0))
+          screen.print(line);
         screen.print("");
         return;
       case "tool":
@@ -617,12 +653,17 @@ export async function cmdChat(argv: string[]): Promise<number> {
   const showRecent = (sessionId: string) => {
     const list = history.get(sessionId) ?? [];
     shownDiffs.clear();
-    for (const item of list.slice(-SHOW_RECENT)) if (item.kind !== "permission") show(item, sessionId);
+    for (const item of list.slice(-SHOW_RECENT))
+      if (item.kind !== "permission") show(item, sessionId);
     endReply(sessionId);
     for (const open of permissions.get(sessionId)?.values() ?? []) show(open, sessionId);
   };
 
-  const ingest = (sessionId: string, event: { seq: number; at: number; payload: unknown }, live: boolean) => {
+  const ingest = (
+    sessionId: string,
+    event: { seq: number; at: number; payload: unknown },
+    live: boolean,
+  ) => {
     if (event.seq <= (cursors[sessionId] ?? -1)) return;
     cursors[sessionId] = event.seq;
     const commands = readAgentCommands(event.payload);
@@ -708,10 +749,15 @@ export async function cmdChat(argv: string[]): Promise<number> {
         ingest(replay.sessionId, event, false);
         last = Math.max(last, event.at);
       }
-      if (last > 0) follow.meta(replay.sessionId).lastActivity = Math.max(follow.meta(replay.sessionId).lastActivity, last);
+      if (last > 0)
+        follow.meta(replay.sessionId).lastActivity = Math.max(
+          follow.meta(replay.sessionId).lastActivity,
+          last,
+        );
       if (replay.permissions) {
         const open = new Map<string, Extract<Rendered, { kind: "permission" }>>();
-        for (const p of replay.permissions) open.set(p.requestId, permissionView(p.requestId, p.params));
+        for (const p of replay.permissions)
+          open.set(p.requestId, permissionView(p.requestId, p.params));
         permissions.set(replay.sessionId, open);
       }
     }
@@ -721,7 +767,8 @@ export async function cmdChat(argv: string[]): Promise<number> {
       // Where each open conversation lives, so a project window can tell its
       // own from the rest (the announcement names sessions, not projects).
       if (project) {
-        for (const id of active) if (!follow.meta(id).cwd) send({ t: "workspace.status", sessionId: id });
+        for (const id of active)
+          if (!follow.meta(id).cwd) send({ t: "workspace.status", sessionId: id });
       }
       if (args.focus && active.includes(args.focus)) {
         // Opened from the phone for this conversation: start on it, then
@@ -757,7 +804,11 @@ export async function cmdChat(argv: string[]): Promise<number> {
       keepAwake &&
       (prevAwake.enabled !== keepAwake.enabled || prevAwake.active !== keepAwake.active)
     ) {
-      screen.print(dim(`keep-awake ${keepAwake.enabled ? "on" : "off"}${keepAwake.active ? " (holding)" : ""}`));
+      screen.print(
+        dim(
+          `keep-awake ${keepAwake.enabled ? "on" : "off"}${keepAwake.active ? " (holding)" : ""}`,
+        ),
+      );
     }
   };
 
@@ -774,7 +825,12 @@ export async function cmdChat(argv: string[]): Promise<number> {
         replays.push(message as unknown as (typeof replays)[number]);
         return;
       case "session.event": {
-        const event = message as unknown as { sessionId: string; seq: number; at: number; payload: unknown };
+        const event = message as unknown as {
+          sessionId: string;
+          seq: number;
+          at: number;
+          payload: unknown;
+        };
         if (!everJoined) return;
         ingest(event.sessionId, event, true);
         return;
@@ -819,7 +875,11 @@ export async function cmdChat(argv: string[]): Promise<number> {
         return;
       }
       case "session.config": {
-        const config = message as { sessionId?: string; providerId?: string; configOptions?: ConfigOptionLike[] };
+        const config = message as {
+          sessionId?: string;
+          providerId?: string;
+          configOptions?: ConfigOptionLike[];
+        };
         if (!config.sessionId || !Array.isArray(config.configOptions)) return;
         const before = config.sessionId === follow.current ? currentOptions() : [];
         sessionConfig.set(config.sessionId, config.configOptions);
@@ -828,23 +888,39 @@ export async function cmdChat(argv: string[]): Promise<number> {
       }
       case "provider.config":
       case "provider.capabilities": {
-        const caps = message as { providerId?: string; configOptions?: ConfigOptionLike[]; commands?: unknown };
+        const caps = message as {
+          providerId?: string;
+          configOptions?: ConfigOptionLike[];
+          commands?: unknown;
+        };
         if (!caps.providerId) return;
         const before = currentOptions();
-        if (Array.isArray(caps.configOptions)) providerConfig.set(caps.providerId, caps.configOptions);
-        if (Array.isArray(caps.commands)) providerCommands.set(caps.providerId, agentCommandList(caps.commands));
-        if (providerOf(follow.current) === caps.providerId) noteConfigChange(before, currentOptions());
+        if (Array.isArray(caps.configOptions))
+          providerConfig.set(caps.providerId, caps.configOptions);
+        if (Array.isArray(caps.commands))
+          providerCommands.set(caps.providerId, agentCommandList(caps.commands));
+        if (providerOf(follow.current) === caps.providerId)
+          noteConfigChange(before, currentOptions());
         return;
       }
       case "image": {
-        const answer = message as { requestId?: string; uri?: string; dataUri?: string; error?: string };
+        const answer = message as {
+          requestId?: string;
+          uri?: string;
+          dataUri?: string;
+          error?: string;
+        };
         const request = answer.requestId ? imageRequests.get(answer.requestId) : undefined;
         if (!request || !answer.requestId) return;
         imageRequests.delete(answer.requestId);
-        imageCache.set(request.image.src, answer.dataUri ? { dataUri: answer.dataUri } : { error: answer.error ?? "unavailable" });
+        imageCache.set(
+          request.image.src,
+          answer.dataUri ? { dataUri: answer.dataUri } : { error: answer.error ?? "unavailable" },
+        );
         if (request.sessionId !== follow.current) return;
         if (answer.dataUri) drawImage(request.image, answer.dataUri);
-        else screen.print(dim(`   [image: ${request.image.name}] ${answer.error ?? "unavailable"}`));
+        else
+          screen.print(dim(`   [image: ${request.image.name}] ${answer.error ?? "unavailable"}`));
         return;
       }
       case "session.draft": {
@@ -855,7 +931,11 @@ export async function cmdChat(argv: string[]): Promise<number> {
         // A not-yet-started conversation's draft names no project, so a project
         // window cannot know it is its own and leaves it alone.
         const unplaced = project !== undefined && (draft.sessionId ?? "") === "";
-        if (!unplaced && draftApplies(draft, ownId, follow.current) && draft.text !== screen.input) {
+        if (
+          !unplaced &&
+          draftApplies(draft, ownId, follow.current) &&
+          draft.text !== screen.input
+        ) {
           // Replaced, never echoed: this change came from the other device.
           screen.setInput(draft.text);
         }
@@ -880,12 +960,19 @@ export async function cmdChat(argv: string[]): Promise<number> {
         const { text, agent, attachments } = pendingProject;
         pendingProject = undefined;
         if (answer.refused) {
-          screen.print(red(`! pew2 can't open ${project} (only folders under your home are allowed)`));
+          screen.print(
+            red(`! pew2 can't open ${project} (only folders under your home are allowed)`),
+          );
           if (!screen.input) screen.setInput(text);
           return;
         }
         pendingStart = { requestId: `chat-${randomBytes(4).toString("hex")}`, text, attachments };
-        send({ t: "session.start", requestId: pendingStart.requestId, providerId: agent, cwd: project });
+        send({
+          t: "session.start",
+          requestId: pendingStart.requestId,
+          providerId: agent,
+          cwd: project,
+        });
         return;
       }
       case "workspace": {
@@ -911,7 +998,8 @@ export async function cmdChat(argv: string[]): Promise<number> {
           }
           return;
         }
-        if (!had && ws.sessionId === follow.current) screen.print(dim(`  in ${ws.folder ?? ws.cwd}`));
+        if (!had && ws.sessionId === follow.current)
+          screen.print(dim(`  in ${ws.folder ?? ws.cwd}`));
         return;
       }
       case "error":
@@ -974,7 +1062,8 @@ export async function cmdChat(argv: string[]): Promise<number> {
       }
       if (raw.t !== "e") return;
       const opened = channel?.open(raw);
-      if (opened && typeof opened === "object") dispatch(opened as { t?: string } & Record<string, unknown>);
+      if (opened && typeof opened === "object")
+        dispatch(opened as { t?: string } & Record<string, unknown>);
     };
     ws.onclose = () => {
       if (generation !== socketGeneration || quitting) return;
@@ -1034,7 +1123,14 @@ export async function cmdChat(argv: string[]): Promise<number> {
       screen.print(red(`! choose 1-${request.options.length}`));
       return true;
     }
-    if (send({ t: "session.permission", sessionId: follow.current, requestId: request.requestId, optionId: option.optionId })) {
+    if (
+      send({
+        t: "session.permission",
+        sessionId: follow.current,
+        requestId: request.requestId,
+        optionId: option.optionId,
+      })
+    ) {
       open?.delete(request.requestId);
       screen.print(dim(`  → ${option.name}`));
     }
@@ -1075,9 +1171,15 @@ export async function cmdChat(argv: string[]): Promise<number> {
     // No live session: remembered for the next one this agent starts.
     send({ t: "provider.config", providerId: provider, configId: option.id, value: picked.value });
     const before = currentOptions();
-    const updated = (providerConfig.get(provider) ?? []).map((o) => (o.id === option.id ? { ...o, currentValue: picked.value } : o));
+    const updated = (providerConfig.get(provider) ?? []).map((o) =>
+      o.id === option.id ? { ...o, currentValue: picked.value } : o,
+    );
     providerConfig.set(provider, updated);
-    screen.print(dim(`  ${option.name.toLowerCase()} for the next ${agentName(provider)} conversation: ${picked.name}`));
+    screen.print(
+      dim(
+        `  ${option.name.toLowerCase()} for the next ${agentName(provider)} conversation: ${picked.name}`,
+      ),
+    );
     noteConfigChange(before, updated);
   };
 
@@ -1110,7 +1212,8 @@ export async function cmdChat(argv: string[]): Promise<number> {
     const { name, arg } = route;
     switch (name) {
       case "help":
-        for (const line of helpLines(currentCommands(), agentName(providerOf(follow.current)))) screen.print(dim(line));
+        for (const line of helpLines(currentCommands(), agentName(providerOf(follow.current))))
+          screen.print(dim(line));
         return;
       case "quit":
       case "exit":
@@ -1124,7 +1227,9 @@ export async function cmdChat(argv: string[]): Promise<number> {
       case "shot": {
         const area = /^area\b/i.test(arg);
         const message = (area ? arg.replace(/^area\b/i, "") : arg).trim() || DEFAULT_SHOT_TEXT;
-        screen.print(dim(area ? "  drag a region to capture (Esc cancels)…" : "  taking a screenshot…"));
+        screen.print(
+          dim(area ? "  drag a region to capture (Esc cancels)…" : "  taking a screenshot…"),
+        );
         void captureScreen(area).then((result) => {
           if ("error" in result) {
             screen.print(red(`! ${result.error}`));
@@ -1137,7 +1242,11 @@ export async function cmdChat(argv: string[]): Promise<number> {
       case "attach": {
         const parsed = parseAttachArgs(arg, homedir());
         if (!parsed) {
-          screen.print(dim("usage: /attach <path> [message]. Type /attach then drop an image file on this window."));
+          screen.print(
+            dim(
+              "usage: /attach <path> [message]. Type /attach then drop an image file on this window.",
+            ),
+          );
           return;
         }
         const mimeType = imageMimeForPath(parsed.path);
@@ -1152,14 +1261,21 @@ export async function cmdChat(argv: string[]): Promise<number> {
           screen.print(red(`! can't read ${parsed.path}`));
           return;
         }
-        void sendImage(basename(parsed.path), mimeType, bytes, parsed.message || `Here's ${basename(parsed.path)}.`);
+        void sendImage(
+          basename(parsed.path),
+          mimeType,
+          bytes,
+          parsed.message || `Here's ${basename(parsed.path)}.`,
+        );
         return;
       }
       case "sessions": {
         const list = follow.list(active);
         if (list.length === 0) screen.print(dim("no open conversations — just type to start one"));
         list.forEach((row, i) =>
-          screen.print(`${row.sessionId === follow.current ? "*" : " "} ${i + 1}. ${describe(row.sessionId)}`),
+          screen.print(
+            `${row.sessionId === follow.current ? "*" : " "} ${i + 1}. ${describe(row.sessionId)}`,
+          ),
         );
         return;
       }
@@ -1221,7 +1337,11 @@ export async function cmdChat(argv: string[]): Promise<number> {
           screen.print(dim("reopening this conversation…"));
           return;
         }
-        screen.print(red("! this conversation is no longer open on this machine — reopen it from the phone, or /new"));
+        screen.print(
+          red(
+            "! this conversation is no longer open on this machine — reopen it from the phone, or /new",
+          ),
+        );
         if (attachments.length === 0) screen.setInput(text);
         return;
       }
@@ -1235,7 +1355,12 @@ export async function cmdChat(argv: string[]): Promise<number> {
       return;
     }
     if (project) {
-      pendingProject = { requestId: `chat-ws-${randomBytes(4).toString("hex")}`, text, agent, attachments };
+      pendingProject = {
+        requestId: `chat-ws-${randomBytes(4).toString("hex")}`,
+        text,
+        agent,
+        attachments,
+      };
       send({ t: "workspaces", requestId: pendingProject.requestId, path: project });
       screen.print(dim(`starting ${agentName(agent)} in ${projectName}…`));
       return;
@@ -1264,7 +1389,8 @@ export async function cmdChat(argv: string[]): Promise<number> {
   const complete = (input: string): string => {
     const names = [...LOCAL_COMMANDS.map((c) => c.name), ...currentCommands().map((c) => c.name)];
     const result = completeSlash(input, names);
-    if (result.candidates.length > 1) screen.print(dim(result.candidates.map((n) => `/${n}`).join("  ")));
+    if (result.candidates.length > 1)
+      screen.print(dim(result.candidates.map((n) => `/${n}`).join("  ")));
     return result.input;
   };
 

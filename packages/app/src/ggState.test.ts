@@ -16,11 +16,30 @@ import {
   type GoalSummary,
 } from "./ggState";
 
-const ask = { kind: "ask_user", requestId: "r1", questions: [{ id: "q", question: "?", kind: "text" }] };
+const ask = {
+  kind: "ask_user",
+  requestId: "r1",
+  questions: [{ id: "q", question: "?", kind: "text" }],
+};
 const goal = (id: string, extra: Partial<GoalSummary> = {}): GoalSummary => ({
-  id, name: id, goal: "do it", context: [], path: `/g/${id}`, createdAt: "", lastActiveMs: 0, status: "idle", ...extra,
+  id,
+  name: id,
+  goal: "do it",
+  context: [],
+  path: `/g/${id}`,
+  createdAt: "",
+  lastActiveMs: 0,
+  status: "idle",
+  ...extra,
 });
-const state: GoalState = { t: "goal.state", sessionId: "s1", goalId: "g1", phase: "active", paused: false, workers: [] };
+const state: GoalState = {
+  t: "goal.state",
+  sessionId: "s1",
+  goalId: "g1",
+  phase: "active",
+  paused: false,
+  workers: [],
+};
 
 test("session.queue replaces the list per session and records returned", () => {
   let gg = applyQueue(EMPTY_GG, { sessionId: "s1", queued: [{ id: "q_1", text: "a" }] });
@@ -56,7 +75,10 @@ test("asks open live once, close on answer or a closed event, never on idle", ()
 });
 
 test("goal frames", () => {
-  let gg = applyGoalMessage({ ...EMPTY_GG, goalsLoading: true }, { t: "goals", goals: [goal("g1")] });
+  let gg = applyGoalMessage(
+    { ...EMPTY_GG, goalsLoading: true },
+    { t: "goals", goals: [goal("g1")] },
+  );
   expect(gg.goals?.length).toBe(1);
   expect(gg.goalsLoading).toBe(false);
   gg = applyGoalMessage(gg, { t: "goals", goals: [], error: "no ggcoder" });
@@ -82,5 +104,7 @@ test("goal lookup and labels", () => {
   expect(elapsedLabel(65_000)).toBe("1m 05s");
   expect(elapsedLabel(undefined)).toBe("");
   expect(workerElapsed({ id: "w", name: "w", state: "running", startedAt: 1000 }, 4000)).toBe(3000);
-  expect(workerElapsed({ id: "w", name: "w", state: "completed", startedAt: 1000, elapsedMs: 7 }, 4000)).toBe(7);
+  expect(
+    workerElapsed({ id: "w", name: "w", state: "completed", startedAt: 1000, elapsedMs: 7 }, 4000),
+  ).toBe(7);
 });

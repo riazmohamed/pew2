@@ -211,7 +211,9 @@ export function openTransport(
           sdp = await exchange(offer.sdp ?? "");
         } catch (error) {
           devLog(`offer refused by the computer: ${String(error)}`);
-          return fail(error instanceof Error && error.message ? error.message : CALL_ERRORS.generic);
+          return fail(
+            error instanceof Error && error.message ? error.message : CALL_ERRORS.generic,
+          );
         }
         if (closed) return;
         step = "setRemoteDescription";
@@ -252,7 +254,9 @@ export function openTransport(
       await pc.setRemoteDescription({ type: "answer", sdp });
       devLog("offer answered");
     } catch (error) {
-      devLog(`offer failed at ${step}: ${error instanceof Error ? `${error.name} ${error.message}` : String(error)}`);
+      devLog(
+        `offer failed at ${step}: ${error instanceof Error ? `${error.name} ${error.message}` : String(error)}`,
+      );
       fail(CALL_ERRORS.generic);
     }
   })();
@@ -269,14 +273,24 @@ export function openTransport(
       if (closed || !pc) return {};
       const out: AudioLevels = {};
       try {
-        const report: Map<string, Record<string, unknown>> | Record<string, Record<string, unknown>> = await pc.getStats();
+        const report:
+          Map<string, Record<string, unknown>> | Record<string, Record<string, unknown>> =
+          await pc.getStats();
         const entries = report instanceof Map ? [...report.values()] : Object.values(report);
         for (const stat of entries) {
           if (stat.kind !== "audio") continue;
-          if ((stat.type === "media-source" || stat.type === "track") && typeof stat.audioLevel === "number" && out.mic === undefined) {
+          if (
+            (stat.type === "media-source" || stat.type === "track") &&
+            typeof stat.audioLevel === "number" &&
+            out.mic === undefined
+          ) {
             out.mic = Math.max(0, Math.min(1, stat.audioLevel));
           }
-          if (stat.type === "inbound-rtp" && typeof stat.totalAudioEnergy === "number" && typeof stat.totalSamplesDuration === "number") {
+          if (
+            stat.type === "inbound-rtp" &&
+            typeof stat.totalAudioEnergy === "number" &&
+            typeof stat.totalSamplesDuration === "number"
+          ) {
             out.outEnergy = stat.totalAudioEnergy;
             out.outDuration = stat.totalSamplesDuration;
           }
@@ -289,10 +303,16 @@ export function openTransport(
     async micLevel() {
       if (closed || !pc) return undefined;
       try {
-        const report: Map<string, Record<string, unknown>> | Record<string, Record<string, unknown>> = await pc.getStats();
+        const report:
+          Map<string, Record<string, unknown>> | Record<string, Record<string, unknown>> =
+          await pc.getStats();
         const entries = report instanceof Map ? [...report.values()] : Object.values(report);
         for (const stat of entries) {
-          if ((stat.type === "media-source" || stat.type === "track") && stat.kind === "audio" && typeof stat.audioLevel === "number") {
+          if (
+            (stat.type === "media-source" || stat.type === "track") &&
+            stat.kind === "audio" &&
+            typeof stat.audioLevel === "number"
+          ) {
             return Math.max(0, Math.min(1, stat.audioLevel));
           }
         }
@@ -308,7 +328,8 @@ export function openTransport(
 
 /** Development only (`EXPO_PUBLIC_DEV_VOICE_LOG=1`): one transport step. */
 function devLog(line: string): void {
-  if (__DEV__ && process.env.EXPO_PUBLIC_DEV_VOICE_LOG === "1") console.log(`[voice] +${Math.round(performance.now())}ms transport ${line}`);
+  if (__DEV__ && process.env.EXPO_PUBLIC_DEV_VOICE_LOG === "1")
+    console.log(`[voice] +${Math.round(performance.now())}ms transport ${line}`);
 }
 
 /**
@@ -317,10 +338,20 @@ function devLog(line: string): void {
  * read back from the Metro log. Deltas and audio frames are skipped.
  */
 function logRealtime(event: unknown): void {
-  const e = event as { type?: string; transcript?: string; item?: { type?: string; name?: string }; response?: { status?: string; status_details?: unknown } };
+  const e = event as {
+    type?: string;
+    transcript?: string;
+    item?: { type?: string; name?: string };
+    response?: { status?: string; status_details?: unknown };
+  };
   const type = e.type ?? "?";
   if (type.endsWith(".delta") || type === "response.output_audio.done") return;
   const said = typeof e.transcript === "string" ? ` "${e.transcript.slice(0, 80)}"` : "";
-  const extra = type === "response.done" ? ` ${e.response?.status ?? ""} ${JSON.stringify(e.response?.status_details ?? "")}` : e.item?.name ? ` ${e.item.name}` : "";
+  const extra =
+    type === "response.done"
+      ? ` ${e.response?.status ?? ""} ${JSON.stringify(e.response?.status_details ?? "")}`
+      : e.item?.name
+        ? ` ${e.item.name}`
+        : "";
   console.log(`[voice] +${Math.round(performance.now())}ms ${type}${said}${extra}`);
 }

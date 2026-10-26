@@ -56,21 +56,25 @@ function TurnReceiptView({
       accessibilityRole={receipt.runs.length > 0 ? "button" : undefined}
       accessibilityHint={receipt.runs.length > 0 ? "Shows what each tool did" : undefined}
     >
-    <Animated.View
-      style={[styles.row, { height, opacity: fade }]}
-      accessible
-      accessibilityLabel={text}
-    >
-      {/* The mark that says this row is the app talking, not the agent. */}
-      <Text style={styles.mark} maxFontSizeMultiplier={STATUS_ROW_MAX_FONT_SCALE}>
-        ✻
-      </Text>
-      {/* Capped where the row stops growing, so large text lengthens the line
+      <Animated.View
+        style={[styles.row, { height, opacity: fade }]}
+        accessible
+        accessibilityLabel={text}
+      >
+        {/* The mark that says this row is the app talking, not the agent. */}
+        <Text style={styles.mark} maxFontSizeMultiplier={STATUS_ROW_MAX_FONT_SCALE}>
+          ✻
+        </Text>
+        {/* Capped where the row stops growing, so large text lengthens the line
           rather than clipping inside it. */}
-      <Text style={styles.text} numberOfLines={1} maxFontSizeMultiplier={STATUS_ROW_MAX_FONT_SCALE}>
-        {text}
-      </Text>
-    </Animated.View>
+        <Text
+          style={styles.text}
+          numberOfLines={1}
+          maxFontSizeMultiplier={STATUS_ROW_MAX_FONT_SCALE}
+        >
+          {text}
+        </Text>
+      </Animated.View>
     </Pressable>
   );
 }

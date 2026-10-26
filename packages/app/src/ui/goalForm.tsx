@@ -29,11 +29,23 @@ export const CONTEXT_MAX = 20;
 export const INSTRUCTIONS_MAX = 4000;
 export const INSTRUCTIONS_PLACEHOLDER = "Keep the current design. Ask before adding dependencies.";
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+export function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <View style={styles.field}>
       <Led tone="dim">{label}</Led>
-      {hint ? <Text style={styles.hint} numberOfLines={2}>{hint}</Text> : null}
+      {hint ? (
+        <Text style={styles.hint} numberOfLines={2}>
+          {hint}
+        </Text>
+      ) : null}
       {children}
     </View>
   );
@@ -47,7 +59,12 @@ export function StageInput(props: TextInputProps) {
       placeholderTextColor={theme.composer.placeholder}
       {...props}
       editable={props.editable}
-      style={[styles.input, focused && styles.inputFocused, props.editable === false && styles.inputOff, props.style]}
+      style={[
+        styles.input,
+        focused && styles.inputFocused,
+        props.editable === false && styles.inputOff,
+        props.style,
+      ]}
       onFocus={(e) => {
         setFocused(true);
         props.onFocus?.(e);
@@ -95,7 +112,9 @@ export function ContextChips({
           exiting={reduce ? undefined : ZoomOut.duration(160)}
           layout={reduce ? undefined : CHIP_LAYOUT}
         >
-          <Text style={styles.chipText} numberOfLines={1}>{path.split("/").filter(Boolean).pop() ?? path}</Text>
+          <Text style={styles.chipText} numberOfLines={1}>
+            {path.split("/").filter(Boolean).pop() ?? path}
+          </Text>
           {disabled ? null : (
             <Pressable
               accessibilityRole="button"
@@ -120,7 +139,9 @@ export function ContextChips({
           layout={reduce ? undefined : CHIP_LAYOUT}
         >
           <Ionicons name="phone-portrait-outline" size={12} color={theme.color.textDim} />
-          <Text style={styles.chipText} numberOfLines={1}>{file.name}</Text>
+          <Text style={styles.chipText} numberOfLines={1}>
+            {file.name}
+          </Text>
           {disabled || !onRemovePhoneFile ? null : (
             <Pressable
               accessibilityRole="button"
@@ -160,6 +181,14 @@ const styles = StyleSheet.create({
   inputFocused: { borderColor: KEN_COLOR },
   inputOff: { opacity: 0.5 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: theme.space(2) },
-  chip: { flexDirection: "row", alignItems: "center", gap: theme.space(1.5), maxWidth: "100%", paddingHorizontal: theme.space(3), paddingVertical: theme.space(1.5), borderRadius: theme.radius.pill },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(1.5),
+    maxWidth: "100%",
+    paddingHorizontal: theme.space(3),
+    paddingVertical: theme.space(1.5),
+    borderRadius: theme.radius.pill,
+  },
   chipText: { flexShrink: 1, color: theme.color.text, fontSize: theme.font.small },
 });

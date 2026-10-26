@@ -186,11 +186,26 @@ function sleepFace(u: number, w: number, T: number, sl: number): number {
 /** The voice-call moods, which blend their gaze across a change (the older moods snap, as they always have). */
 function callMood(m: PewMood | ""): boolean {
   "worklet";
-  return m === "listening" || m === "typing" || m === "reading" || m === "dialing" || m === "celebrate" || m === "goodbye" || m === "muted";
+  return (
+    m === "listening" ||
+    m === "typing" ||
+    m === "reading" ||
+    m === "dialing" ||
+    m === "celebrate" ||
+    m === "goodbye" ||
+    m === "muted"
+  );
 }
 
 /** Where the face looks, in face units, for this mood: `out` = [u, w]. `ku`/`kw` scale the free gaze. */
-function gazeInto(out: number[], mood: PewMood | "", B: PewBody, t: number, ku: number, kw: number): void {
+function gazeInto(
+  out: number[],
+  mood: PewMood | "",
+  B: PewBody,
+  t: number,
+  ku: number,
+  kw: number,
+): void {
   "worklet";
   let gu = clamp(B.lookX, -1, 1) * ku;
   let gw = -clamp(B.lookY, -1, 1) * kw;
@@ -214,7 +229,8 @@ function gazeInto(out: number[], mood: PewMood | "", B: PewBody, t: number, ku: 
     case "dialing":
       gu *= 0.4;
       gw *= 0.4;
-      break;    default:
+      break;
+    default:
       break;
   }
   out[0] = gu;
@@ -247,7 +263,8 @@ function eyeSize(mood: PewMood, T: number, out: number[]): void {
       break;
     case "goodbye":
       h = 0.21 * (1 - 0.45 * goodbyeSoft(T));
-      break;    default:
+      break;
+    default:
       break;
   }
   out[0] = h;
@@ -257,7 +274,14 @@ function eyeSize(mood: PewMood, T: number, out: number[]): void {
 const EYE = [0, 0];
 
 /** Is the LED at face coordinates (u, w) part of the face for this mood? 0..1 */
-export function ledFace(u: number, w: number, mood: PewMood, open: number, t: number, sleepIn?: number): number {
+export function ledFace(
+  u: number,
+  w: number,
+  mood: PewMood,
+  open: number,
+  t: number,
+  sleepIn?: number,
+): number {
   "worklet";
   if (mood === "sleepy") return sleepFace(u, w, t, sleepIn ?? 0);
   for (let side = -1; side <= 1; side += 2) {
@@ -335,7 +359,15 @@ const GZ_OLD = [0, 0];
 /** Seconds a face takes to dissolve into the next mood's. */
 const FACE_BLEND = 0.35;
 
-function paintLeds(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number, open: number, P: PewPainter): void {
+function paintLeds(
+  B: PewBody,
+  V: View,
+  pal: PewPalette,
+  st: MoodState,
+  t: number,
+  open: number,
+  P: PewPainter,
+): void {
   "worklet";
   const R = V.R;
   const base = R * Math.sqrt((4 * Math.PI) / B.n) * 0.36;
@@ -356,11 +388,14 @@ function paintLeds(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: numbe
   const gw = GZ[1]!;
   // Muted: the whole light turns down, the halo most of all.
   const dim = mood === "muted" ? 1 - blendOld : prev === "muted" ? blendOld : 0;
-  const lit = mood === "oops" ? PEW_AMBER : dim > 0 ? mixInto(C2, pal.base, pal.off, 0.3 * dim) : pal.base;
+  const lit =
+    mood === "oops" ? PEW_AMBER : dim > 0 ? mixInto(C2, pal.base, pal.off, 0.3 * dim) : pal.base;
   const glowK = 1 - 0.65 * dim;
   const ledFaceOn = B.n >= LED_FACE_MIN;
-  const T = mood === "sleepy" ? sleepClock(B, t) : mood === "goodbye" || mood === "celebrate" ? st.age : t;
-  const Tp = prev === "sleepy" ? sleepClock(B, t) : prev === "goodbye" || prev === "celebrate" ? st.age : t;
+  const T =
+    mood === "sleepy" ? sleepClock(B, t) : mood === "goodbye" || mood === "celebrate" ? st.age : t;
+  const Tp =
+    prev === "sleepy" ? sleepClock(B, t) : prev === "goodbye" || prev === "celebrate" ? st.age : t;
   // Per-frame values the call moods' light patterns share.
   const tap = mood === "typing" ? typeTap(t) : 0;
   const key = mood === "typing" ? typeKey(t) : 0;
@@ -407,12 +442,19 @@ function paintLeds(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: numbe
         if (fract(t * 0.6 + r * 5.1) < 0.025) on = Math.max(on, 0.45);
         break;
       case "thinking":
-        on = Math.max(on, smooth(0.88, 1, fract((lon / TAU) * 2 + lat / Math.PI - t * 0.45)) * 0.75);
+        on = Math.max(
+          on,
+          smooth(0.88, 1, fract((lon / TAU) * 2 + lat / Math.PI - t * 0.45)) * 0.75,
+        );
         break;
       case "working": {
         const scan = Math.sin(t * 2.8) * 0.95;
         const sl = Math.sin(lat) - scan;
-        on = Math.max(on, Math.exp(-(sl * sl) / 0.012) * 0.9, fract((lon / TAU) * 6 + t * 1.2) < 0.07 ? 0.4 : 0);
+        on = Math.max(
+          on,
+          Math.exp(-(sl * sl) / 0.012) * 0.9,
+          fract((lon / TAU) * 6 + t * 1.2) < 0.07 ? 0.4 : 0,
+        );
         break;
       }
       case "happy": {
@@ -429,7 +471,8 @@ function paintLeds(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: numbe
       case "listening": {
         // Rings of light drawn in toward the face, a gentle rhythm.
         const d = Math.acos(clamp(facing, -1, 1));
-        if (d > 0.3 && fract(d * 0.75 + t * 0.85) < 0.09) on = Math.max(on, 0.8 * (1 - 0.6 * (d / Math.PI)));
+        if (d > 0.3 && fract(d * 0.75 + t * 0.85) < 0.09)
+          on = Math.max(on, 0.8 * (1 - 0.6 * (d / Math.PI)));
         break;
       }
       case "typing":
@@ -458,7 +501,8 @@ function paintLeds(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: numbe
       case "goodbye":
         // A wave rippling across the right side.
         if (wave > 0 && u > 0.2 && Math.sin(lat * 6 - t * 12) > 0.8) on = Math.max(on, 0.7 * wave);
-        break;      case "muted":
+        break;
+      case "muted":
         break;
     }
     // A small Pew has no LED face to light, so the Matrix look (a dark globe
@@ -492,7 +536,16 @@ function paintLeds(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: numbe
 // ── the drawn face (small sizes) ────────────────────────────
 
 /** Points along an ellipse arc, as a polyline. */
-function arc(cx: number, cy: number, rx: number, ry: number, rot: number, a0: number, a1: number, n: number): number[] {
+function arc(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  rot: number,
+  a0: number,
+  a1: number,
+  n: number,
+): number[] {
   "worklet";
   const out: number[] = [];
   const c = Math.cos(rot);
@@ -512,7 +565,16 @@ function faceProj(u: number, w: number, V: View, out: Projected): Projected {
   return proj3(u, w, zc, V, out);
 }
 
-function drawFace(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number, open: number, P: PewPainter, fade = 1): void {
+function drawFace(
+  B: PewBody,
+  V: View,
+  pal: PewPalette,
+  st: MoodState,
+  t: number,
+  open: number,
+  P: PewPainter,
+  fade = 1,
+): void {
   "worklet";
   const mood = st.mood;
   const oops = mood === "oops";
@@ -540,20 +602,75 @@ function drawFace(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number
     faceProj(side * 0.3 + gu, 0.16 + gw, V, E);
     const k = E.f;
     if (mood === "goodbye" && side === 1 && goodbyeWink(TA) > 0.5) {
-      P.line(arc(E.sx, E.sy - R * 0.06 * k, R * 0.1 * fx * k, R * 0.09 * k, rot, Math.PI * 0.15, Math.PI * 0.85, 6), R * 0.06 * k, col, vis, halo, gc);
+      P.line(
+        arc(
+          E.sx,
+          E.sy - R * 0.06 * k,
+          R * 0.1 * fx * k,
+          R * 0.09 * k,
+          rot,
+          Math.PI * 0.15,
+          Math.PI * 0.85,
+          6,
+        ),
+        R * 0.06 * k,
+        col,
+        vis,
+        halo,
+        gc,
+      );
     } else if (mood === "happy" || mood === "celebrate") {
-      P.line(arc(E.sx, E.sy + R * 0.06 * k, R * 0.12 * fx * k, R * 0.12 * k, rot, Math.PI * 1.1, Math.PI * 1.9, 8), R * 0.08 * k, col, vis, halo, gc);
+      P.line(
+        arc(
+          E.sx,
+          E.sy + R * 0.06 * k,
+          R * 0.12 * fx * k,
+          R * 0.12 * k,
+          rot,
+          Math.PI * 1.1,
+          Math.PI * 1.9,
+          8,
+        ),
+        R * 0.08 * k,
+        col,
+        vis,
+        halo,
+        gc,
+      );
     } else if (mood === "sleepy") {
       const sl = B.sleep;
       if (sl === 1 && side === 1) {
         P.oval(E.sx, E.sy, R * 0.08 * fx * k, R * 0.05 * k, rot, col, vis, halo, gc);
       } else if (sl === 2) {
-        P.line(arc(E.sx, E.sy - R * 0.04 * k, R * 0.11 * fx * k, R * 0.09 * k, rot, Math.PI * 0.15, Math.PI * 0.85, 6), R * 0.06 * k, col, vis, halo, gc);
+        P.line(
+          arc(
+            E.sx,
+            E.sy - R * 0.04 * k,
+            R * 0.11 * fx * k,
+            R * 0.09 * k,
+            rot,
+            Math.PI * 0.15,
+            Math.PI * 0.85,
+            6,
+          ),
+          R * 0.06 * k,
+          col,
+          vis,
+          halo,
+          gc,
+        );
       } else {
         const sh = sl === 7 ? rem(T) * R * 0.04 * k : 0;
         const y = E.sy + (sl === 6 ? R * 0.06 * k : 0);
         const hw = R * (sl === 6 ? 0.12 : 0.1) * fx * k;
-        P.line([E.sx - hw + sh, y, E.sx + hw + sh, y], R * (sl === 6 ? 0.045 : 0.06) * k, col, vis, halo, gc);
+        P.line(
+          [E.sx - hw + sh, y, E.sx + hw + sh, y],
+          R * (sl === 6 ? 0.045 : 0.06) * k,
+          col,
+          vis,
+          halo,
+          gc,
+        );
       }
     } else {
       const big = oops ? 1.25 : 1;
@@ -561,7 +678,17 @@ function drawFace(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number
       eyeSize(mood, TA, EYE);
       const hh = mood === "working" ? 0.075 : (EYE[0]! / 0.21) * 0.13;
       const ww = (EYE[1]! / 0.14) * 0.09;
-      P.oval(E.sx, E.sy, R * ww * big * fx * k, R * hh * big * Math.max(0.1, open) * k, rot, col, fv, halo, gc);
+      P.oval(
+        E.sx,
+        E.sy,
+        R * ww * big * fx * k,
+        R * hh * big * Math.max(0.1, open) * k,
+        rot,
+        col,
+        fv,
+        halo,
+        gc,
+      );
     }
   }
   faceProj(gu * 0.6, -0.2 + gw * 0.5, V, E);
@@ -569,13 +696,52 @@ function drawFace(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number
   const lw = R * 0.06 * k;
   switch (mood) {
     case "happy":
-      P.line(arc(E.sx, E.sy - R * 0.08 * k, R * 0.16 * fx * k, R * 0.16 * k, rot, Math.PI * 0.2, Math.PI * 0.8, 10), lw, col, vis, halo, gc);
+      P.line(
+        arc(
+          E.sx,
+          E.sy - R * 0.08 * k,
+          R * 0.16 * fx * k,
+          R * 0.16 * k,
+          rot,
+          Math.PI * 0.2,
+          Math.PI * 0.8,
+          10,
+        ),
+        lw,
+        col,
+        vis,
+        halo,
+        gc,
+      );
       break;
     case "oops":
-      P.line(arc(E.sx, E.sy, R * 0.05 * fx * k, R * 0.055 * k, 0, 0, TAU, 12), lw, col, vis, halo, gc);
+      P.line(
+        arc(E.sx, E.sy, R * 0.05 * fx * k, R * 0.055 * k, 0, 0, TAU, 12),
+        lw,
+        col,
+        vis,
+        halo,
+        gc,
+      );
       break;
     case "idle":
-      P.line(arc(E.sx, E.sy - R * 0.06 * k, R * 0.09 * fx * k, R * 0.09 * k, rot, Math.PI * 0.25, Math.PI * 0.75, 8), lw, col, vis, halo, gc);
+      P.line(
+        arc(
+          E.sx,
+          E.sy - R * 0.06 * k,
+          R * 0.09 * fx * k,
+          R * 0.09 * k,
+          rot,
+          Math.PI * 0.25,
+          Math.PI * 0.75,
+          8,
+        ),
+        lw,
+        col,
+        vis,
+        halo,
+        gc,
+      );
       break;
     case "talking": {
       const o = talkOpen(t);
@@ -583,48 +749,160 @@ function drawFace(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number
       break;
     }
     case "working":
-      P.line([E.sx - R * 0.06 * fx * k, E.sy, E.sx + R * 0.06 * fx * k, E.sy], lw, col, vis, halo, gc);
+      P.line(
+        [E.sx - R * 0.06 * fx * k, E.sy, E.sx + R * 0.06 * fx * k, E.sy],
+        lw,
+        col,
+        vis,
+        halo,
+        gc,
+      );
       break;
     case "thinking":
-      P.line([E.sx - R * 0.02 * fx * k, E.sy + R * 0.01 * k, E.sx + R * 0.08 * fx * k, E.sy - R * 0.025 * k], lw, col, vis, halo, gc);
+      P.line(
+        [
+          E.sx - R * 0.02 * fx * k,
+          E.sy + R * 0.01 * k,
+          E.sx + R * 0.08 * fx * k,
+          E.sy - R * 0.025 * k,
+        ],
+        lw,
+        col,
+        vis,
+        halo,
+        gc,
+      );
       break;
     case "listening":
       P.oval(E.sx, E.sy, R * 0.04 * fx * k, R * 0.032 * k, rot, col, vis, halo, gc);
       break;
     case "typing":
-      P.line([E.sx - R * 0.07 * fx * k, E.sy + R * 0.01 * k, E.sx + R * 0.02 * fx * k, E.sy - R * 0.005 * k], lw, col, vis, halo, gc);
+      P.line(
+        [
+          E.sx - R * 0.07 * fx * k,
+          E.sy + R * 0.01 * k,
+          E.sx + R * 0.02 * fx * k,
+          E.sy - R * 0.005 * k,
+        ],
+        lw,
+        col,
+        vis,
+        halo,
+        gc,
+      );
       break;
     case "reading":
-      P.line([E.sx - R * 0.045 * fx * k, E.sy, E.sx + R * 0.045 * fx * k, E.sy], lw, col, vis, halo, gc);
+      P.line(
+        [E.sx - R * 0.045 * fx * k, E.sy, E.sx + R * 0.045 * fx * k, E.sy],
+        lw,
+        col,
+        vis,
+        halo,
+        gc,
+      );
       break;
     case "muted":
-      P.line([E.sx - R * 0.09 * fx * k, E.sy, E.sx + R * 0.09 * fx * k, E.sy], lw, col, fv, halo * 0.5, gc);
+      P.line(
+        [E.sx - R * 0.09 * fx * k, E.sy, E.sx + R * 0.09 * fx * k, E.sy],
+        lw,
+        col,
+        fv,
+        halo * 0.5,
+        gc,
+      );
       break;
     case "dialing":
     case "goodbye":
-      P.line(arc(E.sx, E.sy - R * 0.06 * k, R * 0.09 * fx * k, R * 0.09 * k, rot, Math.PI * 0.25, Math.PI * 0.75, 8), lw, col, vis, halo, gc);
+      P.line(
+        arc(
+          E.sx,
+          E.sy - R * 0.06 * k,
+          R * 0.09 * fx * k,
+          R * 0.09 * k,
+          rot,
+          Math.PI * 0.25,
+          Math.PI * 0.75,
+          8,
+        ),
+        lw,
+        col,
+        vis,
+        halo,
+        gc,
+      );
       break;
     case "celebrate":
-      P.poly(arc(E.sx, E.sy - R * 0.04 * k, R * 0.13 * fx * k, R * 0.12 * k, rot, 0, Math.PI, 10), col, vis);
+      P.poly(
+        arc(E.sx, E.sy - R * 0.04 * k, R * 0.13 * fx * k, R * 0.12 * k, rot, 0, Math.PI, 10),
+        col,
+        vis,
+      );
       break;
     case "sleepy":
       switch (B.sleep) {
         case 2: {
           const o = 0.04 + 0.04 * snore(T);
-          P.line(arc(E.sx, E.sy, o * R * fx * k, o * 1.15 * R * k, 0, 0, TAU, 10), lw * 0.8, col, vis, halo, gc);
+          P.line(
+            arc(E.sx, E.sy, o * R * fx * k, o * 1.15 * R * k, 0, 0, TAU, 10),
+            lw * 0.8,
+            col,
+            vis,
+            halo,
+            gc,
+          );
           break;
         }
         case 6:
-          P.line([E.sx - R * 0.05 * fx * k, E.sy, E.sx + R * 0.05 * fx * k, E.sy], lw * 0.8, col, vis, halo, gc);
+          P.line(
+            [E.sx - R * 0.05 * fx * k, E.sy, E.sx + R * 0.05 * fx * k, E.sy],
+            lw * 0.8,
+            col,
+            vis,
+            halo,
+            gc,
+          );
           break;
         case 7:
-          P.line(arc(E.sx, E.sy - R * 0.05 * k, R * 0.07 * fx * k, R * 0.07 * k, rot, Math.PI * 0.25, Math.PI * 0.75, 6), lw * 0.8, col, vis, halo, gc);
+          P.line(
+            arc(
+              E.sx,
+              E.sy - R * 0.05 * k,
+              R * 0.07 * fx * k,
+              R * 0.07 * k,
+              rot,
+              Math.PI * 0.25,
+              Math.PI * 0.75,
+              6,
+            ),
+            lw * 0.8,
+            col,
+            vis,
+            halo,
+            gc,
+          );
           break;
         case 9: {
-          P.oval(E.sx, E.sy, R * (0.04 + 0.015 * snore(T)) * k, R * (0.05 + 0.02 * snore(T)) * k, 0, col, vis, halo, gc);
+          P.oval(
+            E.sx,
+            E.sy,
+            R * (0.04 + 0.015 * snore(T)) * k,
+            R * (0.05 + 0.02 * snore(T)) * k,
+            0,
+            col,
+            vis,
+            halo,
+            gc,
+          );
           const len = R * (0.05 + 0.12 * fract(T / 5)) * k;
           const x = E.sx + R * 0.06 * fx * k;
-          P.line([x, E.sy + R * 0.03 * k, x, E.sy + R * 0.03 * k + len], lw * 0.6, col, vis * 0.8, 0, gc);
+          P.line(
+            [x, E.sy + R * 0.03 * k, x, E.sy + R * 0.03 * k + len],
+            lw * 0.6,
+            col,
+            vis * 0.8,
+            0,
+            gc,
+          );
           break;
         }
         default:
@@ -647,7 +925,15 @@ function star(x: number, y: number, r: number): number[] {
   return pts;
 }
 
-function extras(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number, ground: number, P: PewPainter): void {
+function extras(
+  B: PewBody,
+  V: View,
+  pal: PewPalette,
+  st: MoodState,
+  t: number,
+  ground: number,
+  P: PewPainter,
+): void {
   "worklet";
   const R = V.R;
   const ax = V.cx;
@@ -663,7 +949,14 @@ function extras(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number, 
       const a = (1 - p) * smooth(0, 0.15, p);
       P.line(arc(x, y, r, r, 0, 0, TAU, 12), r * 0.14, pal.glow, a * 0.55, 0, pal.glow);
       const z = r * 0.45;
-      P.line([x - z, y - z, x + z, y - z, x - z, y + z, x + z, y + z], r * 0.16, pal.glow, a * 0.9, 0, pal.glow);
+      P.line(
+        [x - z, y - z, x + z, y - z, x - z, y + z, x + z, y + z],
+        r * 0.16,
+        pal.glow,
+        a * 0.9,
+        0,
+        pal.glow,
+      );
     }
     return;
   }
@@ -672,7 +965,13 @@ function extras(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number, 
     case "thinking":
       for (let i = 0; i < 3; i++) {
         const ph = t * 3 - i * 0.6;
-        P.dot(ax + R * (0.65 + i * 0.25), ay - R * (0.2 + i * 0.3) + Math.sin(ph) * R * 0.05, R * (0.055 + i * 0.035), pal.glow, 0.35 + 0.3 * (0.5 + 0.5 * Math.sin(ph)));
+        P.dot(
+          ax + R * (0.65 + i * 0.25),
+          ay - R * (0.2 + i * 0.3) + Math.sin(ph) * R * 0.05,
+          R * (0.055 + i * 0.035),
+          pal.glow,
+          0.35 + 0.3 * (0.5 + 0.5 * Math.sin(ph)),
+        );
       }
       break;
     case "sleepy":
@@ -683,7 +982,14 @@ function extras(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number, 
         const zs = R * (0.2 + p * 0.26) * 0.7;
         const x = ax + R * 0.5 + p * R * 0.55 + Math.sin(p * 6) * R * 0.07;
         const y = ay - p * R * 1.1;
-        P.line([x, y - zs, x + zs * 0.75, y - zs, x, y, x + zs * 0.75, y], zs * 0.16, pal.glow, (1 - p) * 0.85 * smooth(0, 0.12, p), 0, pal.glow);
+        P.line(
+          [x, y - zs, x + zs * 0.75, y - zs, x, y, x + zs * 0.75, y],
+          zs * 0.16,
+          pal.glow,
+          (1 - p) * 0.85 * smooth(0, 0.12, p),
+          0,
+          pal.glow,
+        );
       }
       break;
     case "happy":
@@ -692,14 +998,25 @@ function extras(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number, 
         const p = (t * 1.1 + i * 0.37) % 1;
         const d = R * (1.2 + p * 0.4);
         const r = R * 0.11 * Math.sin(p * Math.PI);
-        if (r > 0.2) P.poly(star(ax + Math.cos(a) * d, ay + R * 0.95 + Math.sin(a) * d * 0.8, r), i % 2 ? pal.glow : WHITE, 1);
+        if (r > 0.2)
+          P.poly(
+            star(ax + Math.cos(a) * d, ay + R * 0.95 + Math.sin(a) * d * 0.8, r),
+            i % 2 ? pal.glow : WHITE,
+            1,
+          );
       }
       break;
     case "working":
       for (let i = 0; i < 4; i++) {
         const p = (t * 1.6 + i / 4) % 1;
         const side = i % 2 ? 1 : -1;
-        P.dot(ax + side * (R * 0.9 + p * R * 0.7), ground - R * 0.08 - p * R * 0.35, R * 0.07 * (1 - p * 0.4), pal.glow, (1 - p) * 0.4);
+        P.dot(
+          ax + side * (R * 0.9 + p * R * 0.7),
+          ground - R * 0.08 - p * R * 0.35,
+          R * 0.07 * (1 - p * 0.4),
+          pal.glow,
+          (1 - p) * 0.4,
+        );
       }
       break;
     case "oops": {
@@ -708,7 +1025,14 @@ function extras(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number, 
       const x = ax + R * 0.85;
       const y = ay - R * 0.1 + Math.sin(t * 3) * R * 0.04;
       P.dot(x, y, R * 0.22 * sc, PEW_AMBER, 1);
-      P.line([x, y - R * 0.11 * sc, x, y + R * 0.02 * sc], R * 0.06 * sc, AMBER_INK, 1, 0, AMBER_INK);
+      P.line(
+        [x, y - R * 0.11 * sc, x, y + R * 0.02 * sc],
+        R * 0.06 * sc,
+        AMBER_INK,
+        1,
+        0,
+        AMBER_INK,
+      );
       P.dot(x, y + R * 0.095 * sc, R * 0.035 * sc, AMBER_INK, 1);
       break;
     }
@@ -717,7 +1041,14 @@ function extras(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number, 
       for (let i = 0; i < 2; i++) {
         const p = fract(t - i * 0.5);
         const r = R * (1.08 + p * 0.55);
-        P.line(arc(V.cx, V.cy, r, r, 0, 0, TAU, 28), R * 0.05 * (1 - p * 0.5), pal.glow, (1 - p) * (i === 0 ? 0.55 : 0.25), R * 0.1, pal.glow);
+        P.line(
+          arc(V.cx, V.cy, r, r, 0, 0, TAU, 28),
+          R * 0.05 * (1 - p * 0.5),
+          pal.glow,
+          (1 - p) * (i === 0 ? 0.55 : 0.25),
+          R * 0.1,
+          pal.glow,
+        );
       }
       break;
     }
@@ -730,7 +1061,12 @@ function extras(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number, 
         const a = (i / 8) * TAU + 0.3;
         const d = R * (1.0 + q * 0.75);
         const r = R * 0.15 * b * (i % 2 ? 0.7 : 1);
-        if (r > 0.2) P.poly(star(V.cx + Math.cos(a) * d, V.cy + Math.sin(a) * d * 0.9, r), i % 2 ? pal.glow : WHITE, Math.min(1, b * 1.4));
+        if (r > 0.2)
+          P.poly(
+            star(V.cx + Math.cos(a) * d, V.cy + Math.sin(a) * d * 0.9, r),
+            i % 2 ? pal.glow : WHITE,
+            Math.min(1, b * 1.4),
+          );
       }
       break;
     }
@@ -745,7 +1081,13 @@ function extras(B: PewBody, V: View, pal: PewPalette, st: MoodState, t: number, 
  * Paint the current pose. `advancePew` (or `settlePew`) must have run for
  * this `t` first; painting never changes the body except its draw order.
  */
-export function paintPew(B: PewBody, t: number, mood: PewMood, pal: PewPalette, P: PewPainter): void {
+export function paintPew(
+  B: PewBody,
+  t: number,
+  mood: PewMood,
+  pal: PewPalette,
+  P: PewPainter,
+): void {
   "worklet";
   const S = B.S;
   const st = effectiveMood(B, t, mood);
@@ -792,7 +1134,8 @@ export function paintPew(B: PewBody, t: number, mood: PewMood, pal: PewPalette, 
     // under the new one fading in, the same cross-dissolve as the LED face.
     const prev = B.prevMood;
     const k = prev !== "" && prev !== st.mood ? smooth(0, FACE_BLEND, st.age) : 1;
-    if (k < 1 && prev !== "") drawFace(B, V, pal, { mood: prev, age: st.age, decay: st.decay }, t, open, P, 1 - k);
+    if (k < 1 && prev !== "")
+      drawFace(B, V, pal, { mood: prev, age: st.age, decay: st.decay }, t, open, P, 1 - k);
     drawFace(B, V, pal, st, t, open, P, k);
   }
   extras(B, V, pal, st, t, ground, P);

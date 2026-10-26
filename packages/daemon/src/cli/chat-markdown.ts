@@ -34,8 +34,15 @@ export function renderInline(text: string, paint: Paint): string {
   let prev = " ";
   const rules: [RegExp, (m: RegExpExecArray) => string][] = [
     [/^`([^`]+)`/, (m) => paint.fg(THEME.code, m[1]!)],
-    [/^!\[([^\]]*)\]\(([^)]*)\)/, (m) => paint.dim(`[image: ${m[1] || m[2]!.split(/[\\/]/).pop()}]`)],
-    [/^\[([^\]]+)\]\(([^)]*)\)/, (m) => `${paint.fg(THEME.link, m[1]!)}${m[2] && m[2] !== m[1] ? paint.dim(` (${m[2]})`) : ""}`],
+    [
+      /^!\[([^\]]*)\]\(([^)]*)\)/,
+      (m) => paint.dim(`[image: ${m[1] || m[2]!.split(/[\\/]/).pop()}]`),
+    ],
+    [
+      /^\[([^\]]+)\]\(([^)]*)\)/,
+      (m) =>
+        `${paint.fg(THEME.link, m[1]!)}${m[2] && m[2] !== m[1] ? paint.dim(` (${m[2]})`) : ""}`,
+    ],
     [/^\*\*\*([^*]+)\*\*\*/, (m) => paint.bold(paint.italic(m[1]!))],
     [/^\*\*([^*]+?)\*\*/, (m) => paint.bold(m[1]!)],
     [/^__([^_]+?)__/, (m) => paint.bold(m[1]!)],
@@ -71,10 +78,20 @@ export interface MarkdownState {
  * One complete markdown line, or undefined for a line that draws nothing (a
  * closing fence).
  */
-export function renderMarkdownLine(line: string, state: MarkdownState, paint: Paint, columns = 80): string | undefined {
+export function renderMarkdownLine(
+  line: string,
+  state: MarkdownState,
+  paint: Paint,
+  columns = 80,
+): string | undefined {
   const fence = /^\s*(```+|~~~+)\s*([\w+#.-]*)/.exec(line);
   if (state.fence) {
-    if (fence && fence[1]!.startsWith(state.fence[0]!) && fence[1]!.length >= state.fence.length && !fence[2]) {
+    if (
+      fence &&
+      fence[1]!.startsWith(state.fence[0]!) &&
+      fence[1]!.length >= state.fence.length &&
+      !fence[2]
+    ) {
       state.fence = undefined;
       return undefined;
     }
@@ -89,18 +106,22 @@ export function renderMarkdownLine(line: string, state: MarkdownState, paint: Pa
     const body = renderInline(heading[2]!.replace(/\s+#+\s*$/, ""), paint);
     return heading[1]!.length <= 2 ? paint.bold(paint.fg(THEME.primary, body)) : paint.bold(body);
   }
-  if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) return paint.fg(THEME.border, "─".repeat(Math.max(3, Math.min(40, columns - 4))));
+  if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line))
+    return paint.fg(THEME.border, "─".repeat(Math.max(3, Math.min(40, columns - 4))));
   const quote = /^\s*>\s?(.*)$/.exec(line);
-  if (quote) return `${paint.fg(THEME.border, "│")} ${paint.italic(paint.fg(THEME.textMuted, renderInline(quote[1]!, paint)))}`;
+  if (quote)
+    return `${paint.fg(THEME.border, "│")} ${paint.italic(paint.fg(THEME.textMuted, renderInline(quote[1]!, paint)))}`;
   const task = /^(\s*)[-*+]\s+\[([ xX])\]\s+(.*)$/.exec(line);
   if (task) {
     const done = task[2] !== " ";
     return `${task[1]}${paint.fg(done ? THEME.success : THEME.textDim, done ? "☑" : "☐")} ${renderInline(task[3]!, paint)}`;
   }
   const bullet = /^(\s*)[-*+]\s+(.*)$/.exec(line);
-  if (bullet) return `${bullet[1]}${paint.fg(THEME.accent, "•")} ${renderInline(bullet[2]!, paint)}`;
+  if (bullet)
+    return `${bullet[1]}${paint.fg(THEME.accent, "•")} ${renderInline(bullet[2]!, paint)}`;
   const numbered = /^(\s*)(\d+)[.)]\s+(.*)$/.exec(line);
-  if (numbered) return `${numbered[1]}${paint.fg(THEME.accent, `${numbered[2]}.`)} ${renderInline(numbered[3]!, paint)}`;
+  if (numbered)
+    return `${numbered[1]}${paint.fg(THEME.accent, `${numbered[2]}.`)} ${renderInline(numbered[3]!, paint)}`;
   return renderInline(line, paint);
 }
 
@@ -115,7 +136,8 @@ export function renderMarkdown(text: string, paint: Paint, columns = 80): string
   return out;
 }
 
-export type MarkdownOut = { kind: "line"; text: string } | { kind: "image"; src: string; alt: string };
+export type MarkdownOut =
+  { kind: "line"; text: string } | { kind: "image"; src: string; alt: string };
 
 /**
  * One assistant reply as it streams. Feed it chunks; it hands back finished
@@ -148,8 +170,10 @@ export class MarkdownStream {
     }
     this.blankRun = 0;
     const drawn = renderMarkdownLine(raw, this.state, this.paint, this.columns());
-    const out: MarkdownOut[] = drawn === undefined ? [] : [{ kind: "line", text: `${this.prefix()}${drawn}` }];
-    if (!this.state.fence) for (const image of markdownImages(raw)) out.push({ kind: "image", ...image });
+    const out: MarkdownOut[] =
+      drawn === undefined ? [] : [{ kind: "line", text: `${this.prefix()}${drawn}` }];
+    if (!this.state.fence)
+      for (const image of markdownImages(raw)) out.push({ kind: "image", ...image });
     return out;
   }
 

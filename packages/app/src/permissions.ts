@@ -37,9 +37,7 @@ export function toPermissionRequest(requestId: string, params: unknown): Permiss
     requestId,
     title: fields.toolCall?.title ?? "The agent needs your approval",
     options:
-      Array.isArray(fields.options) && fields.options.length > 0
-        ? fields.options
-        : DEFAULT_OPTIONS,
+      Array.isArray(fields.options) && fields.options.length > 0 ? fields.options : DEFAULT_OPTIONS,
   };
 }
 
@@ -63,9 +61,7 @@ export function readPermissionRequest(payload: unknown): PermissionRequest | und
  * which is a fact worth carrying: it is what dismisses a sheet the user
  * answered on the desktop while this phone was offline.
  */
-export function pendingPermission(
-  permissions: unknown,
-): PermissionRequest | undefined | null {
+export function pendingPermission(permissions: unknown): PermissionRequest | undefined | null {
   if (!Array.isArray(permissions)) return undefined;
   const open = permissions.filter(
     (entry): entry is { requestId: string; params?: unknown } =>

@@ -190,7 +190,9 @@ async function cmdToggle(id: string | undefined, enabled: boolean): Promise<numb
   for (const line of r.intro("pew2 agents", enabled ? "turning one on" : "turning one off")) {
     console.log(line);
   }
-  const mark = enabled ? style.hex(PALETTE.success, glyph.tick) : style.hex(PALETTE.faint, glyph.dot);
+  const mark = enabled
+    ? style.hex(PALETTE.success, glyph.tick)
+    : style.hex(PALETTE.faint, glyph.dot);
   console.log(r.line(`${mark} ${style.bold(match.manifest.name)}`));
   console.log(
     r.line(
@@ -198,7 +200,10 @@ async function cmdToggle(id: string | undefined, enabled: boolean): Promise<numb
     ),
   );
   for (const line of r.outro(
-    style.hex(PALETTE.faint, `Reverse it with ${style.bold(`pew2 providers ${enabled ? "disable" : "enable"} ${id}`)}.`),
+    style.hex(
+      PALETTE.faint,
+      `Reverse it with ${style.bold(`pew2 providers ${enabled ? "disable" : "enable"} ${id}`)}.`,
+    ),
   )) {
     console.log(line);
   }
@@ -243,7 +248,6 @@ async function cmdValidate() {
   }
   return 0;
 }
-
 
 async function cmdSetup(flags: Set<string>) {
   const json = flags.has("--json");
@@ -594,7 +598,11 @@ async function cmdAdd(id: string | undefined) {
     return 1;
   }
   if (!/^[a-z][a-z0-9-]*$/.test(id)) {
-    console.error(bad(`'${id}' is not a valid id: lowercase letters, digits and hyphens, starting with a letter.`));
+    console.error(
+      bad(
+        `'${id}' is not a valid id: lowercase letters, digits and hyphens, starting with a letter.`,
+      ),
+    );
     return 1;
   }
 
@@ -636,7 +644,11 @@ async function cmdVerify(id: string | undefined, flags: Set<string>) {
 
   const targets = id ? providers.filter((p) => p.manifest.id === id) : providers;
   if (id && targets.length === 0) {
-    console.error(bad(`No provider with id '${id}'. Known: ${providers.map((p) => p.manifest.id).join(", ") || "(none)"}`));
+    console.error(
+      bad(
+        `No provider with id '${id}'. Known: ${providers.map((p) => p.manifest.id).join(", ") || "(none)"}`,
+      ),
+    );
     return 1;
   }
 
@@ -648,7 +660,9 @@ async function cmdVerify(id: string | undefined, flags: Set<string>) {
     if (json) continue;
 
     if (report.status === "ok") {
-      console.log(`${GREEN}ok${RESET} ${DIM}session=${report.sessionId} updates=${report.updates}${RESET}`);
+      console.log(
+        `${GREEN}ok${RESET} ${DIM}session=${report.sessionId} updates=${report.updates}${RESET}`,
+      );
     } else if (report.status === "skipped") {
       console.log(`${YELLOW}skipped${RESET} — ${report.detail}`);
     } else {

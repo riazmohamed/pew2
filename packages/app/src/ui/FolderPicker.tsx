@@ -8,7 +8,13 @@ import { memo, useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { StageScroll } from "./stage/StageScroll";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import Reanimated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import Reanimated, {
+  FadeIn,
+  FadeOut,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { useReducedMotion } from "./useReducedMotion";
 import { Led } from "./stage/Led";
 import { StageButton } from "./stage/StageButton";
@@ -43,7 +49,16 @@ function lastSegment(path: string): string {
   return parts[parts.length - 1] ?? path;
 }
 
-function FolderPickerView({ chosen, onChange, browse, onBrowse: browseTo, online = true, allowFiles = false, hideChosen = false, onPickPhoneFiles }: FolderPickerProps) {
+function FolderPickerView({
+  chosen,
+  onChange,
+  browse,
+  onBrowse: browseTo,
+  online = true,
+  allowFiles = false,
+  hideChosen = false,
+  onPickPhoneFiles,
+}: FolderPickerProps) {
   // Phone files replace browsing the computer for files: the computer listing
   // is then folders only.
   const desktopFiles = allowFiles && !onPickPhoneFiles;
@@ -84,7 +99,8 @@ function FolderPickerView({ chosen, onChange, browse, onBrowse: browseTo, online
   const entries = (browse?.entries ?? [])
     .filter((entry) => !allowFiles || mode === "files" || entry.kind !== "file")
     .sort((a, b) => (mode === "files" ? Number(b.kind === "file") - Number(a.kind === "file") : 0));
-  const isFile = (path: string) => browse?.entries.some((entry) => entry.path === path && entry.kind === "file") === true;
+  const isFile = (path: string) =>
+    browse?.entries.some((entry) => entry.path === path && entry.kind === "file") === true;
   const add = (path: string) => {
     if (chosen.includes(path)) return;
     haptics.tap();
@@ -93,27 +109,32 @@ function FolderPickerView({ chosen, onChange, browse, onBrowse: browseTo, online
 
   return (
     <View style={styles.host}>
-      {!hideChosen && chosen.map((path) => (
-        <Dissolve key={path}>
-        <View style={styles.chosen}>
-          <Ionicons name={isFile(path) ? "document-text" : "folder"} size={14} color={theme.color.accent} />
-          <Text style={styles.chosenText} numberOfLines={1}>
-            {path}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Remove ${lastSegment(path)}`}
-            hitSlop={12}
-            onPress={() => {
-              haptics.tap();
-              onChange(chosen.filter((entry) => entry !== path));
-            }}
-          >
-            <Ionicons name="close" size={14} color={theme.color.textDim} />
-          </Pressable>
-        </View>
-        </Dissolve>
-      ))}
+      {!hideChosen &&
+        chosen.map((path) => (
+          <Dissolve key={path}>
+            <View style={styles.chosen}>
+              <Ionicons
+                name={isFile(path) ? "document-text" : "folder"}
+                size={14}
+                color={theme.color.accent}
+              />
+              <Text style={styles.chosenText} numberOfLines={1}>
+                {path}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${lastSegment(path)}`}
+                hitSlop={12}
+                onPress={() => {
+                  haptics.tap();
+                  onChange(chosen.filter((entry) => entry !== path));
+                }}
+              >
+                <Ionicons name="close" size={14} color={theme.color.textDim} />
+              </Pressable>
+            </View>
+          </Dissolve>
+        ))}
       <View style={styles.browser}>
         {allowFiles && (
           <View
@@ -125,7 +146,14 @@ function FolderPickerView({ chosen, onChange, browse, onBrowse: browseTo, online
           >
             {/* One highlight that slides between the two tabs, on a spring,
                 instead of the selected one simply switching colour. */}
-            <Reanimated.View style={[styles.modeThumb, { borderColor: agent, backgroundColor: withAlpha(agent, 0.1) }, thumbStyle]} pointerEvents="none" />
+            <Reanimated.View
+              style={[
+                styles.modeThumb,
+                { borderColor: agent, backgroundColor: withAlpha(agent, 0.1) },
+                thumbStyle,
+              ]}
+              pointerEvents="none"
+            />
             {(["folders", "files"] as const).map((m) => (
               <Pressable
                 key={m}
@@ -138,14 +166,22 @@ function FolderPickerView({ chosen, onChange, browse, onBrowse: browseTo, online
                 }}
                 style={styles.mode}
               >
-                <Ionicons name={m === "files" ? "document-text-outline" : "folder-outline"} size={13} color={mode === m ? agent : theme.color.textDim} />
+                <Ionicons
+                  name={m === "files" ? "document-text-outline" : "folder-outline"}
+                  size={13}
+                  color={mode === m ? agent : theme.color.textDim}
+                />
                 <Led tone={mode === m ? "agent" : "dim"}>{m === "files" ? "Files" : "Folders"}</Led>
               </Pressable>
             ))}
           </View>
         )}
         {mode === "files" && onPickPhoneFiles ? (
-          <Reanimated.View key="phone" style={styles.phone} entering={reduce ? undefined : FadeIn.duration(200)}>
+          <Reanimated.View
+            key="phone"
+            style={styles.phone}
+            entering={reduce ? undefined : FadeIn.duration(200)}
+          >
             <Ionicons name="phone-portrait-outline" size={26} color={agent} />
             <Led tone="dim">From this phone</Led>
             <StageButton
@@ -158,79 +194,120 @@ function FolderPickerView({ chosen, onChange, browse, onBrowse: browseTo, online
             />
           </Reanimated.View>
         ) : (
-        <>
-        <View style={styles.bar}>
-          {browse?.parent !== undefined ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Up one folder" hitSlop={10} onPress={() => { haptics.tap(); onBrowse(browse.parent); }}>
-              <Ionicons name="arrow-up" size={16} color={theme.color.textDim} />
-            </Pressable>
-          ) : null}
-          <View style={styles.where}>
-            <Led tone="dim">{here ? lastSegment(here) : mode === "files" ? "Open a folder for files" : "Suggested"}</Led>
-          </View>
-          {here && !chosen.includes(here) && mode === "folders" ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Add this folder" onPress={() => add(here)} hitSlop={10}>
-              <Led>+ Add folder</Led>
-            </Pressable>
-          ) : null}
-        </View>
-        <StageScroll rail="inside" style={styles.list} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-          {/* Keyed by mode: switching tabs dissolves the old list out and the
-              new one in, rather than swapping rows in place. */}
-          <Reanimated.View key={mode} entering={reduce ? undefined : FadeIn.duration(200)} exiting={reduce ? undefined : FadeOut.duration(120)}>
-          {entries.map((entry) => (
-            <View key={entry.path} style={[styles.entry, entries[0] !== entry && styles.entryRule]}>
-              <Pressable
-                style={styles.entryMain}
-                accessibilityRole="button"
-                accessibilityLabel={entry.kind === "file" ? `Add ${entry.name}` : `Open ${entry.name}`}
-                // A file is never browsed into: tapping it chooses it instead.
-                onPress={() => {
-                  if (entry.kind === "file") add(entry.path);
-                  else {
-                    haptics.select();
-                    onBrowse(entry.path);
-                  }
-                }}
-              >
-                <Ionicons
-                  name={entry.kind === "file" ? "document-text-outline" : entry.repo ? "git-branch-outline" : "folder-outline"}
-                  size={15}
-                  color={theme.color.textDim}
-                />
-                <Text style={styles.entryName} numberOfLines={1}>
-                  {entry.name}
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Add ${entry.name}`}
-                hitSlop={10}
-                disabled={chosen.includes(entry.path)}
-                onPress={() => add(entry.path)}
-              >
-                <Ionicons
-                  name={chosen.includes(entry.path) ? "checkmark-circle" : "add-circle-outline"}
-                  size={20}
-                  color={chosen.includes(entry.path) ? agent : theme.color.textDim}
-                />
-              </Pressable>
+          <>
+            <View style={styles.bar}>
+              {browse?.parent !== undefined ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Up one folder"
+                  hitSlop={10}
+                  onPress={() => {
+                    haptics.tap();
+                    onBrowse(browse.parent);
+                  }}
+                >
+                  <Ionicons name="arrow-up" size={16} color={theme.color.textDim} />
+                </Pressable>
+              ) : null}
+              <View style={styles.where}>
+                <Led tone="dim">
+                  {here
+                    ? lastSegment(here)
+                    : mode === "files"
+                      ? "Open a folder for files"
+                      : "Suggested"}
+                </Led>
+              </View>
+              {here && !chosen.includes(here) && mode === "folders" ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Add this folder"
+                  onPress={() => add(here)}
+                  hitSlop={10}
+                >
+                  <Led>+ Add folder</Led>
+                </Pressable>
+              ) : null}
             </View>
-          ))}
-          </Reanimated.View>
-          {entries.length === 0 && (
-            <Led tone="dim" style={styles.empty}>
-              {browse?.loading
-                ? "Looking…"
-                : browse?.unsent || !online
-                  ? "Waiting for your computer…"
-                  : browse?.refused
-                    ? "Can't open that folder"
-                    : "Nothing here"}
-            </Led>
-          )}
-        </StageScroll>
-        </>
+            <StageScroll
+              rail="inside"
+              style={styles.list}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Keyed by mode: switching tabs dissolves the old list out and the
+              new one in, rather than swapping rows in place. */}
+              <Reanimated.View
+                key={mode}
+                entering={reduce ? undefined : FadeIn.duration(200)}
+                exiting={reduce ? undefined : FadeOut.duration(120)}
+              >
+                {entries.map((entry) => (
+                  <View
+                    key={entry.path}
+                    style={[styles.entry, entries[0] !== entry && styles.entryRule]}
+                  >
+                    <Pressable
+                      style={styles.entryMain}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        entry.kind === "file" ? `Add ${entry.name}` : `Open ${entry.name}`
+                      }
+                      // A file is never browsed into: tapping it chooses it instead.
+                      onPress={() => {
+                        if (entry.kind === "file") add(entry.path);
+                        else {
+                          haptics.select();
+                          onBrowse(entry.path);
+                        }
+                      }}
+                    >
+                      <Ionicons
+                        name={
+                          entry.kind === "file"
+                            ? "document-text-outline"
+                            : entry.repo
+                              ? "git-branch-outline"
+                              : "folder-outline"
+                        }
+                        size={15}
+                        color={theme.color.textDim}
+                      />
+                      <Text style={styles.entryName} numberOfLines={1}>
+                        {entry.name}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Add ${entry.name}`}
+                      hitSlop={10}
+                      disabled={chosen.includes(entry.path)}
+                      onPress={() => add(entry.path)}
+                    >
+                      <Ionicons
+                        name={
+                          chosen.includes(entry.path) ? "checkmark-circle" : "add-circle-outline"
+                        }
+                        size={20}
+                        color={chosen.includes(entry.path) ? agent : theme.color.textDim}
+                      />
+                    </Pressable>
+                  </View>
+                ))}
+              </Reanimated.View>
+              {entries.length === 0 && (
+                <Led tone="dim" style={styles.empty}>
+                  {browse?.loading
+                    ? "Looking…"
+                    : browse?.unsent || !online
+                      ? "Waiting for your computer…"
+                      : browse?.refused
+                        ? "Can't open that folder"
+                        : "Nothing here"}
+                </Led>
+              )}
+            </StageScroll>
+          </>
         )}
       </View>
     </View>
@@ -239,7 +316,12 @@ function FolderPickerView({ chosen, onChange, browse, onBrowse: browseTo, online
 
 const styles = StyleSheet.create({
   host: { gap: theme.space(2) },
-  chosen: { flexDirection: "row", alignItems: "center", gap: theme.space(2), paddingHorizontal: theme.space(1) },
+  chosen: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(2),
+    paddingHorizontal: theme.space(1),
+  },
   chosenText: { flex: 1, color: theme.color.text, fontSize: theme.font.small },
   // Stage: a dashed box on the strip colour, like the other pickers' panels.
   browser: {
@@ -270,14 +352,31 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: theme.radius.sm,
   },
-  modeThumb: { position: "absolute", top: 4, bottom: 4, left: 0, borderRadius: theme.radius.md, borderWidth: 1 },
+  modeThumb: {
+    position: "absolute",
+    top: 4,
+    bottom: 4,
+    left: 0,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+  },
   list: { maxHeight: 200 },
-  entry: { flexDirection: "row", alignItems: "center", paddingHorizontal: theme.space(3), minHeight: theme.size.touch },
+  entry: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: theme.space(3),
+    minHeight: theme.size.touch,
+  },
   entryRule: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.stage.dash },
   entryMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: theme.space(2) },
   entryName: { flex: 1, color: theme.color.text, fontSize: theme.font.body },
   empty: { padding: theme.space(3) },
-  phone: { alignItems: "center", gap: theme.space(2), paddingVertical: theme.space(6), paddingHorizontal: theme.space(4) },
+  phone: {
+    alignItems: "center",
+    gap: theme.space(2),
+    paddingVertical: theme.space(6),
+    paddingHorizontal: theme.space(4),
+  },
   phoneBtn: { alignSelf: "stretch", marginTop: theme.space(2) },
 });
 

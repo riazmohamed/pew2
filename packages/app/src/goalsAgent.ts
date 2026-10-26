@@ -25,8 +25,13 @@ export function ggStrips(
   extensions: StripExtensions | undefined,
   hasSession: boolean,
 ): { autopilot: boolean; checklist: boolean; plan: boolean } {
-  if (!hasSession || isGoalsProvider(providerId)) return { autopilot: false, checklist: false, plan: false };
-  return { autopilot: extensions?.autopilot === true, checklist: extensions?.checklist === true, plan: true };
+  if (!hasSession || isGoalsProvider(providerId))
+    return { autopilot: false, checklist: false, plan: false };
+  return {
+    autopilot: extensions?.autopilot === true,
+    checklist: extensions?.checklist === true,
+    plan: true,
+  };
 }
 
 /** A goal name suggested from the first few words of the goal text. */

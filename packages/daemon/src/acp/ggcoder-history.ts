@@ -64,7 +64,8 @@ async function countFile(filePath: string, expectedSessionId: string): Promise<n
         lastMessageId = entry.id;
         messages.set(entry.id, {
           parentId: typeof entry.parentId === "string" ? entry.parentId : null,
-          role: message?.role === "user" || message?.role === "assistant" ? message.role : undefined,
+          role:
+            message?.role === "user" || message?.role === "assistant" ? message.role : undefined,
           hasText: hasVisibleText(message?.content),
         });
       }
@@ -183,7 +184,13 @@ const MARKER_PHASES: Record<string, KenMarker["phase"]> = {
 };
 
 function readMarker(data: unknown): (KenMarker & { afterMessageCount: number }) | undefined {
-  const p = data as { version?: unknown; phase?: unknown; reason?: unknown; body?: unknown; afterMessageCount?: unknown } | null;
+  const p = data as {
+    version?: unknown;
+    phase?: unknown;
+    reason?: unknown;
+    body?: unknown;
+    afterMessageCount?: unknown;
+  } | null;
   if (p?.version !== 1 || typeof p.phase !== "string") return undefined;
   const phase = MARKER_PHASES[p.phase];
   if (!phase) return undefined;
@@ -219,7 +226,9 @@ async function readCheckpoint(filePath: string): Promise<DisplayCheckpoint | und
   let lastMessageId: string | undefined;
   // File order of messages and Ken markers: a marker's anchor can only be
   // trusted up to where it was actually written (GG Coder's resolveAnchor).
-  const order: ({ message: string; system: boolean } | { marker: KenMarker & { afterMessageCount: number } })[] = [];
+  const order: (
+    { message: string; system: boolean } | { marker: KenMarker & { afterMessageCount: number } }
+  )[] = [];
 
   for (const line of text.split("\n")) {
     if (!line) continue;
@@ -420,7 +429,11 @@ function reconstructCheckpoints(checkpoints: DisplayCheckpoint[]): {
         continue;
       }
       carried = [];
-      messages.push(markers.length > 0 ? { ...message, markersBefore: markers } : { ...message, markersBefore: undefined });
+      messages.push(
+        markers.length > 0
+          ? { ...message, markersBefore: markers }
+          : { ...message, markersBefore: undefined },
+      );
     }
     const checkpointTrailing = [...carried, ...checkpoint.trailing];
     const keys = messages.map((message) =>
@@ -560,7 +573,11 @@ export function messageDisplayUpdates(
   }
   if (message.role === "tool") {
     if (options.tools && Array.isArray(message.content)) {
-      for (const block of message.content as { type?: string; toolCallId?: unknown; isError?: unknown }[]) {
+      for (const block of message.content as {
+        type?: string;
+        toolCallId?: unknown;
+        isError?: unknown;
+      }[]) {
         if (block?.type === "tool_result" && typeof block.toolCallId === "string") {
           updates.push({
             sessionUpdate: "tool_call_update",
@@ -570,7 +587,10 @@ export function messageDisplayUpdates(
         }
       }
     }
-    const images = [...historyImages(message.content, resolveData), ...historyToolImages(message.content, resolveData)];
+    const images = [
+      ...historyImages(message.content, resolveData),
+      ...historyToolImages(message.content, resolveData),
+    ];
     if (images.length > 0) {
       updates.push({ sessionUpdate: "agent_message_chunk", content: images });
     }
@@ -591,7 +611,10 @@ export function messageDisplayUpdates(
   if (message.role === "assistant") {
     const thought = historyThoughts(message.content);
     if (thought) {
-      updates.push({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: thought } });
+      updates.push({
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "text", text: thought },
+      });
     }
     const text = messageText(message.content);
     const images = historyImages(message.content, resolveData);
@@ -602,7 +625,12 @@ export function messageDisplayUpdates(
       });
     }
     if (options.tools && Array.isArray(message.content)) {
-      for (const block of message.content as { type?: string; id?: unknown; name?: unknown; args?: unknown }[]) {
+      for (const block of message.content as {
+        type?: string;
+        id?: unknown;
+        name?: unknown;
+        args?: unknown;
+      }[]) {
         if (block?.type === "tool_call" && typeof block.id === "string") {
           updates.push({
             sessionUpdate: "tool_call",

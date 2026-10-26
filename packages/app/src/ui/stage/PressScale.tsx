@@ -8,7 +8,13 @@
  * screen they open makes its own.
  */
 import { memo, type ReactNode } from "react";
-import { Pressable, type AccessibilityRole, type AccessibilityState, type StyleProp, type ViewStyle } from "react-native";
+import {
+  Pressable,
+  type AccessibilityRole,
+  type AccessibilityState,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import { haptics, type Feel } from "../haptics";
 import { useReducedMotion } from "../useReducedMotion";
@@ -31,7 +37,17 @@ export interface PressScaleProps {
   children: ReactNode;
 }
 
-function PressScaleView({ onPress, onLongPress, feel = "tap", disabled = false, style, children, hitSlop, accessibilityRole = "button", ...a11y }: PressScaleProps) {
+function PressScaleView({
+  onPress,
+  onLongPress,
+  feel = "tap",
+  disabled = false,
+  style,
+  children,
+  hitSlop,
+  accessibilityRole = "button",
+  ...a11y
+}: PressScaleProps) {
   const reduce = useReducedMotion();
   const scale = useSharedValue(1);
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));

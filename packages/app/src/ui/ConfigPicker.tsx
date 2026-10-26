@@ -83,8 +83,12 @@ function ConfigPickerView({ visible, onClose, options, onSelect }: ConfigPickerP
   const levelCount = level?.options?.length ?? 0;
   const fraction = levelCount > 1 ? Math.max(0, levelIndex) / (levelCount - 1) : 0;
 
-  const title = list ? (list.name || "Mode") : (valueName(model) ?? "Model");
-  const sub = list ? undefined : [model?.name, level ? `${valueName(level) ?? ""} thinking` : undefined].filter(Boolean).join(" · ");
+  const title = list ? list.name || "Mode" : (valueName(model) ?? "Model");
+  const sub = list
+    ? undefined
+    : [model?.name, level ? `${valueName(level) ?? ""} thinking` : undefined]
+        .filter(Boolean)
+        .join(" · ");
 
   const pick = (option: ConfigOption, value: string) => {
     haptics.select();
@@ -112,12 +116,21 @@ function ConfigPickerView({ visible, onClose, options, onSelect }: ConfigPickerP
       keepKeyboard
     >
       <View style={styles.body}>
-        {!!sub && <Text style={styles.sub} numberOfLines={1}>{sub}</Text>}
+        {!!sub && (
+          <Text style={styles.sub} numberOfLines={1}>
+            {sub}
+          </Text>
+        )}
 
         {!chips && !list && <Text style={styles.sub}>This agent offers no model options.</Text>}
 
         {chips && (
-          <ModelList option={chips} color={agent} visible={visible} onPick={(value) => pick(chips, value)} />
+          <ModelList
+            option={chips}
+            color={agent}
+            visible={visible}
+            onPick={(value) => pick(chips, value)}
+          />
         )}
 
         {level && levelCount > 0 && (
@@ -144,7 +157,9 @@ function ConfigPickerView({ visible, onClose, options, onSelect }: ConfigPickerP
                     onPress={() => pick(list, value.value)}
                     style={({ pressed }) => [styles.row, pressed && styles.pressed]}
                   >
-                    <Text style={styles.rowText} numberOfLines={1}>{value.name}</Text>
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {value.name}
+                    </Text>
                     {selected && <Ionicons name="checkmark" size={18} color={agent} />}
                   </Pressable>
                 </View>
@@ -173,7 +188,9 @@ function ModelList({ option, color, visible, onPick }: ModelListProps) {
   const all = option.options ?? [];
   const needle = query.trim().toLowerCase();
   const shown = needle
-    ? all.filter((v) => `${v.name} ${v.value} ${v.description ?? ""}`.toLowerCase().includes(needle))
+    ? all.filter((v) =>
+        `${v.name} ${v.value} ${v.description ?? ""}`.toLowerCase().includes(needle),
+      )
     : all;
   const selectedIndex = all.findIndex((v) => v.value === option.currentValue);
   // Opens with the current model in view (second row, so there is context above).
@@ -183,7 +200,9 @@ function ModelList({ option, color, visible, onPick }: ModelListProps) {
     <View style={styles.modelWrap}>
       {all.length > FILTER_AFTER && (
         <View style={styles.filter}>
-          <Led tone="agent" color={color}>/</Led>
+          <Led tone="agent" color={color}>
+            /
+          </Led>
           <TextInput
             value={query}
             onChangeText={setQuery}
@@ -217,9 +236,13 @@ function ModelList({ option, color, visible, onPick }: ModelListProps) {
                 style={({ pressed }) => [styles.modelRow, pressed && styles.pressed]}
               >
                 <View style={styles.modelText}>
-                  <Text style={[styles.modelName, selected && { color }]} numberOfLines={1}>{value.name}</Text>
+                  <Text style={[styles.modelName, selected && { color }]} numberOfLines={1}>
+                    {value.name}
+                  </Text>
                   {!!value.description && (
-                    <Text style={styles.modelDetail} numberOfLines={1}>{value.description}</Text>
+                    <Text style={styles.modelDetail} numberOfLines={1}>
+                      {value.description}
+                    </Text>
                   )}
                 </View>
                 {selected && <Ionicons name="checkmark" size={18} color={color} />}
@@ -229,7 +252,9 @@ function ModelList({ option, color, visible, onPick }: ModelListProps) {
           return reduceMotion || i >= 6 ? (
             <View key={value.value}>{row}</View>
           ) : (
-            <Dissolve key={value.value} kind="row" delay={i * 40}>{row}</Dissolve>
+            <Dissolve key={value.value} kind="row" delay={i * 40}>
+              {row}
+            </Dissolve>
           );
         })}
       </StageScroll>

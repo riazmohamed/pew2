@@ -17,7 +17,12 @@ import type { FxScene } from "../launchFx";
 import { sounds } from "./sounds";
 import { ONBOARDING_SOUNDS, type SoundName } from "../soundsPolicy";
 import { Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
@@ -39,7 +44,16 @@ import { ensureNotificationPermission } from "./notifier";
 import { writeToClipboard } from "./clipboard";
 import { ALERTS_LINE, ALERTS_TITLE } from "../notificationAsk";
 import { saveAlertsDismissedAt, saveVoiceConsent } from "../preferences";
-import { INSTALL_COMMAND, INSTALL_SHOWN, PAIR_COMMAND, SETUP_COMMAND, STEPS, previousStep, stepIndex, type Step } from "../onboarding";
+import {
+  INSTALL_COMMAND,
+  INSTALL_SHOWN,
+  PAIR_COMMAND,
+  SETUP_COMMAND,
+  STEPS,
+  previousStep,
+  stepIndex,
+  type Step,
+} from "../onboarding";
 import { DUR, EASE } from "../motion";
 import { ALERT_EVERY_MS, PEW_SHIFT, alertsMood, installAt, voiceAt } from "../onboardingScenes";
 import { AlertsScene, InstallScene, VoiceScene, useSceneClock } from "./OnboardingScenes";
@@ -50,7 +64,6 @@ import { usePairing } from "./usePairing";
 import type { Pairing } from "../pairingLink";
 
 const CORAL = pewInk();
-
 
 interface Props {
   step: Step;
@@ -184,7 +197,11 @@ export function Onboarding({ step, repair, onNext, onBack, onPaired, onDevGo }: 
   // One stage for every step, Pew the same size and dead centre in it.
   // Install carries three commands under its words, so its stage gives up the
   // room they need; the stage height animates with Pew, so nothing jumps.
-  const stageH = Math.round(step === "install" ? Math.min(330, Math.max(260, height * 0.34)) : Math.min(380, Math.max(300, height * 0.4)));
+  const stageH = Math.round(
+    step === "install"
+      ? Math.min(330, Math.max(260, height * 0.34))
+      : Math.min(380, Math.max(300, height * 0.4)),
+  );
   const pewFull = Math.round(Math.min(200, Math.max(160, height * 0.22)));
   // Install's terminal fills the top of the stage: Pew draws smaller there,
   // still dead centre, so its wire has room. The change animates (Pew scales).
@@ -196,15 +213,24 @@ export function Onboarding({ step, repair, onNext, onBack, onPaired, onDevGo }: 
   const size = useSharedValue(pewScale);
   useEffect(() => {
     const [a, b, c, d] = EASE.out;
-    shift.value = withTiming(PEW_SHIFT[step], { duration: DUR.dissolve, easing: Easing.bezier(a, b, c, d) });
+    shift.value = withTiming(PEW_SHIFT[step], {
+      duration: DUR.dissolve,
+      easing: Easing.bezier(a, b, c, d),
+    });
     pewOn.value = withTiming(ownPew ? 0 : 1, { duration: DUR.dissolve });
-    size.value = withTiming(pewScale, { duration: DUR.dissolve, easing: Easing.bezier(a, b, c, d) });
+    size.value = withTiming(pewScale, {
+      duration: DUR.dissolve,
+      easing: Easing.bezier(a, b, c, d),
+    });
   }, [step, ownPew, pewScale, shift, pewOn, size]);
   // Pew sits low in the stage, just above the words; scenes use the room above.
   const drop = Math.round(stageH * 0.12);
   const pewStyle = useAnimatedStyle(() => ({
     opacity: pewOn.value,
-    transform: [{ translateY: shift.value + drop }, { scale: (0.92 + pewOn.value * 0.08) * size.value }],
+    transform: [
+      { translateY: shift.value + drop },
+      { scale: (0.92 + pewOn.value * 0.08) * size.value },
+    ],
   }));
   const ink = CORAL;
   const glowCY = stageH / 2 + drop + PEW_SHIFT[step] + (PEW_BODY_CY - 0.5) * pew;
@@ -212,11 +238,19 @@ export function Onboarding({ step, repair, onNext, onBack, onPaired, onDevGo }: 
   return (
     <View style={styles.root}>
       <DotGrid />
-      <ScreenHeader leading={back ? <HeaderButton glyph="back" label="Back" onPress={() => onBack(back)} /> : null} />
+      <ScreenHeader
+        leading={
+          back ? <HeaderButton glyph="back" label="Back" onPress={() => onBack(back)} /> : null
+        }
+      />
       {repair ? <View style={styles.dotsSpace} /> : <Dots step={step} />}
 
       <View style={[styles.stage, { height: stageH }]}>
-        <CallingFx scene={{ w: width, h: stageH, cx: width / 2, cy: glowCY, kenR: pew * 0.29 }} color={ink} on={step === "welcome"} />
+        <CallingFx
+          scene={{ w: width, h: stageH, cx: width / 2, cy: glowCY, kenR: pew * 0.29 }}
+          color={ink}
+          on={step === "welcome"}
+        />
         {step === "alerts" ? <AlertsScene ms={ms} /> : null}
         {step === "install" ? <InstallScene ms={ms} color={ink} /> : null}
         <Animated.View style={[styles.pewSpot, pewStyle]} pointerEvents={ownPew ? "none" : "auto"}>
@@ -257,33 +291,46 @@ export function Onboarding({ step, repair, onNext, onBack, onPaired, onDevGo }: 
         <Legal />
       </View>
 
-        {step === "done" ? (
-          // The last step: the whole screen is the hold area, Pew in its middle
-          // where a thumb rests (the goal launch's hold).
-          <Dissolve kind="in" style={[styles.launch, { paddingBottom: insets.bottom + theme.space(6) }]}>
-            <LaunchPad
-              size={Math.round(Math.min(200, width * 0.48))}
-              captionBelow
-              ready
-              pending={launching}
-              plain={plain}
-              fx={fx}
-              color={ink}
-              idleMood="celebrate"
-              labels={{ idle: "Hold Pew to start", holding: "Keep holding", pending: "Starting", notReady: "" }}
-              plainLabel="Open pew2"
-              a11yLabel="Hold to open pew2"
-              onScene={setScene}
-              onFire={fire}
-              onLaunch={onNext}
-            />
-          </Dissolve>
-        ) : null}
-      {step === "done" && scene && !plain ? <LaunchFx scene={scene} color={ink} values={fx} /> : null}
+      {step === "done" ? (
+        // The last step: the whole screen is the hold area, Pew in its middle
+        // where a thumb rests (the goal launch's hold).
+        <Dissolve
+          kind="in"
+          style={[styles.launch, { paddingBottom: insets.bottom + theme.space(6) }]}
+        >
+          <LaunchPad
+            size={Math.round(Math.min(200, width * 0.48))}
+            captionBelow
+            ready
+            pending={launching}
+            plain={plain}
+            fx={fx}
+            color={ink}
+            idleMood="celebrate"
+            labels={{
+              idle: "Hold Pew to start",
+              holding: "Keep holding",
+              pending: "Starting",
+              notReady: "",
+            }}
+            plainLabel="Open pew2"
+            a11yLabel="Hold to open pew2"
+            onScene={setScene}
+            onFire={fire}
+            onLaunch={onNext}
+          />
+        </Dissolve>
+      ) : null}
+      {step === "done" && scene && !plain ? (
+        <LaunchFx scene={scene} color={ink} values={fx} />
+      ) : null}
       {/* DEVELOPMENT ONLY (never in a release build): step through every page,
           the Pair step included, without scanning anything. */}
       {__DEV__ ? (
-        <View style={[styles.devNav, { top: insets.top + theme.space(14) }]} pointerEvents="box-none">
+        <View
+          style={[styles.devNav, { top: insets.top + theme.space(14) }]}
+          pointerEvents="box-none"
+        >
           {(["prev", "next"] as const).map((dir) => {
             const i = STEPS.indexOf(step) + (dir === "next" ? 1 : -1);
             const to = STEPS[i];
@@ -315,7 +362,11 @@ export function Onboarding({ step, repair, onNext, onBack, onPaired, onDevGo }: 
 function Dots({ step }: { step: Step }) {
   const at = stepIndex(step);
   return (
-    <View style={styles.dots} accessibilityRole="progressbar" accessibilityLabel={`Step ${at + 1} of ${STEPS.length}`}>
+    <View
+      style={styles.dots}
+      accessibilityRole="progressbar"
+      accessibilityLabel={`Step ${at + 1} of ${STEPS.length}`}
+    >
       {STEPS.map((s, i) => (
         <Dot key={s} on={i === at} done={i < at} />
       ))}
@@ -338,7 +389,17 @@ function Dot({ on, done }: { on: boolean; done: boolean }) {
  */
 type PairingFlow = ReturnType<typeof usePairing>;
 
-function Page({ step, onNext, part, pairing }: { step: Step; onNext: () => void; part: "words" | "actions"; pairing: PairingFlow }) {
+function Page({
+  step,
+  onNext,
+  part,
+  pairing,
+}: {
+  step: Step;
+  onNext: () => void;
+  part: "words" | "actions";
+  pairing: PairingFlow;
+}) {
   switch (step) {
     case "welcome":
       return part === "words" ? (
@@ -451,7 +512,11 @@ function AlertsPage({ onNext, part }: { onNext: () => void; part: "words" | "act
         ) : status === "denied" ? (
           <>
             <StageButton kind="secondary" color={CORAL} label="Next" onPress={onNext} />
-            <StageButton color={CORAL} label="Open Settings" onPress={() => void Linking.openSettings().catch(() => {})} />
+            <StageButton
+              color={CORAL}
+              label="Open Settings"
+              onPress={() => void Linking.openSettings().catch(() => {})}
+            />
           </>
         ) : (
           <>
@@ -545,41 +610,102 @@ function Command({ text, shown = text }: { text: string; shown?: string }) {
 /** The chat's code block look, at body size. */
 const CODE = codeBlockStyles(theme.font.body, theme.line.body);
 
-
 /** From the blast to the app: long enough for the cover to fill the screen. */
 const BLAST_TO_APP_MS = 650;
 
 const styles = StyleSheet.create({
   // DEVELOPMENT ONLY: the step-through buttons.
-  devNav: { position: "absolute", left: theme.space(2), right: theme.space(2), flexDirection: "row", justifyContent: "space-between", zIndex: 10 },
-  devButton: { paddingHorizontal: theme.space(3), paddingVertical: theme.space(2), borderRadius: 8, backgroundColor: "rgba(255, 0, 140, 0.85)" },
+  devNav: {
+    position: "absolute",
+    left: theme.space(2),
+    right: theme.space(2),
+    flexDirection: "row",
+    justifyContent: "space-between",
+    zIndex: 10,
+  },
+  devButton: {
+    paddingHorizontal: theme.space(3),
+    paddingVertical: theme.space(2),
+    borderRadius: 8,
+    backgroundColor: "rgba(255, 0, 140, 0.85)",
+  },
   devText: { color: "#fff", fontSize: theme.font.small, fontWeight: "700" },
   root: { flex: 1, backgroundColor: theme.color.bg },
   // Above the stage and footer (which are empty on this step), full screen.
   launch: { ...StyleSheet.absoluteFillObject, zIndex: 2 },
-  dots: { flexDirection: "row", justifyContent: "center", gap: theme.space(1.5), paddingTop: theme.space(2), height: 6 + theme.space(2) },
+  dots: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: theme.space(1.5),
+    paddingTop: theme.space(2),
+    height: 6 + theme.space(2),
+  },
   dotsSpace: { height: 6 + theme.space(2) },
   dot: { height: 6, borderRadius: 3, backgroundColor: CORAL },
   // One stage for every step; scenes draw inside it.
-  stage: { alignSelf: "stretch", alignItems: "center", justifyContent: "center", marginTop: theme.space(4) },
+  stage: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: theme.space(4),
+  },
   pewSpot: { alignItems: "center", justifyContent: "center" },
-  handshake: { position: "absolute", left: theme.gutter, right: theme.gutter, top: 0, bottom: 0, justifyContent: "center" },
+  handshake: {
+    position: "absolute",
+    left: theme.gutter,
+    right: theme.gutter,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+  },
   // The words sit right under the stage.
   // The words fill the space between stage and footer and never spill into it.
   // Always at least this much air between the words and the buttons.
-  words: { flex: 1, minHeight: 0, paddingHorizontal: theme.gutter, paddingTop: theme.space(4), paddingBottom: theme.space(6) },
+  words: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: theme.gutter,
+    paddingTop: theme.space(4),
+    paddingBottom: theme.space(6),
+  },
   page: { alignSelf: "stretch", alignItems: "center" },
   copy: { alignSelf: "stretch", alignItems: "center", gap: theme.space(2) },
   footer: { paddingHorizontal: theme.gutter, gap: theme.space(3) },
   footerInner: { alignSelf: "stretch" },
   // Two button slots, filled from the bottom: the main button never moves.
-  buttons: { height: STAGE_BUTTON_HEIGHT * 2 + theme.space(3), justifyContent: "flex-end", gap: theme.space(3) },
-  legal: { flexDirection: "row", justifyContent: "center", gap: theme.space(5), minHeight: theme.size.touch, alignItems: "center" },
+  buttons: {
+    height: STAGE_BUTTON_HEIGHT * 2 + theme.space(3),
+    justifyContent: "flex-end",
+    gap: theme.space(3),
+  },
+  legal: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: theme.space(5),
+    minHeight: theme.size.touch,
+    alignItems: "center",
+  },
   commands: { alignSelf: "stretch", marginTop: theme.space(4) },
-  commandRule: { height: StyleSheet.hairlineWidth, backgroundColor: theme.color.border, marginHorizontal: theme.space(3) },
+  commandRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: theme.color.border,
+    marginHorizontal: theme.space(3),
+  },
   // Compact rows: three commands fit above the footer on every phone.
-  command: { flexDirection: "row", alignItems: "center", gap: theme.space(3), minHeight: theme.size.touch, paddingLeft: theme.space(3), paddingRight: theme.space(1) },
+  command: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(3),
+    minHeight: theme.size.touch,
+    paddingLeft: theme.space(3),
+    paddingRight: theme.space(1),
+  },
   commandText: { flex: 1 },
-  copyButton: { minHeight: theme.size.touch, minWidth: theme.size.touch, alignItems: "center", justifyContent: "center" },
+  copyButton: {
+    minHeight: theme.size.touch,
+    minWidth: theme.size.touch,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   failed: { color: theme.color.danger },
 });

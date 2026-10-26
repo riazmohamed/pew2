@@ -30,7 +30,9 @@ for (const base of ["", "Please"]) {
     function Harness() {
       dictation = useDictation({
         draft: () => draft,
-        onDraftChange: (next) => { draft = next; },
+        onDraftChange: (next) => {
+          draft = next;
+        },
         onMessage: () => {},
       });
       return null;

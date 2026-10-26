@@ -18,7 +18,8 @@ interface PewRingNative {
   takeEnded(): { ring: string; reason: string }[];
 }
 
-const native = Platform.OS === "android" ? requireOptionalNativeModule<PewRingNative>("PewRing") : null;
+const native =
+  Platform.OS === "android" ? requireOptionalNativeModule<PewRingNative>("PewRing") : null;
 
 /** This build rings natively on Android (the daemon may send rings as data-only pushes). */
 export const nativeRinger = native !== null;

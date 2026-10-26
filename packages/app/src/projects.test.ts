@@ -34,11 +34,7 @@ test("the daemon's list is used as announced, newest project first", () => {
 });
 
 test("a project seen only in the sessions on screen is still offered", () => {
-  const projects = projectsForProvider(
-    [],
-    [session({ id: "1", cwd: "/a/fresh" })],
-    "claude-code",
-  );
+  const projects = projectsForProvider([], [session({ id: "1", cwd: "/a/fresh" })], "claude-code");
 
   expect(projects.map((p) => p.name)).toEqual(["fresh"]);
 });
@@ -77,10 +73,7 @@ test("a project in both sources is listed once, keeping the daemon's count", () 
 });
 
 test("choosing a project keeps only its conversations", () => {
-  const sessions = [
-    session({ id: "1", cwd: "/a/pew2" }),
-    session({ id: "2", cwd: "/a/site" }),
-  ];
+  const sessions = [session({ id: "1", cwd: "/a/pew2" }), session({ id: "2", cwd: "/a/site" })];
 
   const kept = sessionsInProject(sessions, { path: "/a/pew2", name: "pew2" });
   expect(kept.map((s) => s.id)).toEqual(["1"]);
@@ -123,9 +116,7 @@ test("the memo key changes when a session introduces a new project", () => {
   const before = [session({ id: "1", cwd: "/a/pew2" })];
   const after = [...before, session({ id: "2", cwd: "/a/site" })];
 
-  expect(projectSourceKey(after, "claude-code")).not.toBe(
-    projectSourceKey(before, "claude-code"),
-  );
+  expect(projectSourceKey(after, "claude-code")).not.toBe(projectSourceKey(before, "claude-code"));
 });
 
 test("the memo key is scoped to one agent", () => {

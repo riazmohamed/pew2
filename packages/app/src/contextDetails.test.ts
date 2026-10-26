@@ -10,7 +10,12 @@ test("routine usage and clean state remain available in details but not resting 
   expect(details.changesAccessibility).toBe("Working directory clean");
 });
 test("retains the existing high/critical thresholds and all nonzero changes", () => {
-  for (const [used, expected] of [[74, false], [75, true], [89, true], [90, true]] as const) {
+  for (const [used, expected] of [
+    [74, false],
+    [75, true],
+    [89, true],
+    [90, true],
+  ] as const) {
     expect(contextDetails(workspace, { used, size: 100 }).warning).toBe(expected);
   }
   const details = contextDetails({ ...workspace, uncommitted: 137 }, { used: 90, size: 100 });

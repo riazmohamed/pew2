@@ -143,15 +143,25 @@ const callActive = (state: PolicyState, now: number) =>
   state.callStartedAt !== undefined && now - state.callStartedAt < STALE_CALL_MS;
 
 /** A call started (a secret was minted). Everything waiting is now covered by it. */
-export function callStarted(state: PolicyState, now: number, items: readonly PolicyItem[]): PolicyState {
+export function callStarted(
+  state: PolicyState,
+  now: number,
+  items: readonly PolicyItem[],
+): PolicyState {
   return {
     ...state,
     callStartedAt: now,
     batchStartedAt: undefined,
     callbackAt: undefined,
-    covered: union(state.covered, items.map((item) => item.id)),
+    covered: union(
+      state.covered,
+      items.map((item) => item.id),
+    ),
     // Talked through on a call: no long-wait ring about it afterwards.
-    overridden: union(state.overridden, items.map((item) => item.id)),
+    overridden: union(
+      state.overridden,
+      items.map((item) => item.id),
+    ),
   };
 }
 
@@ -159,7 +169,11 @@ export function callStarted(state: PolicyState, now: number, items: readonly Pol
  * A call ended. Every reason feeds the cooldown; declined and missed also
  * snooze (`SNOOZE_MS`), since the user said "not now" or wasn't there.
  */
-export function callEnded(state: PolicyState, now: number, reason?: wire.VoiceEnd["reason"]): PolicyState {
+export function callEnded(
+  state: PolicyState,
+  now: number,
+  reason?: wire.VoiceEnd["reason"],
+): PolicyState {
   const snooze = reason === "declined" || reason === "missed";
   return {
     ...state,
@@ -208,7 +222,8 @@ export function tick(
     state = callEnded(state, state.callStartedAt + STALE_CALL_MS);
   }
 
-  if (state.snoozeUntil !== undefined && now >= state.snoozeUntil) state = { ...state, snoozeUntil: undefined };
+  if (state.snoozeUntil !== undefined && now >= state.snoozeUntil)
+    state = { ...state, snoozeUntil: undefined };
 
   // "Call me back in 10 minutes" is a request, not a setting: it rings at
   // that time whether or not anything is waiting, with Ring me on or off,
@@ -217,7 +232,9 @@ export function tick(
   // a call is on, and rung once that call is over.
   if (state.callbackAt !== undefined && !callActive(state, now)) {
     if (now < state.callbackAt) return { state, wakeAt: state.callbackAt };
-    const ids = [...items].sort((a, b) => a.since - b.since || (a.id < b.id ? -1 : 1)).map((item) => item.id);
+    const ids = [...items]
+      .sort((a, b) => a.since - b.since || (a.id < b.id ? -1 : 1))
+      .map((item) => item.id);
     return {
       state: {
         ...state,
@@ -269,7 +286,10 @@ export function tick(
       ? (state.rings[state.rings.length - prefs.maxCallsPerHour] ?? now) + HOUR_MS
       : undefined;
 
-  const ring = (reason: "batch" | "long_wait" | "callback", extra: Partial<PolicyState> = {}): Decision => ({
+  const ring = (
+    reason: "batch" | "long_wait" | "callback",
+    extra: Partial<PolicyState> = {},
+  ): Decision => ({
     state: {
       ...state,
       ...extra,
@@ -282,11 +302,17 @@ export function tick(
   });
 
   // Open a batch window on the first uncovered item.
-  if (fresh.length > 0 && state.batchStartedAt === undefined) state = { ...state, batchStartedAt: now };
+  if (fresh.length > 0 && state.batchStartedAt === undefined)
+    state = { ...state, batchStartedAt: now };
   if (fresh.length === 0) state = { ...state, batchStartedAt: undefined };
 
-  const lastContact = Math.max(state.lastCallEndedAt ?? Number.NEGATIVE_INFINITY, state.lastRingAt ?? Number.NEGATIVE_INFINITY);
-  const cooldownEndsAt = Number.isFinite(lastContact) ? lastContact + prefs.cooldownMinutes * 60_000 : undefined;
+  const lastContact = Math.max(
+    state.lastCallEndedAt ?? Number.NEGATIVE_INFINITY,
+    state.lastRingAt ?? Number.NEGATIVE_INFINITY,
+  );
+  const cooldownEndsAt = Number.isFinite(lastContact)
+    ? lastContact + prefs.cooldownMinutes * 60_000
+    : undefined;
   const inCooldown = cooldownEndsAt !== undefined && now < cooldownEndsAt;
 
   // Snoozed: nothing rings, long waits included; look again when it ends.
@@ -297,19 +323,33 @@ export function tick(
     (item) => now - item.since >= LONG_WAIT_MS && !state.overridden.includes(item.id),
   );
   const nextOverdueAt = minDefined(
-    ...ordered.filter((item) => !state.overridden.includes(item.id)).map((item) => item.since + LONG_WAIT_MS),
+    ...ordered
+      .filter((item) => !state.overridden.includes(item.id))
+      .map((item) => item.since + LONG_WAIT_MS),
   );
 
   const batchClosesAt =
-    state.batchStartedAt !== undefined ? state.batchStartedAt + prefs.batchSeconds * 1000 : undefined;
+    state.batchStartedAt !== undefined
+      ? state.batchStartedAt + prefs.batchSeconds * 1000
+      : undefined;
   const batchReady = batchClosesAt !== undefined && now >= batchClosesAt;
 
   if (capOpenAt === undefined) {
     if (batchReady && !inCooldown) {
-      return ring("batch", { overridden: union(state.overridden, overdue.map((item) => item.id)) });
+      return ring("batch", {
+        overridden: union(
+          state.overridden,
+          overdue.map((item) => item.id),
+        ),
+      });
     }
     if (overdue.length > 0) {
-      return ring("long_wait", { overridden: union(state.overridden, overdue.map((item) => item.id)) });
+      return ring("long_wait", {
+        overridden: union(
+          state.overridden,
+          overdue.map((item) => item.id),
+        ),
+      });
     }
   }
 
@@ -317,7 +357,9 @@ export function tick(
     capOpenAt !== undefined
       ? capOpenAt
       : minDefined(
-          batchClosesAt === undefined ? undefined : Math.max(batchClosesAt, inCooldown ? (cooldownEndsAt ?? 0) : 0),
+          batchClosesAt === undefined
+            ? undefined
+            : Math.max(batchClosesAt, inCooldown ? (cooldownEndsAt ?? 0) : 0),
           nextOverdueAt,
         );
   return { state, ...(wakeAt !== undefined ? { wakeAt } : {}) };

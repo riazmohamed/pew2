@@ -37,7 +37,10 @@ function view(overrides: Partial<PairView> = {}): PairView {
 test("reachability is reported from the health check, not from configuration", () => {
   // The dangerous case: a relay is configured, so the old output said "works
   // from anywhere" — while the relay was down and nothing could connect.
-  const down = statusRows(view({ reach: "unreachable", relay: { url: "wss://relay.example.com", healthy: false } }), plain)
+  const down = statusRows(
+    view({ reach: "unreachable", relay: { url: "wss://relay.example.com", healthy: false } }),
+    plain,
+  )
     .map(stripAnsi)
     .join("\n");
 
@@ -61,7 +64,11 @@ test("a LAN-only pairing says so in words, not only in colour", () => {
 });
 
 test("the status is one line", () => {
-  for (const v of [view(), view({ reach: "local", relay: undefined }), view({ daemonRunning: false })]) {
+  for (const v of [
+    view(),
+    view({ reach: "local", relay: undefined }),
+    view({ daemonRunning: false }),
+  ]) {
     expect(statusRows(v, plain)).toHaveLength(1);
   }
 });
@@ -71,7 +78,10 @@ test("nothing secret is ever on screen: no link, no token, no part of either", (
   // beside it and ended up in screenshots, and a pairing admits whichever
   // device claims it first.
   const secret = "c0ffee".repeat(8);
-  for (const v of [view({ token: secret }), view({ token: secret, rotated: true, supersededDevice: "Kens-iPhone" })]) {
+  for (const v of [
+    view({ token: secret }),
+    view({ token: secret, rotated: true, supersededDevice: "Kens-iPhone" }),
+  ]) {
     const text = renderPair(v, undefined, plain).map(stripAnsi).join("\n");
     expect(text).not.toContain("c0ffee");
     expect(text).not.toContain("ws://");
@@ -87,7 +97,9 @@ test("the screen says what to do in the app's own words", () => {
 });
 
 test("a stopped daemon is called out with the command that fixes it", () => {
-  const rows = statusRows(view({ daemonRunning: false }), plain).map(stripAnsi).join("\n");
+  const rows = statusRows(view({ daemonRunning: false }), plain)
+    .map(stripAnsi)
+    .join("\n");
   expect(rows).toContain("not running");
   expect(rows).toContain("pew2 service install");
   // A stopped daemon is the only thing worth saying; reach would be noise.
@@ -95,7 +107,9 @@ test("a stopped daemon is called out with the command that fixes it", () => {
 });
 
 test("rotation warns that existing devices are now unpaired", () => {
-  const text = renderPair(view({ rotated: true }), undefined, plain).map(stripAnsi).join("\n");
+  const text = renderPair(view({ rotated: true }), undefined, plain)
+    .map(stripAnsi)
+    .join("\n");
   expect(text).toContain("must scan again");
 });
 
@@ -153,7 +167,11 @@ test("the paired line names the device and how long it took", () => {
 
 test("ASCII output degrades without losing any information", () => {
   const ascii = { style: styler(0), glyph: glyphs(false), columns: 80 };
-  const text = renderPair(view({ reach: "local", relay: undefined, rotated: true }), undefined, ascii).join("\n");
+  const text = renderPair(
+    view({ reach: "local", relay: undefined, rotated: true }),
+    undefined,
+    ascii,
+  ).join("\n");
 
   // Nothing outside ASCII at all: box drawing, braille and the ellipsis are all
   // rendered as replacement boxes by the Windows console, and degrading only

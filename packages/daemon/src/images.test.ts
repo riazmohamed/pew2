@@ -171,9 +171,7 @@ test("a file swapped for a symlink after the check is not followed", async () =>
   // than refusing everything.
   await rm(target);
   await writeFile(target, PNG);
-  expect((await loadImage("out/plot.png", { cwd: root, env: {}, fs })).mimeType).toBe(
-    "image/png",
-  );
+  expect((await loadImage("out/plot.png", { cwd: root, env: {}, fs })).mimeType).toBe("image/png");
 });
 
 test("a windows drive letter is a path, not a URI scheme", () => {
@@ -214,16 +212,31 @@ test("OG Coder's note for a picture read from disk becomes that picture, by path
     toolCallId: "t1",
     content: [
       { type: "text", text: `Read image file ${path} [image/png]` },
-      { type: "text", text: `[Session storage omitted duplicated image data; read the source again at ${path}.]` },
+      {
+        type: "text",
+        text: `[Session storage omitted duplicated image data; read the source again at ${path}.]`,
+      },
     ],
   });
   expect(historyToolImages([note("/tmp/pew2shot/phone-115131.png")])).toEqual([
-    { type: "resource_link", uri: "/tmp/pew2shot/phone-115131.png", name: "phone-115131.png", mimeType: "image/png" },
+    {
+      type: "resource_link",
+      uri: "/tmp/pew2shot/phone-115131.png",
+      name: "phone-115131.png",
+      mimeType: "image/png",
+    },
   ]);
   // Not an image the app can paint: nothing.
   expect(historyToolImages([note("/tmp/clip.mov")])).toEqual([]);
   // The same sentence outside a tool result is just text.
-  expect(historyImages([{ type: "text", text: "[Session storage omitted duplicated image data; read the source again at /tmp/a.png.]" }])).toEqual([]);
+  expect(
+    historyImages([
+      {
+        type: "text",
+        text: "[Session storage omitted duplicated image data; read the source again at /tmp/a.png.]",
+      },
+    ]),
+  ).toEqual([]);
 });
 
 test("an OG Coder asset marker is read back when it can be, and never painted raw", () => {

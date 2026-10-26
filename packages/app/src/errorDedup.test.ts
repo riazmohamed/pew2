@@ -13,10 +13,7 @@ test("matches the streamed copy of an error the agent then rejected the turn wit
   ];
 
   expect(
-    findDuplicateError(
-      turns,
-      "You've hit your session limit · resets 7:50pm (Asia/Kuala_Lumpur)",
-    ),
+    findDuplicateError(turns, "You've hit your session limit · resets 7:50pm (Asia/Kuala_Lumpur)"),
   ).toBe(1);
 });
 

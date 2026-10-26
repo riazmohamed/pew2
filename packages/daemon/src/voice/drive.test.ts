@@ -22,9 +22,15 @@ async function call(prefs?: object) {
   const sent: any[] = [];
   daemon.attach((message) => sent.push(message));
   (daemon.voice as any).fetchImpl = async () =>
-    new Response(JSON.stringify({ value: "ek_test", expires_at: 9_999_999_999, session: { model: "m" } }));
+    new Response(
+      JSON.stringify({ value: "ek_test", expires_at: 9_999_999_999, session: { model: "m" } }),
+    );
   const replies: any[] = [];
-  const ctx = { daemon, reply: (m: unknown) => replies.push(m), broadcast: (m: unknown) => sent.push(m) };
+  const ctx = {
+    daemon,
+    reply: (m: unknown) => replies.push(m),
+    broadcast: (m: unknown) => sent.push(m),
+  };
   await daemon.refreshProviders();
   if (prefs) await daemon.voice.setPrefs(prefs);
   const sessionId = await daemon.startSession("echo", process.cwd());
@@ -34,7 +40,14 @@ async function call(prefs?: object) {
   let n = 0;
   const tool = async (name: string, args: object) => {
     await handleMessage(
-      JSON.stringify({ t: "voice.tool", requestId: `r${++n}`, callId, toolCallId: `t${n}`, name, arguments: JSON.stringify(args) }),
+      JSON.stringify({
+        t: "voice.tool",
+        requestId: `r${++n}`,
+        callId,
+        toolCallId: `t${n}`,
+        name,
+        arguments: JSON.stringify(args),
+      }),
       ctx,
     );
     return JSON.parse(replies.at(-1).output);
@@ -46,8 +59,11 @@ test("set_model switches the chat by a spoken name, and the phone's pills follow
   const { daemon, sent, sessionId, tool } = await call();
   try {
     // The echo agent starts on a random model: ask for one it isn't on.
-    const before = daemon.configOptions(sessionId).find((option) => option.id === "model")?.currentValue;
-    const [target, spoken, label] = before === "echo-mini" ? ["echo-max", "max", "Echo Max"] : ["echo-mini", "mini", "Echo Mini"];
+    const before = daemon
+      .configOptions(sessionId)
+      .find((option) => option.id === "model")?.currentValue;
+    const [target, spoken, label] =
+      before === "echo-mini" ? ["echo-max", "max", "Echo Max"] : ["echo-mini", "mini", "Echo Mini"];
     const result = await tool("set_model", { session_id: sessionId, model: spoken });
     expect(result).toMatchObject({ ok: true });
     expect(result.say).toContain(`${label} now`);
@@ -55,14 +71,20 @@ test("set_model switches the chat by a spoken name, and the phone's pills follow
     expect(model?.currentValue).toBe(target);
     expect(sent.some((m) => m.t === "session.config" && m.sessionId === sessionId)).toBe(true);
     // Already on it: says so, changes nothing.
-    expect((await tool("set_model", { session_id: sessionId, model: spoken })).say).toContain("already");
+    expect((await tool("set_model", { session_id: sessionId, model: spoken })).say).toContain(
+      "already",
+    );
     // Asking what there is lists, and switches nothing.
     const listed = await tool("list_models", { session_id: sessionId });
     expect(listed).toMatchObject({ ok: true, current: label });
     expect(listed.models).toContain("Echo Pro");
-    expect(daemon.configOptions(sessionId).find((option) => option.id === "model")?.currentValue).toBe(target);
+    expect(
+      daemon.configOptions(sessionId).find((option) => option.id === "model")?.currentValue,
+    ).toBe(target);
     // A model it doesn't have is said plainly.
-    expect(await tool("set_model", { session_id: sessionId, model: "llama" })).toMatchObject({ ok: false });
+    expect(await tool("set_model", { session_id: sessionId, model: "llama" })).toMatchObject({
+      ok: false,
+    });
   } finally {
     daemon.closeAll();
   }
@@ -71,7 +93,9 @@ test("set_model switches the chat by a spoken name, and the phone's pills follow
 test("work handed to a chat on a call rings when it is done, with Ring me on", async () => {
   const { daemon, sessionId, tool, ctx, callId } = await call({ mode: "onthego", ringUntil: 0 });
   try {
-    expect(await tool("tell_agent", { session_id: sessionId, text: "run the tests" })).toMatchObject({ ok: true });
+    expect(
+      await tool("tell_agent", { session_id: sessionId, text: "run the tests" }),
+    ).toMatchObject({ ok: true });
     await handleMessage(JSON.stringify({ t: "voice.end", callId }), ctx);
     expect((daemon.voice as any).waitingOn?.sessionId).toBe(sessionId);
     // The ring's call opens with that project's news.
@@ -126,7 +150,8 @@ test("work that finished during the call (they heard it) rings nobody afterwards
     const voice = daemon.voice as any;
     const realNow = voice.now;
     voice.now = () => realNow() + 60_000;
-    for (let i = 0; i < 100 && daemon.isWorking(sessionId) !== false; i++) await new Promise((resolve) => setTimeout(resolve, 50));
+    for (let i = 0; i < 100 && daemon.isWorking(sessionId) !== false; i++)
+      await new Promise((resolve) => setTimeout(resolve, 50));
     expect(daemon.isWorking(sessionId)).toBe(false);
     await handleMessage(JSON.stringify({ t: "voice.end", callId }), ctx);
     expect(voice.waitingOn).toBeUndefined();

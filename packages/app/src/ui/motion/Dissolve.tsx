@@ -13,7 +13,14 @@
  */
 import { useEffect, type ReactNode } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
-import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
+import Animated, {
+  cancelAnimation,
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from "react-native-reanimated";
 import { dissolvePlan, type DissolveKind } from "../../motion";
 import { useReducedMotion } from "../useReducedMotion";
 
@@ -43,7 +50,17 @@ export interface DissolveProps {
 /** How far past its slot a `startAt` entrance may still play. */
 const LATE_MS = 250;
 
-export function Dissolve({ children, kind = "in", dissolveKey, delay = 0, startAt, lateSettled = true, enabled = true, style, pointerEvents }: DissolveProps) {
+export function Dissolve({
+  children,
+  kind = "in",
+  dissolveKey,
+  delay = 0,
+  startAt,
+  lateSettled = true,
+  enabled = true,
+  style,
+  pointerEvents,
+}: DissolveProps) {
   const reduceMotion = useReducedMotion();
   const progress = useSharedValue(enabled ? 0 : 1);
   const plan = dissolvePlan(kind, reduceMotion, delay);
@@ -65,7 +82,10 @@ export function Dissolve({ children, kind = "in", dissolveKey, delay = 0, startA
     }
     progress.value = 0;
     const [a, b, c, d] = plan.easing;
-    progress.value = withDelay(wait, withTiming(1, { duration: plan.duration, easing: Easing.bezier(a, b, c, d) }));
+    progress.value = withDelay(
+      wait,
+      withTiming(1, { duration: plan.duration, easing: Easing.bezier(a, b, c, d) }),
+    );
     return () => cancelAnimation(progress);
     // Replays only on a new key or toggling on; the plan is derived from these.
     // eslint-disable-next-line react-hooks/exhaustive-deps

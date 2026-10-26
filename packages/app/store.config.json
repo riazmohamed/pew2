@@ -34,10 +34,7 @@
         "releaseNotes": "New: talk to Pew, an AI voice assistant, about your agents, hands-free. Pew can ring you when a conversation you choose needs you. A new home screen with your latest sessions, smoother chats, and faster opening of long conversations."
       }
     },
-    "categories": [
-      "DEVELOPER_TOOLS",
-      "PRODUCTIVITY"
-    ],
+    "categories": ["DEVELOPER_TOOLS", "PRODUCTIVITY"],
     "advisory": {
       "ageRatingOverride": "NONE",
       "alcoholTobaccoOrDrugUseOrReferences": "NONE",

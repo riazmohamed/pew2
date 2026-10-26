@@ -46,5 +46,4 @@ function CommandTokenView({
   );
 }
 
-
 export const CommandToken = memo(CommandTokenView);

@@ -38,7 +38,16 @@ const TONE: Record<Exclude<LedTone, "agent">, string> = {
   text: theme.color.text,
 };
 
-function LedView({ children, tone = "agent", color, size = theme.stage.ledSize, unlit = false, style, numberOfLines = 1, maxFontSizeMultiplier }: LedProps) {
+function LedView({
+  children,
+  tone = "agent",
+  color,
+  size = theme.stage.ledSize,
+  unlit = false,
+  style,
+  numberOfLines = 1,
+  maxFontSizeMultiplier,
+}: LedProps) {
   const agent = useAgentColor();
   const ink = color ?? (tone === "agent" ? agent : TONE[tone]);
   const lit = !unlit && tone !== "dim";
@@ -55,7 +64,11 @@ function LedView({ children, tone = "agent", color, size = theme.stage.ledSize, 
           textTransform: "uppercase",
           color: ink,
         },
-        lit && { textShadowColor: withAlpha(ink, 0.65), textShadowRadius: theme.stage.glow, textShadowOffset: { width: 0, height: 0 } },
+        lit && {
+          textShadowColor: withAlpha(ink, 0.65),
+          textShadowRadius: theme.stage.glow,
+          textShadowOffset: { width: 0, height: 0 },
+        },
         style,
       ]}
     >

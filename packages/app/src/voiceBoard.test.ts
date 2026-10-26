@@ -25,7 +25,13 @@ import {
   type BoardSession,
   type BoardState,
 } from "./voiceBoard";
-import { IDLE_CALL, stepCall, type CallState, type CompletedTool, type VoiceInboxItem } from "./voiceCall";
+import {
+  IDLE_CALL,
+  stepCall,
+  type CallState,
+  type CompletedTool,
+  type VoiceInboxItem,
+} from "./voiceCall";
 import { DEMO_DURATION_S, demoAt } from "./voiceDemo";
 
 const T0 = 1_000_000;
@@ -54,7 +60,16 @@ const noCall: Pick<CallState, "tools" | "inbox" | "focus"> = { tools: [], inbox:
 describe("reading boards", () => {
   test("drops malformed entries and duplicate ids, keeps the rest", () => {
     const read = readBoardSessions([
-      { sessionId: "a", status: "working", since: 1, touchedAt: 2, lines: [{ kind: "tool", text: "x", at: 3 }, { kind: "weird", text: "y", at: 4 }] },
+      {
+        sessionId: "a",
+        status: "working",
+        since: 1,
+        touchedAt: 2,
+        lines: [
+          { kind: "tool", text: "x", at: 3 },
+          { kind: "weird", text: "y", at: 4 },
+        ],
+      },
       { status: "working" },
       { sessionId: "a", status: "idle", since: 0, touchedAt: 0, lines: [] },
       { sessionId: "b", status: "mystery", lines: "nope" },
@@ -106,18 +121,32 @@ describe("stable lanes", () => {
     expect(state.slots).toEqual(["a", "e", "c", "d"]);
     expect(state.folded).toEqual(["b"]);
     const view = boardView(state, noCall, T0 + 5000);
-    expect(view.fold).toEqual({ count: 1, folder: "b", status: { word: "Working", tone: "agent", pulse: true } });
+    expect(view.fold).toEqual({
+      count: 1,
+      folder: "b",
+      status: { word: "Working", tone: "agent", pulse: true },
+    });
   });
 
   test("an evicted lane does not swap straight back", () => {
-    const four = [sess("a", { touchedAt: T0 + 40 }), sess("b", { touchedAt: T0 + 10 }), sess("c", { touchedAt: T0 + 30 }), sess("d", { touchedAt: T0 + 20 })];
+    const four = [
+      sess("a", { touchedAt: T0 + 40 }),
+      sess("b", { touchedAt: T0 + 10 }),
+      sess("c", { touchedAt: T0 + 30 }),
+      sess("d", { touchedAt: T0 + 20 }),
+    ];
     const e = sess("e", { status: "needs", since: T0 + 50 });
     const state = fold([four, [...four, e], [...four, e], [e, ...four]]);
     expect(state.slots).toEqual(["a", "e", "c", "d"]);
   });
 
   test("a folded session comes back once Pew touches it", () => {
-    const four = [sess("a", { touchedAt: T0 + 40 }), sess("b", { touchedAt: T0 + 10 }), sess("c", { touchedAt: T0 + 30 }), sess("d", { touchedAt: T0 + 20 })];
+    const four = [
+      sess("a", { touchedAt: T0 + 40 }),
+      sess("b", { touchedAt: T0 + 10 }),
+      sess("c", { touchedAt: T0 + 30 }),
+      sess("d", { touchedAt: T0 + 20 }),
+    ];
     const e = sess("e", { status: "needs", since: T0 + 50 });
     const touched = four.map((s) => (s.sessionId === "b" ? { ...s, touchedAt: T0 + 90 } : s));
     const state = fold([four, [...four, e], [...touched, e]]);
@@ -134,7 +163,11 @@ describe("stable lanes", () => {
   });
 
   test("an old quiet session never displaces a lane", () => {
-    const { slots, evicted } = placeLanes(["a", "b", "c", "d"], ["a", "b", "c", "d", "e"].map((id) => sess(id)), () => false);
+    const { slots, evicted } = placeLanes(
+      ["a", "b", "c", "d"],
+      ["a", "b", "c", "d", "e"].map((id) => sess(id)),
+      () => false,
+    );
     expect(slots).toEqual(["a", "b", "c", "d"]);
     expect(evicted).toEqual([]);
   });
@@ -164,7 +197,11 @@ describe("type-out and fresh lines", () => {
 
   test("the line clock survives later frames (seen time is kept, not restamped)", () => {
     const line = { kind: "tool" as const, text: "Run npm test", at: 9 };
-    const state = fold([[sess("a")], [sess("a", { lines: [line] })], [sess("a", { lines: [line] })]]);
+    const state = fold([
+      [sess("a")],
+      [sess("a", { lines: [line] })],
+      [sess("a", { lines: [line] })],
+    ]);
     expect(state.seen[lineKey("a", line)]).toBe(T0 + 1000);
   });
 
@@ -175,30 +212,75 @@ describe("type-out and fresh lines", () => {
 });
 
 describe("status overlay and spotlight", () => {
-  const four = [sess("a", { touchedAt: T0 + 3 }), sess("b", { touchedAt: T0 + 9 }), sess("c", { status: "asks" }), sess("d", { status: "done", since: 0 })];
+  const four = [
+    sess("a", { touchedAt: T0 + 3 }),
+    sess("b", { touchedAt: T0 + 9 }),
+    sess("c", { status: "asks" }),
+    sess("d", { status: "done", since: 0 }),
+  ];
 
   test("plain statuses are short words", () => {
     const view = boardView(fold([four]), noCall, T0 + 10_000);
-    expect(view.lanes.map((l) => l.status.word)).toEqual(["Working", "Working", expect.stringMatching(/^Needs you/), "Done"]);
+    expect(view.lanes.map((l) => l.status.word)).toEqual([
+      "Working",
+      "Working",
+      expect.stringMatching(/^Needs you/),
+      "Done",
+    ]);
     expect(view.lanes.map((l) => l.mood)).toEqual(["working", "working", "thinking", "idle"]);
     expect(view.waiting).toBe(1);
   });
 
   test("Pew typing while a fresh pew line types out, then the real status", () => {
-    const state = fold([four, [sess("a", { touchedAt: T0 + 3, lines: [{ kind: "pew", text: "Do the thing now", at: 1 }] }), ...four.slice(1)]]);
+    const state = fold([
+      four,
+      [
+        sess("a", { touchedAt: T0 + 3, lines: [{ kind: "pew", text: "Do the thing now", at: 1 }] }),
+        ...four.slice(1),
+      ],
+    ]);
     expect(boardView(state, noCall, T0 + 1100).lanes[0]?.status.word).toBe("Pew typing");
     expect(boardView(state, noCall, T0 + 5000).lanes[0]?.status.word).toBe("Working");
   });
 
   test("With Pew while a tool targets the session (session_id, or item_id via the inbox)", () => {
     const state = fold([four]);
-    const inbox: VoiceInboxItem[] = [{ id: "c:question:r1", sessionId: "c", kind: "question", requestId: "r1", title: "Keep v1?", since: 0 }];
-    const call = { inbox, tools: [{ toolCallId: "t1", name: "answer_question", arguments: JSON.stringify({ item_id: "c:question:r1" }), requestId: "x" }] };
+    const inbox: VoiceInboxItem[] = [
+      {
+        id: "c:question:r1",
+        sessionId: "c",
+        kind: "question",
+        requestId: "r1",
+        title: "Keep v1?",
+        since: 0,
+      },
+    ];
+    const call = {
+      inbox,
+      tools: [
+        {
+          toolCallId: "t1",
+          name: "answer_question",
+          arguments: JSON.stringify({ item_id: "c:question:r1" }),
+          requestId: "x",
+        },
+      ],
+    };
     const view = boardView(state, call, T0);
     expect(view.lanes.find((l) => l.sessionId === "c")?.status.word).toBe("With Pew");
     expect(view.spotlight).toBe("c");
     expect(view.sending).toBe("c");
-    const tell = { inbox, tools: [{ toolCallId: "t2", name: "tell_agent", arguments: JSON.stringify({ session_id: "a", text: "hi" }), requestId: "y" }] };
+    const tell = {
+      inbox,
+      tools: [
+        {
+          toolCallId: "t2",
+          name: "tell_agent",
+          arguments: JSON.stringify({ session_id: "a", text: "hi" }),
+          requestId: "y",
+        },
+      ],
+    };
     expect(spotlightOf(state, tell)).toBe("a");
   });
 
@@ -211,12 +293,19 @@ describe("status overlay and spotlight", () => {
 
   test("a done session smiles briefly, then idles; an idle one sleeps", () => {
     const state = fold([[sess("a", { status: "done", since: T0 }), sess("b", { status: "idle" })]]);
-    expect(boardView(state, noCall, T0 + 100).lanes.map((l) => l.mood)).toEqual(["happy", "sleepy"]);
+    expect(boardView(state, noCall, T0 + 100).lanes.map((l) => l.mood)).toEqual([
+      "happy",
+      "sleepy",
+    ]);
     expect(boardView(state, noCall, T0 + 5000).lanes[0]?.mood).toBe("idle");
   });
 
   test("a lane opened on history shows its newest line", () => {
-    const lines = Array.from({ length: 10 }, (_, i) => ({ kind: "tool" as const, text: `step ${i}`, at: i }));
+    const lines = Array.from({ length: 10 }, (_, i) => ({
+      kind: "tool" as const,
+      text: `step ${i}`,
+      at: i,
+    }));
     const view = boardView(fold([[sess("a", { touchedAt: 5, lines })]]), noCall, T0);
     expect(view.lanes[0]?.current?.text).toBe("step 9");
     expect(view.lanes[0]?.steps).toBe(0);
@@ -225,9 +314,33 @@ describe("status overlay and spotlight", () => {
 
 describe("inbox fallback (older daemon)", () => {
   const inbox: VoiceInboxItem[] = [
-    { id: "s1:approval:r1", sessionId: "s1", kind: "approval", requestId: "r1", folder: "customer-portal-frontend", agentName: "Cursor Agent", title: "npm publish", since: 5 },
-    { id: "s2:question:r2", sessionId: "s2", kind: "question", requestId: "r2", folder: "api", title: "Which db?", since: 7 },
-    { id: "s1:plan:r3", sessionId: "s1", kind: "plan", requestId: "r3", title: "Plan ready for review", since: 9 },
+    {
+      id: "s1:approval:r1",
+      sessionId: "s1",
+      kind: "approval",
+      requestId: "r1",
+      folder: "customer-portal-frontend",
+      agentName: "Cursor Agent",
+      title: "npm publish",
+      since: 5,
+    },
+    {
+      id: "s2:question:r2",
+      sessionId: "s2",
+      kind: "question",
+      requestId: "r2",
+      folder: "api",
+      title: "Which db?",
+      since: 7,
+    },
+    {
+      id: "s1:plan:r3",
+      sessionId: "s1",
+      kind: "plan",
+      requestId: "r3",
+      title: "Plan ready for review",
+      since: 9,
+    },
   ];
 
   test("groups items into one lane per session", () => {
@@ -243,7 +356,9 @@ describe("inbox fallback (older daemon)", () => {
     expect(state.slots.slice(0, 2)).toEqual(["s1", "s2"]);
     state = foldBoard(state, frame([sess("x")]), T0 + 1);
     expect(state.fromBoard).toBe(true);
-    expect(state.slots).toEqual([undefined, undefined, undefined, undefined].map((_, i) => (i === 0 ? "x" : undefined)));
+    expect(state.slots).toEqual(
+      [undefined, undefined, undefined, undefined].map((_, i) => (i === 0 ? "x" : undefined)),
+    );
     const after = foldBoard(state, { t: "voice.inbox", items: inbox }, T0 + 2);
     expect(after).toBe(state);
   });
@@ -256,7 +371,11 @@ describe("inbox fallback (older daemon)", () => {
 });
 
 describe("end card", () => {
-  const tool = (name: string, args: Record<string, unknown>, extra: Partial<CompletedTool> = {}): CompletedTool => ({
+  const tool = (
+    name: string,
+    args: Record<string, unknown>,
+    extra: Partial<CompletedTool> = {},
+  ): CompletedTool => ({
     toolCallId: name,
     name,
     arguments: JSON.stringify(args),
@@ -267,18 +386,34 @@ describe("end card", () => {
   test("lists answering tools and messages, skips failures and reads", () => {
     const actions = callActions(
       [
-        tool("answer_permission", { item_id: "x", decision: "allow" }, { sessionId: "a", item: { kind: "approval", title: "prisma migrate deploy" } }),
+        tool(
+          "answer_permission",
+          { item_id: "x", decision: "allow" },
+          { sessionId: "a", item: { kind: "approval", title: "prisma migrate deploy" } },
+        ),
         tool("answer_permission", { item_id: "y", decision: "deny" }, { ok: false }),
         tool("get_status", { session_id: "a" }, { sessionId: "a" }),
         tool("tell_agent", { session_id: "a", text: "Write the changelog" }, { sessionId: "a" }),
-        tool("decide_plan", { item_id: "z", action: "feedback" }, { item: { kind: "plan", title: "Plan", folder: "api", agentName: "Codex" } }),
+        tool(
+          "decide_plan",
+          { item_id: "z", action: "feedback" },
+          { item: { kind: "plan", title: "Plan", folder: "api", agentName: "Codex" } },
+        ),
         tool("call_me_back", { minutes: 20 }),
       ],
       [sess("a", { folder: "customer-portal-frontend", agentName: "Cursor Agent" })],
     );
     expect(actions).toEqual([
-      { text: "Approved prisma migrate deploy", detail: "customer-portal-frontend · Cursor Agent", later: false },
-      { text: "Sent: “Write the changelog”", detail: "customer-portal-frontend · Cursor Agent", later: false },
+      {
+        text: "Approved prisma migrate deploy",
+        detail: "customer-portal-frontend · Cursor Agent",
+        later: false,
+      },
+      {
+        text: "Sent: “Write the changelog”",
+        detail: "customer-portal-frontend · Cursor Agent",
+        later: false,
+      },
       { text: "Sent feedback on the plan", detail: "api · Codex", later: false },
       { text: "Pew calls back in 20 min", detail: undefined, later: true },
     ]);
@@ -288,33 +423,74 @@ describe("end card", () => {
 describe("captions and moods", () => {
   test("a caption is what was said so far, keyed per line so each line streams on its own", () => {
     const first = { who: "pew" as const, text: " one two ", final: false, serial: 1 };
-    expect(captionView(first)).toEqual({ who: "pew", text: "one two", key: "pew:1", streaming: true });
+    expect(captionView(first)).toEqual({
+      who: "pew",
+      text: "one two",
+      key: "pew:1",
+      streaming: true,
+    });
     // The same line growing keeps its key: the stream continues, it doesn't restart.
     expect(captionView({ ...first, text: "one two three" }).key).toBe("pew:1");
     // A new line (new serial) is a new stream.
     expect(captionView({ ...first, serial: 2 }).key).toBe("pew:2");
     expect(captionView(undefined).who).toBe("none");
     // A status shows whole, it isn't streamed.
-    expect(captionView(first, "Typing to docs…")).toEqual({ who: "busy", text: "Typing to docs…", key: "busy:Typing to docs…", streaming: false });
+    expect(captionView(first, "Typing to docs…")).toEqual({
+      who: "busy",
+      text: "Typing to docs…",
+      key: "busy:Typing to docs…",
+      streaming: false,
+    });
   });
 
   test("mood: connecting thinks, a tool works, just-acted smiles, speaking talks", () => {
-    const tool = (name: string) => ({ ...IDLE_CALL, phase: "live" as const, tools: [{ toolCallId: "t", name, arguments: "{}", requestId: "r" }] });
+    const tool = (name: string) => ({
+      ...IDLE_CALL,
+      phase: "live" as const,
+      tools: [{ toolCallId: "t", name, arguments: "{}", requestId: "r" }],
+    });
     expect(voiceMood({ ...IDLE_CALL, phase: "connecting" }, 0, 0)).toBe("dialing");
     expect(voiceMood(tool("tell_agent"), 0, 0)).toBe("typing");
     expect(voiceMood(tool("get_status"), 0, 0)).toBe("reading");
     expect(voiceMood(tool("answer_permission"), 0, 0)).toBe("working");
-    expect(voiceMood({ ...IDLE_CALL, phase: "live", activity: "speaking" }, 1000, 500)).toBe("celebrate");
-    expect(voiceMood({ ...IDLE_CALL, phase: "live", activity: "speaking" }, 5000, 500)).toBe("talking");
-    expect(voiceMood({ ...IDLE_CALL, phase: "live", activity: "listening", userSpeaking: true }, 5000, 0)).toBe("listening");
-    expect(voiceMood({ ...IDLE_CALL, phase: "live", activity: "listening", muted: true, userSpeaking: true }, 5000, 0)).toBe("muted");
+    expect(voiceMood({ ...IDLE_CALL, phase: "live", activity: "speaking" }, 1000, 500)).toBe(
+      "celebrate",
+    );
+    expect(voiceMood({ ...IDLE_CALL, phase: "live", activity: "speaking" }, 5000, 500)).toBe(
+      "talking",
+    );
+    expect(
+      voiceMood(
+        { ...IDLE_CALL, phase: "live", activity: "listening", userSpeaking: true },
+        5000,
+        0,
+      ),
+    ).toBe("listening");
+    expect(
+      voiceMood(
+        { ...IDLE_CALL, phase: "live", activity: "listening", muted: true, userSpeaking: true },
+        5000,
+        0,
+      ),
+    ).toBe("muted");
     expect(voiceMood({ ...IDLE_CALL, phase: "live", activity: "listening" }, 5000, 0)).toBe("idle");
     expect(voiceMood({ ...IDLE_CALL, phase: "ended" }, 0, 0)).toBe("goodbye");
     expect(voiceMood({ ...IDLE_CALL, phase: "failed" }, 0, 0)).toBe("oops");
   });
 
   test("busy line names the session a tool is on, in the floats' words", () => {
-    const call = { phase: "live" as const, inbox: [], tools: [{ toolCallId: "t", name: "tell_agent", arguments: JSON.stringify({ session_id: "a" }), requestId: "r" }] };
+    const call = {
+      phase: "live" as const,
+      inbox: [],
+      tools: [
+        {
+          toolCallId: "t",
+          name: "tell_agent",
+          arguments: JSON.stringify({ session_id: "a" }),
+          requestId: "r",
+        },
+      ],
+    };
     expect(busyLine(call, [sess("a", { folder: "docs" })])).toBe("Passing docs a note…");
     expect(busyLine({ ...call, tools: [] }, [])).toBeUndefined();
     expect(busyLine({ ...call, phase: "connecting", tools: [] }, [])).toBe("Calling Pew…");
@@ -324,21 +500,41 @@ describe("captions and moods", () => {
 describe("live captions in voiceCall", () => {
   function live(): CallState {
     let s = stepCall(IDLE_CALL, { type: "start", requestId: "r" }).state;
-    s = stepCall(s, { type: "daemon", message: { t: "voice.session", requestId: "r", ok: true, secret: "x", callId: "c" } }).state;
+    s = stepCall(s, {
+      type: "daemon",
+      message: { t: "voice.session", requestId: "r", ok: true, secret: "x", callId: "c" },
+    }).state;
     return stepCall(s, { type: "open" }).state;
   }
-  const server = (s: CallState, event: Record<string, unknown>) => stepCall(s, { type: "server", event }).state;
+  const server = (s: CallState, event: Record<string, unknown>) =>
+    stepCall(s, { type: "server", event }).state;
 
   test("deltas build Pew's caption word by word; done settles it", () => {
     let s = live();
-    s = server(s, { type: "response.output_audio_transcript.delta", response_id: "r1", delta: "Hey" });
-    s = server(s, { type: "response.output_audio_transcript.delta", response_id: "r1", delta: " there." });
+    s = server(s, {
+      type: "response.output_audio_transcript.delta",
+      response_id: "r1",
+      delta: "Hey",
+    });
+    s = server(s, {
+      type: "response.output_audio_transcript.delta",
+      response_id: "r1",
+      delta: " there.",
+    });
     expect(s.caption).toMatchObject({ who: "pew", text: "Hey there.", final: false });
-    s = server(s, { type: "response.output_audio_transcript.done", response_id: "r1", transcript: "Hey there." });
+    s = server(s, {
+      type: "response.output_audio_transcript.done",
+      response_id: "r1",
+      transcript: "Hey there.",
+    });
     expect(s.caption).toMatchObject({ who: "pew", text: "Hey there.", final: true });
     expect(s.transcript).toEqual([{ role: "assistant", text: "Hey there." }]);
     const serial = s.caption?.serial ?? 0;
-    s = server(s, { type: "response.output_audio_transcript.delta", response_id: "r2", delta: "Next" });
+    s = server(s, {
+      type: "response.output_audio_transcript.delta",
+      response_id: "r2",
+      delta: "Next",
+    });
     expect(s.caption).toMatchObject({ text: "Next", final: false, serial: serial + 1 });
   });
 
@@ -346,27 +542,72 @@ describe("live captions in voiceCall", () => {
     let s = live();
     s = server(s, { type: "input_audio_buffer.speech_started", item_id: "u1" });
     expect(s.caption).toMatchObject({ who: "you", text: "" });
-    s = server(s, { type: "conversation.item.input_audio_transcription.completed", item_id: "u1", transcript: "Keep it." });
+    s = server(s, {
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "u1",
+      transcript: "Keep it.",
+    });
     expect(s.caption).toMatchObject({ who: "you", text: "Keep it.", final: true });
     s = server(s, { type: "input_audio_buffer.speech_started", item_id: "u2" });
-    s = server(s, { type: "response.output_audio_transcript.delta", response_id: "r3", delta: "Okay" });
-    s = server(s, { type: "conversation.item.input_audio_transcription.completed", item_id: "u2", transcript: "Approve" });
+    s = server(s, {
+      type: "response.output_audio_transcript.delta",
+      response_id: "r3",
+      delta: "Okay",
+    });
+    s = server(s, {
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "u2",
+      transcript: "Approve",
+    });
     expect(s.caption).toMatchObject({ who: "pew", text: "Okay" });
     expect(s.transcript.at(-1)).toEqual({ role: "user", text: "Approve" });
   });
 
   test("a finished tool is recorded with its session for the end card", () => {
     let s = live();
-    const item: VoiceInboxItem = { id: "a:approval:r", sessionId: "a", kind: "approval", requestId: "r", title: "npm publish", since: 0 };
+    const item: VoiceInboxItem = {
+      id: "a:approval:r",
+      sessionId: "a",
+      kind: "approval",
+      requestId: "r",
+      title: "npm publish",
+      since: 0,
+    };
     s = stepCall(s, { type: "daemon", message: { t: "voice.inbox", items: [item] } }).state;
     s = server(s, { type: "input_audio_buffer.committed", item_id: "u1" });
     // Read back first: the first approve is refused, the user's yes lets it through.
-    s = server(s, { type: "response.function_call_arguments.done", call_id: "f0", name: "answer_permission", arguments: JSON.stringify({ item_id: item.id, decision: "allow" }) });
+    s = server(s, {
+      type: "response.function_call_arguments.done",
+      call_id: "f0",
+      name: "answer_permission",
+      arguments: JSON.stringify({ item_id: item.id, decision: "allow" }),
+    });
     s = server(s, { type: "input_audio_buffer.committed", item_id: "u2" });
-    s = server(s, { type: "response.function_call_arguments.done", call_id: "f1", name: "answer_permission", arguments: JSON.stringify({ item_id: item.id, decision: "allow" }) });
-    s = stepCall(s, { type: "daemon", message: { t: "voice.tool", requestId: "x", callId: "c", toolCallId: "f1", output: "{\"ok\":true}" } }).state;
+    s = server(s, {
+      type: "response.function_call_arguments.done",
+      call_id: "f1",
+      name: "answer_permission",
+      arguments: JSON.stringify({ item_id: item.id, decision: "allow" }),
+    });
+    s = stepCall(s, {
+      type: "daemon",
+      message: {
+        t: "voice.tool",
+        requestId: "x",
+        callId: "c",
+        toolCallId: "f1",
+        output: '{"ok":true}',
+      },
+    }).state;
     expect(s.completed).toEqual([
-      { toolCallId: "f1", name: "answer_permission", arguments: JSON.stringify({ item_id: item.id, decision: "allow" }), sessionId: "a", item: { kind: "approval", title: "npm publish", folder: undefined, agentName: undefined }, ok: true },
+      {
+        toolCallId: "f1",
+        name: "answer_permission",
+        arguments: JSON.stringify({ item_id: item.id, decision: "allow" }),
+        sessionId: "a",
+        item: { kind: "approval", title: "npm publish", folder: undefined, agentName: undefined },
+        ok: true,
+      },
     ]);
   });
 });
@@ -413,7 +654,8 @@ describe("scripted demo", () => {
 describe("one thing at a time", () => {
   const tool = (text: string, at: number) => ({ kind: "tool" as const, text, at });
   type Line = { kind: "tool" | "pew"; text: string; at: number };
-  const seenAt = (id: string, stamps: [Line, number][]) => Object.fromEntries(stamps.map(([line, at]) => [lineKey(id, line), at]));
+  const seenAt = (id: string, stamps: [Line, number][]) =>
+    Object.fromEntries(stamps.map(([line, at]) => [lineKey(id, line), at]));
 
   test("a burst of tools holds each shown line for the dwell, then jumps to the newest", () => {
     const a = tool("Read a.ts", 1);
@@ -422,7 +664,12 @@ describe("one thing at a time", () => {
     const d = tool("Edit d.ts", 4);
     const session = { sessionId: "s", status: "working" as const, lines: [a, b, c, d] };
     // a at T0, then b, c, d 100ms apart: far faster than anyone reads.
-    const seen = seenAt("s", [[a, T0], [b, T0 + 100], [c, T0 + 200], [d, T0 + 300]]);
+    const seen = seenAt("s", [
+      [a, T0],
+      [b, T0 + 100],
+      [c, T0 + 200],
+      [d, T0 + 300],
+    ]);
     expect(currentLine(session, seen, T0 + 50)?.line).toBe(a);
     expect(currentLine(session, seen, T0 + DWELL_MS - 1)?.line).toBe(a);
     // When a's dwell ends, everything has arrived: skip b and c, show d.
@@ -436,7 +683,11 @@ describe("one thing at a time", () => {
     const pew = { kind: "pew" as const, text: "Keep v1 for a month.", at: 2 };
     const after = tool("Edit routes.ts", 3);
     const session = { sessionId: "s", status: "working" as const, lines: [a, pew, after] };
-    const seen = seenAt("s", [[a, T0], [pew, T0 + 200], [after, T0 + 300]]);
+    const seen = seenAt("s", [
+      [a, T0],
+      [pew, T0 + 200],
+      [after, T0 + 300],
+    ]);
     expect(currentLine(session, seen, T0 + 250)?.line).toBe(pew);
     // Still Pew's line well past a plain dwell: typing plus a beat to read it.
     expect(currentLine(session, seen, T0 + 200 + DWELL_MS + 100)?.line).toBe(pew);
@@ -452,7 +703,12 @@ describe("one thing at a time", () => {
 
   test("steps count tools that arrive during the call, not history", () => {
     const history = [tool("old 1", 1), tool("old 2", 2)];
-    const live = [...history, tool("new 1", 3), { kind: "text" as const, text: "thinking", at: 4 }, tool("new 2", 5)];
+    const live = [
+      ...history,
+      tool("new 1", 3),
+      { kind: "text" as const, text: "thinking", at: 4 },
+      tool("new 2", 5),
+    ];
     const state = fold([[sess("a", { lines: history })], [sess("a", { lines: live })]]);
     expect(boardView(state, noCall, T0 + 1500).lanes[0]?.steps).toBe(2);
   });
@@ -460,7 +716,11 @@ describe("one thing at a time", () => {
   test("a new line types out from when it takes the lane, not when it arrived", () => {
     const first = tool("Read a.ts", 1);
     const second = tool("Edit a really long file name that takes a moment to type.ts", 2);
-    const state = fold([[sess("a")], [sess("a", { lines: [first] })], [sess("a", { lines: [first, second] })]]);
+    const state = fold([
+      [sess("a")],
+      [sess("a", { lines: [first] })],
+      [sess("a", { lines: [first, second] })],
+    ]);
     // first arrives at T0+1000, second at T0+2000 (after first's dwell would end at T0+2100).
     const takeover = T0 + 1000 + DWELL_MS;
     const lane = boardView(state, noCall, takeover + 1).lanes[0];
@@ -476,11 +736,36 @@ describe("when the board shows", () => {
     const quiet = fold([[sess("a")]]);
     expect(boardEngaged(quiet, noCall)).toBe(false);
     expect(boardEngaged(fold([[sess("a", { touchedAt: 5 })]]), noCall)).toBe(true);
-    const waiting = { ...noCall, inbox: [{ id: "a:question:r", sessionId: "a", kind: "question" as const, requestId: "r", title: "?", since: 1 }] };
+    const waiting = {
+      ...noCall,
+      inbox: [
+        {
+          id: "a:question:r",
+          sessionId: "a",
+          kind: "question" as const,
+          requestId: "r",
+          title: "?",
+          since: 1,
+        },
+      ],
+    };
     expect(boardEngaged(quiet, waiting)).toBe(true);
-    const telling = { ...noCall, tools: [{ toolCallId: "t", name: "tell_agent", arguments: JSON.stringify({ session_id: "a", text: "hi" }), requestId: "q" }] };
+    const telling = {
+      ...noCall,
+      tools: [
+        {
+          toolCallId: "t",
+          name: "tell_agent",
+          arguments: JSON.stringify({ session_id: "a", text: "hi" }),
+          requestId: "q",
+        },
+      ],
+    };
     expect(boardEngaged(quiet, telling)).toBe(true);
-    const surveying = { ...noCall, tools: [{ toolCallId: "t", name: "get_status", arguments: "{}", requestId: "q" }] };
+    const surveying = {
+      ...noCall,
+      tools: [{ toolCallId: "t", name: "get_status", arguments: "{}", requestId: "q" }],
+    };
     expect(boardEngaged(quiet, surveying)).toBe(true);
     // Surveying an empty machine has nothing to show.
     expect(boardEngaged(fold([]), surveying)).toBe(false);
@@ -498,7 +783,9 @@ describe("caption pages", () => {
     let previous: number[] = [];
     for (let n = 1; n <= line.length; n++) {
       const now = captionPageStarts(line.slice(0, n), 30);
-      expect(now.slice(0, previous.length)).toEqual(previous.slice(0, Math.min(previous.length, now.length)));
+      expect(now.slice(0, previous.length)).toEqual(
+        previous.slice(0, Math.min(previous.length, now.length)),
+      );
       previous = now;
     }
   });
@@ -547,15 +834,28 @@ describe("in time with Pew's voice", () => {
 describe("tool floats: what Pew is up to, in its own words", () => {
   const sessions = [{ sessionId: "s1", folder: "storefront" }];
   test("names the project a tool targets, and never reads like a status", () => {
-    expect(toolFloat("tell_agent", JSON.stringify({ session_id: "s1", text: "x" }), sessions, [])).toBe("Passing storefront a note");
-    expect(toolFloat("get_status", JSON.stringify({ session_id: "s1" }), sessions, [])).toBe("Peeking at storefront");
+    expect(
+      toolFloat("tell_agent", JSON.stringify({ session_id: "s1", text: "x" }), sessions, []),
+    ).toBe("Passing storefront a note");
+    expect(toolFloat("get_status", JSON.stringify({ session_id: "s1" }), sessions, [])).toBe(
+      "Peeking at storefront",
+    );
     expect(toolFloat("get_status", "{}", sessions, [])).toBe("Peeking at the crew");
-    expect(toolFloat("open_chat", JSON.stringify({ project: "billing-api" }), sessions, [])).toBe("Knocking on billing-api");
-    expect(toolFloat("answer_permission", JSON.stringify({ decision: "deny" }), sessions, [])).toBe("Waving it off");
+    expect(toolFloat("open_chat", JSON.stringify({ project: "billing-api" }), sessions, [])).toBe(
+      "Knocking on billing-api",
+    );
+    expect(toolFloat("answer_permission", JSON.stringify({ decision: "deny" }), sessions, [])).toBe(
+      "Waving it off",
+    );
     expect(toolFloat("something_new", "not json", sessions, [])).toBe("Rummaging");
   });
   test("a long project name is clipped so the word stays one line", () => {
-    const text = toolFloat("start_chat", JSON.stringify({ project: "a-really-very-long-project-name" }), sessions, []);
+    const text = toolFloat(
+      "start_chat",
+      JSON.stringify({ project: "a-really-very-long-project-name" }),
+      sessions,
+      [],
+    );
     expect(text.length).toBeLessThanOrEqual(26);
   });
 });

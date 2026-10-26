@@ -62,8 +62,12 @@ const TEXTUAL_MIME = new Set([
 
 export function isTextualMime(mimeType: string): boolean {
   const type = mimeType.split(";")[0]!.trim().toLowerCase();
-  return type.startsWith("text/") || TEXTUAL_MIME.has(type) || type.endsWith("+json") ||
-    type.endsWith("+xml");
+  return (
+    type.startsWith("text/") ||
+    TEXTUAL_MIME.has(type) ||
+    type.endsWith("+json") ||
+    type.endsWith("+xml")
+  );
 }
 
 export function isImageMime(mimeType: string): boolean {

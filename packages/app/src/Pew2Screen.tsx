@@ -108,7 +108,8 @@ const NOOP = () => {};
 const HOME_OFFLINE_WAIT_MS = 8000;
 
 export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => void }) {
-  const { choice, setChoice, voiceRequest, setVoiceRequest, pushExpected, announceTurn } = useTurnBanners();
+  const { choice, setChoice, voiceRequest, setVoiceRequest, pushExpected, announceTurn } =
+    useTurnBanners();
   // useVoice needs the daemon's `post`, and the daemon needs voice's frame
   // listener; a ref breaks the cycle without re-creating either.
   const voiceFrame = useRef<(message: unknown) => void>(() => {});
@@ -141,7 +142,9 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     if (agentIds) sounds.preload(agentIds.split(",").map((id) => agentSound(id)));
   }, [agentIds]);
   const voice = useVoice({ post: daemon.post, online: daemon.status === "online" });
-  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(() => __DEV__ && process.env.EXPO_PUBLIC_DEV_SHEET === "voice");
+  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(
+    () => __DEV__ && process.env.EXPO_PUBLIC_DEV_SHEET === "voice",
+  );
   // Development only: `EXPO_PUBLIC_DEV_SHEET=voice-chat` opens the newest
   // conversation, then the voice sheet over it (its per-chat row).
   const devVoiceChat = useRef(false);
@@ -161,7 +164,13 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   const placeCwd = daemon.workspace?.cwd;
   const placeProvider = daemon.effectiveProviderId;
   const callPlace = useMemo(
-    () => (placeCwd || placeProvider ? { ...(placeCwd ? { cwd: placeCwd } : {}), ...(placeProvider ? { providerId: placeProvider } : {}) } : undefined),
+    () =>
+      placeCwd || placeProvider
+        ? {
+            ...(placeCwd ? { cwd: placeCwd } : {}),
+            ...(placeProvider ? { providerId: placeProvider } : {}),
+          }
+        : undefined,
     [placeCwd, placeProvider],
   );
   // A login on the computer and consent given: straight into the call.
@@ -261,10 +270,13 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     devTalked.current = true;
     // Like a person: a few seconds after the screen settles (the launch
     // itself is busy), with the button's own tap.
-    setTimeout(() => {
-      haptics.tap();
-      talk();
-    }, Number(process.env.EXPO_PUBLIC_DEV_TALK_DELAY_MS ?? 0));
+    setTimeout(
+      () => {
+        haptics.tap();
+        talk();
+      },
+      Number(process.env.EXPO_PUBLIC_DEV_TALK_DELAY_MS ?? 0),
+    );
   }, [daemon.status, voice.knowledge, talk]);
   // Development only: `EXPO_PUBLIC_DEV_REDIAL_MS` presses "Call again" on the
   // end card that long after a call ends or fails (dismiss, then call at once,
@@ -275,7 +287,13 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   useEffect(() => {
     const ms = Number(process.env.EXPO_PUBLIC_DEV_REDIAL_MS ?? 0);
     const count = Number(process.env.EXPO_PUBLIC_DEV_REDIAL_COUNT ?? 1);
-    if (!__DEV__ || !ms || (devPhase !== "ended" && devPhase !== "failed") || devRedials.current >= count) return;
+    if (
+      !__DEV__ ||
+      !ms ||
+      (devPhase !== "ended" && devPhase !== "failed") ||
+      devRedials.current >= count
+    )
+      return;
     const timer = setTimeout(() => {
       devRedials.current += 1;
       console.log(`[voice] dev redial ${devRedials.current}/${count} after ${devPhase}`);
@@ -288,16 +306,34 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   const talkAbout = useCallback((focus: string) => startCall(focus), [startCall]);
   // A tapped voice push opens straight into a call, once the daemon is up.
   useEffect(() => {
-    if (!voiceRequest || daemon.status !== "online" || voice.knowledge.kind === "unknown" || voiceConsent === undefined) return;
+    if (
+      !voiceRequest ||
+      daemon.status !== "online" ||
+      voice.knowledge.kind === "unknown" ||
+      voiceConsent === undefined
+    )
+      return;
     setVoiceRequest(undefined);
     if (talkable) startCall(voiceRequest.focus);
-  }, [voiceRequest, daemon.status, voice.knowledge.kind, voiceConsent, talkable, startCall, setVoiceRequest]);
+  }, [
+    voiceRequest,
+    daemon.status,
+    voice.knowledge.kind,
+    voiceConsent,
+    talkable,
+    startCall,
+    setVoiceRequest,
+  ]);
 
   const [drawerProjection, setDrawerProjection] = useState(() => ({
-    source: daemon.sessions, rows: projectDrawerRows([], daemon.sessions),
+    source: daemon.sessions,
+    rows: projectDrawerRows([], daemon.sessions),
   }));
   if (drawerProjection.source !== daemon.sessions) {
-    setDrawerProjection({ source: daemon.sessions, rows: projectDrawerRows(drawerProjection.rows, daemon.sessions) });
+    setDrawerProjection({
+      source: daemon.sessions,
+      rows: projectDrawerRows(drawerProjection.rows, daemon.sessions),
+    });
   }
 
   // Retry the socket the moment the app is back, rather than waiting out a
@@ -379,9 +415,17 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   );
   useHomeWidget(widget);
   // Development only: `EXPO_PUBLIC_DEV_HOME=empty` shows home with no sessions.
-  const devHome = __DEV__ && process.env.EXPO_PUBLIC_DEV_HOME === "empty" ? { cards: [], empty: true } : undefined;
+  const devHome =
+    __DEV__ && process.env.EXPO_PUBLIC_DEV_HOME === "empty"
+      ? { cards: [], empty: true }
+      : undefined;
   const dashboard = useMemo(
-    () => homeDashboard({ sessions: drawerProjection.rows, asks: daemon.gg.asks, providers: daemon.providers }),
+    () =>
+      homeDashboard({
+        sessions: drawerProjection.rows,
+        asks: daemon.gg.asks,
+        providers: daemon.providers,
+      }),
     [drawerProjection.rows, daemon.gg.asks, daemon.providers],
   );
   /**
@@ -428,13 +472,18 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   useEffect(() => setDesktopLanHosts(lanHosts ?? []), [lanHosts]);
   // `EXPO_PUBLIC_DEV_OPEN_DRAWER=1` (development only) starts with the drawer
   // open, so a simulator check can see it without a tap.
-  const [menuOpen, setMenuOpen] = useState(() => __DEV__ && process.env.EXPO_PUBLIC_DEV_OPEN_DRAWER === "1");
+  const [menuOpen, setMenuOpen] = useState(
+    () => __DEV__ && process.env.EXPO_PUBLIC_DEV_OPEN_DRAWER === "1",
+  );
   const [connectionOpen, setConnectionOpen] = useState(() => devSheet === "connection");
   useEffect(() => {
     if (connectionOpen) setVoiceNow(Date.now());
   }, [connectionOpen]);
   const [contextOpen, setContextOpen] = useState(() => devSheet === "context");
-  const openContext = useCallback(() => { Keyboard.dismiss(); setContextOpen(true); }, []);
+  const openContext = useCallback(() => {
+    Keyboard.dismiss();
+    setContextOpen(true);
+  }, []);
   const closeContext = useCallback(() => setContextOpen(false), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const openConnection = useCallback(() => {
@@ -460,7 +509,9 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   }, [askAlerts]);
   // Which pill's menu is open, and where that pill sits, so the menu opens
   // under it instead of always at the gutter.
-  const [picker, setPicker] = useState<"model" | "mode" | null>(() => (devSheet === "model" ? "model" : null));
+  const [picker, setPicker] = useState<"model" | "mode" | null>(() =>
+    devSheet === "model" ? "model" : null,
+  );
   const [commandsOpen, setCommandsOpen] = useState(() => devSheet === "commands");
   const [newChatOpen, setNewChatOpen] = useState(() => devSheet === "newchat");
   // The reasoning currently being read, if any. Held here rather than per turn
@@ -603,7 +654,8 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   // this the screen fell back to home for that moment, with the agent's recent
   // chats as cards under a thumb that had just let go of Ken: one stray tap
   // opened some other conversation instead of the goal.
-  const launching = launchingGoal !== undefined && daemon.turns.length === 0 && !daemon.restoreTarget;
+  const launching =
+    launchingGoal !== undefined && daemon.turns.length === 0 && !daemon.restoreTarget;
   const inThread = daemon.turns.length > 0 || launching;
   // Home vs conversation: a transcript (or one reopening) is a conversation; so
   // is an open session with nothing in it yet, and a new one whose project and
@@ -612,11 +664,17 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   useEffect(() => {
     if (inThread) setComposing(false);
   }, [inThread]);
-  const onHome = !inThread && !daemon.restoreTarget && !daemon.loadingSession && daemon.sessionId === undefined && !composing;
-  const sessionTitle = daemon.restoreTarget?.title
-    ?? (launching ? launchingGoal : undefined)
-    ?? daemonSessions.find((session) => session.id === (daemon.sessionId ?? threadKey))?.title
-    ?? (onHome ? "Home" : "New conversation");
+  const onHome =
+    !inThread &&
+    !daemon.restoreTarget &&
+    !daemon.loadingSession &&
+    daemon.sessionId === undefined &&
+    !composing;
+  const sessionTitle =
+    daemon.restoreTarget?.title ??
+    (launching ? launchingGoal : undefined) ??
+    daemonSessions.find((session) => session.id === (daemon.sessionId ?? threadKey))?.title ??
+    (onHome ? "Home" : "New conversation");
 
   // Where the reading area begins and ends: under the nav, and above the
   // composer. Both fall back to the resting height of the thing they clear,
@@ -694,7 +752,10 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   }, [typingRef]);
   const closeCarousel = useCallback(() => setCarouselOpen(false), []);
   const carouselAgents = useMemo(
-    () => orderProvidersByRecency(daemon.providers, drawerProjection.rows).filter((p) => p.available !== false),
+    () =>
+      orderProvidersByRecency(daemon.providers, drawerProjection.rows).filter(
+        (p) => p.available !== false,
+      ),
     [daemon.providers, drawerProjection.rows],
   );
   const online = daemon.status === "online" && !daemon.unreachable;
@@ -702,7 +763,9 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     daemon.busy ? "Working" : online ? "Ready" : "Offline",
     daemon.workspace?.folder,
     active?.name,
-    daemon.workspace?.repo && (daemon.workspace.uncommitted ?? 0) > 0 ? `${daemon.workspace.uncommitted} changed` : undefined,
+    daemon.workspace?.repo && (daemon.workspace.uncommitted ?? 0) > 0
+      ? `${daemon.workspace.uncommitted} changed`
+      : undefined,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -731,9 +794,19 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   // Never let one selector drive two pills.
   const mode = modeOption && modeOption.id !== model?.id ? modeOption : undefined;
 
-  useAgentFeedback(daemon.busy, daemon.turns, daemon.permission, daemon.sessionId, daemon.loadingSession);
+  useAgentFeedback(
+    daemon.busy,
+    daemon.turns,
+    daemon.permission,
+    daemon.sessionId,
+    daemon.loadingSession,
+  );
 
-  const { paneSlide, edgeSwipeClosed, edgeSwipeOpen, drawerSwipe } = useDrawer({ menuOpen, setMenuOpen, reduceMotion });
+  const { paneSlide, edgeSwipeClosed, edgeSwipeOpen, drawerSwipe } = useDrawer({
+    menuOpen,
+    setMenuOpen,
+    reduceMotion,
+  });
 
   useEffect(() => {
     const animation = Animated.timing(jumpOpacity, {
@@ -744,7 +817,6 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     animation.start();
     return () => animation.stop();
   }, [atBottom, reduceMotion, jumpOpacity]);
-
 
   const openSession = useCallback(
     (id: string) => {
@@ -827,7 +899,8 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     setDraftListener((text) => {
       const dock = composer.current;
       if (!dock) return;
-      if (shouldReplaceDraft(text, dock.getDraft(), dictatingRef.current)) dock.applyRemoteDraft(text);
+      if (shouldReplaceDraft(text, dock.getDraft(), dictatingRef.current))
+        dock.applyRemoteDraft(text);
     });
     return () => setDraftListener(undefined);
   }, [setDraftListener]);
@@ -842,7 +915,9 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   // message that was never delivered.
   // `EXPO_PUBLIC_DEV_NEW_GOAL=1` (development only) opens the New goal screen
   // on launch, for a simulator check without a tap.
-  const [newGoalOpen, setNewGoalOpen] = useState(() => __DEV__ && process.env.EXPO_PUBLIC_DEV_NEW_GOAL === "1");
+  const [newGoalOpen, setNewGoalOpen] = useState(
+    () => __DEV__ && process.env.EXPO_PUBLIC_DEV_NEW_GOAL === "1",
+  );
   const [newGoalPrefill, setNewGoalPrefill] = useState<string>();
   const send = useCallback(
     (text: string): boolean => {
@@ -892,7 +967,16 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     // Attachments are read through their ref, so staging a photo does not
     // rebuild this and re-render the memoised dock beneath it.
     // `attachmentsRef` and `setAttachments` come from `useAttachments`: stable.
-    [cancelDictation, daemon.sessionId, promptDaemon, startDaemon, active, attachmentsRef, setAttachments, askAlerts],
+    [
+      cancelDictation,
+      daemon.sessionId,
+      promptDaemon,
+      startDaemon,
+      active,
+      attachmentsRef,
+      setAttachments,
+      askAlerts,
+    ],
   );
 
   /**
@@ -924,7 +1008,6 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   useEffect(() => {
     cancelDictation();
   }, [daemon.sessionId, cancelDictation]);
-
 
   /**
    * Leave the current conversation, with the next one aimed at `cwd`.
@@ -986,11 +1069,20 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   const selectAgent = daemon.select;
   // Unconfirmed until Start, so a dismissed step lands on home, never on a
   // composer aimed at an agent nobody confirmed.
-  const pickAgent = useCallback((id: string) => {
-    setComposing(false);
-    selectAgent(id);
-  }, [selectAgent]);
-  useDevOpenSession({ rows: drawerProjection.rows, activeId, openSession, startNewChat, setNewChatOpen });
+  const pickAgent = useCallback(
+    (id: string) => {
+      setComposing(false);
+      selectAgent(id);
+    },
+    [selectAgent],
+  );
+  useDevOpenSession({
+    rows: drawerProjection.rows,
+    activeId,
+    openSession,
+    startNewChat,
+    setNewChatOpen,
+  });
 
   // Widget taps. A conversation goes through `setChoice`, exactly like a
   // banner tap, so a widget that launched the app cold waits for the session
@@ -1024,7 +1116,11 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     setNewChatOpen(true);
   }, []);
   const pillChooses =
-    projectPillAction({ sessionId: daemon.sessionId, loadingSession: daemon.loadingSession, goals: isGoalsProvider(activeId) }) === "choose";
+    projectPillAction({
+      sessionId: daemon.sessionId,
+      loadingSession: daemon.loadingSession,
+      goals: isGoalsProvider(activeId),
+    }) === "choose";
 
   // The drawer only ever offers this beside a named project, so it always has
   // a path to hand — no undefined branch to fall back on here.
@@ -1054,7 +1150,8 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   const openCommands = useCallback(() => setCommandsOpen(true), []);
 
   useEffect(() => {
-    if (!__DEV__ || process.env.EXPO_PUBLIC_DEV_SHEET !== "voice-chat" || devVoiceChat.current) return;
+    if (!__DEV__ || process.env.EXPO_PUBLIC_DEV_SHEET !== "voice-chat" || devVoiceChat.current)
+      return;
     if (daemon.status !== "online" || drawerProjection.rows.length === 0) return;
     devVoiceChat.current = true;
     openSession(drawerProjection.rows[0]!.id);
@@ -1066,20 +1163,66 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
   // Development only: `EXPO_PUBLIC_DEV_TOUR=1` walks the main actions a few
   // seconds apart with their haptics, logging when each was pressed, so the
   // time from a tap to the screen changing can be measured from a recording.
-  const tourRef = useRef({ openSession, setMenuOpen, setCarouselOpen, setCommandsOpen, setNewChatOpen, setConnectionOpen, sessions: drawerProjection.rows, select: daemon.select, providers: daemon.providers, active: daemon.effectiveProviderId });
-  tourRef.current = { openSession, setMenuOpen, setCarouselOpen, setCommandsOpen, setNewChatOpen, setConnectionOpen, sessions: drawerProjection.rows, select: daemon.select, providers: daemon.providers, active: daemon.effectiveProviderId };
+  const tourRef = useRef({
+    openSession,
+    setMenuOpen,
+    setCarouselOpen,
+    setCommandsOpen,
+    setNewChatOpen,
+    setConnectionOpen,
+    sessions: drawerProjection.rows,
+    select: daemon.select,
+    providers: daemon.providers,
+    active: daemon.effectiveProviderId,
+  });
+  tourRef.current = {
+    openSession,
+    setMenuOpen,
+    setCarouselOpen,
+    setCommandsOpen,
+    setNewChatOpen,
+    setConnectionOpen,
+    sessions: drawerProjection.rows,
+    select: daemon.select,
+    providers: daemon.providers,
+    active: daemon.effectiveProviderId,
+  };
   useEffect(() => {
     if (!__DEV__ || process.env.EXPO_PUBLIC_DEV_TOUR !== "1" || daemon.status !== "online") return;
     const t = tourRef;
     const steps: [string, () => void][] = [
       ["openMenu", () => t.current.setMenuOpen(true)],
-      ["openChat", () => { const s = t.current.sessions[0]; if (s) t.current.openSession(s.id); }],
+      [
+        "openChat",
+        () => {
+          const s = t.current.sessions[0];
+          if (s) t.current.openSession(s.id);
+        },
+      ],
       ["openMenu2", () => t.current.setMenuOpen(true)],
-      ["openChat2", () => { const s = t.current.sessions[1] ?? t.current.sessions[0]; if (s) t.current.openSession(s.id); }],
+      [
+        "openChat2",
+        () => {
+          const s = t.current.sessions[1] ?? t.current.sessions[0];
+          if (s) t.current.openSession(s.id);
+        },
+      ],
       ["openCarousel", () => t.current.setCarouselOpen(true)],
       ["closeCarousel", () => t.current.setCarouselOpen(false)],
-      ["switchAgent", () => { const other = t.current.providers.find((p) => p.id !== t.current.active); if (other) t.current.select(other.id); }],
-      ["switchBack", () => { const other = t.current.providers.find((p) => p.id !== t.current.active); if (other) t.current.select(other.id); }],
+      [
+        "switchAgent",
+        () => {
+          const other = t.current.providers.find((p) => p.id !== t.current.active);
+          if (other) t.current.select(other.id);
+        },
+      ],
+      [
+        "switchBack",
+        () => {
+          const other = t.current.providers.find((p) => p.id !== t.current.active);
+          if (other) t.current.select(other.id);
+        },
+      ],
       ["openCommands", () => t.current.setCommandsOpen(true)],
       ["closeCommands", () => t.current.setCommandsOpen(false)],
       ["openNewChat", () => t.current.setNewChatOpen(true)],
@@ -1088,11 +1231,14 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
       ["closeConnection", () => t.current.setConnectionOpen(false)],
     ];
     const timers = steps.map(([name, run], i) =>
-      setTimeout(() => {
-        console.log(`PEWTOUR ${name} ${Date.now()}`);
-        haptics.tap();
-        run();
-      }, 6000 + i * 3500),
+      setTimeout(
+        () => {
+          console.log(`PEWTOUR ${name} ${Date.now()}`);
+          haptics.tap();
+          run();
+        },
+        6000 + i * 3500,
+      ),
     );
     return () => timers.forEach(clearTimeout);
   }, [daemon.status]);
@@ -1159,19 +1305,52 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
     setCarouselOpen,
     setMenuOpen,
   });
-  const composerSelectors = useMemo<ComposerSelector[]>(() => [
-    ...(model ? [{ id: "model", value: "Model", label: `Model: ${valueName(model) ?? "Not reported"}${level ? `, ${valueName(level)}` : ""}`, onPress: (anchor: ComposerAnchor) => openComposerPicker("model", anchor) }] : []),
-    ...(mode && !ggAgent ? [{ id: "mode", value: valueName(mode) ?? mode.name, label: `${mode.name}: ${valueName(mode) ?? "Not reported"}`, onPress: (anchor: ComposerAnchor) => openComposerPicker("mode", anchor) }] : []),
-    ...(autopilotOffered
-      ? [{
-          id: "autopilot",
-          value: autopilotReviewing ? "Reviewing…" : "Autopilot",
-          label: autopilotReviewing ? "Autopilot, Ken is reviewing" : "Autopilot",
-          toggle: { on: autopilotOn },
-          onPress: toggleAutopilot,
-        }]
-      : []),
-  ], [model, mode, level, ggAgent, autopilotOffered, autopilotOn, autopilotReviewing, toggleAutopilot, openComposerPicker]);
+  const composerSelectors = useMemo<ComposerSelector[]>(
+    () => [
+      ...(model
+        ? [
+            {
+              id: "model",
+              value: "Model",
+              label: `Model: ${valueName(model) ?? "Not reported"}${level ? `, ${valueName(level)}` : ""}`,
+              onPress: (anchor: ComposerAnchor) => openComposerPicker("model", anchor),
+            },
+          ]
+        : []),
+      ...(mode && !ggAgent
+        ? [
+            {
+              id: "mode",
+              value: valueName(mode) ?? mode.name,
+              label: `${mode.name}: ${valueName(mode) ?? "Not reported"}`,
+              onPress: (anchor: ComposerAnchor) => openComposerPicker("mode", anchor),
+            },
+          ]
+        : []),
+      ...(autopilotOffered
+        ? [
+            {
+              id: "autopilot",
+              value: autopilotReviewing ? "Reviewing…" : "Autopilot",
+              label: autopilotReviewing ? "Autopilot, Ken is reviewing" : "Autopilot",
+              toggle: { on: autopilotOn },
+              onPress: toggleAutopilot,
+            },
+          ]
+        : []),
+    ],
+    [
+      model,
+      mode,
+      level,
+      ggAgent,
+      autopilotOffered,
+      autopilotOn,
+      autopilotReviewing,
+      toggleAutopilot,
+      openComposerPicker,
+    ],
+  );
 
   const answerPermission = useCallback(
     (requestId: string, optionId: string, deny: boolean) => {
@@ -1200,403 +1379,504 @@ export function Pew2({ pairing, onUnpair }: { pairing: Pairing; onUnpair: () => 
 
   return (
     <ImageResolverProvider value={imageResolver}>
-    <AgentColorProvider value={agentInk}>
-    <View style={styles.root}>
-      <StatusBar style="light" />
+      <AgentColorProvider value={agentInk}>
+        <View style={styles.root}>
+          <StatusBar style="light" />
 
-      <GestureDetector gesture={drawerSwipe}>
-      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <Sidebar
-        open={menuOpen}
-        closeGesture={drawerSwipe}
-        providers={daemon.providers}
-        sessions={drawerProjection.rows}
-        activeProviderId={active?.id}
-        activeSessionId={daemon.sessionId}
-        // Selecting an app refilters the history in place. The drawer stays
-        // open so you can pick a conversation from that app straight after —
-        // closing here would make choosing an app cost two trips.
-        onSelectProvider={pickAgent}
-        onOpenSession={openSession}
-        liveSessionIds={daemon.liveSessionIds}
-        onCloseSession={daemon.closeSession}
-        onBrowseFolder={daemon.status === "online" ? browseNewFolder : undefined}
-        onNewConversation={newConversation}
-        // Which project the history is narrowed to, and where the next
-        // conversation will open.
-        projects={projects}
-        selectedProjectPath={selectedProjectPath}
-        onSelectProject={selectProject}
-        historyLoading={daemon.loadingSessions}
-        reduceMotion={reduceMotion}
-        machineLabel={daemon.machineName ?? "Your computer"}
-        machineRemote={pairing.remote}
-        connectionStatus={daemon.status}
-        update={daemon.update}
-        onOpenConnection={openConnection}
-        onClose={closeMenu}
-        goals={
-          isGoalsProvider(activeId) && daemon.hasGgCoder
-            ? {
-                list: gg.goals,
-                loading: gg.goalsLoading,
-                error: gg.goalsError,
-                onRefresh: refreshGoals,
-                onOpen: openGoal,
-                onDelete: deleteGoal,
-                onNew: openNewGoal,
-              }
-            : undefined
-        }
-      />
-      </View>
-      </GestureDetector>
+          <GestureDetector gesture={drawerSwipe}>
+            <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+              <Sidebar
+                open={menuOpen}
+                closeGesture={drawerSwipe}
+                providers={daemon.providers}
+                sessions={drawerProjection.rows}
+                activeProviderId={active?.id}
+                activeSessionId={daemon.sessionId}
+                // Selecting an app refilters the history in place. The drawer stays
+                // open so you can pick a conversation from that app straight after —
+                // closing here would make choosing an app cost two trips.
+                onSelectProvider={pickAgent}
+                onOpenSession={openSession}
+                liveSessionIds={daemon.liveSessionIds}
+                onCloseSession={daemon.closeSession}
+                onBrowseFolder={daemon.status === "online" ? browseNewFolder : undefined}
+                onNewConversation={newConversation}
+                // Which project the history is narrowed to, and where the next
+                // conversation will open.
+                projects={projects}
+                selectedProjectPath={selectedProjectPath}
+                onSelectProject={selectProject}
+                historyLoading={daemon.loadingSessions}
+                reduceMotion={reduceMotion}
+                machineLabel={daemon.machineName ?? "Your computer"}
+                machineRemote={pairing.remote}
+                connectionStatus={daemon.status}
+                update={daemon.update}
+                onOpenConnection={openConnection}
+                onClose={closeMenu}
+                goals={
+                  isGoalsProvider(activeId) && daemon.hasGgCoder
+                    ? {
+                        list: gg.goals,
+                        loading: gg.goalsLoading,
+                        error: gg.goalsError,
+                        onRefresh: refreshGoals,
+                        onOpen: openGoal,
+                        onDelete: deleteGoal,
+                        onNew: openNewGoal,
+                      }
+                    : undefined
+                }
+              />
+            </View>
+          </GestureDetector>
 
-      {/* The conversation pane. Slides right to reveal the drawer beneath. */}
-      <Reanimated.View style={[styles.pane, paneSlide]}>
-      {/* Starts below the nav: this strip is the hit target for anything it
+          {/* The conversation pane. Slides right to reveal the drawer beneath. */}
+          <Reanimated.View style={[styles.pane, paneSlide]}>
+            {/* Starts below the nav: this strip is the hit target for anything it
           covers, and over the nav it would swallow taps on the menu button. */}
-      {!menuOpen && (
-        <GestureDetector gesture={edgeSwipeClosed}>
-          <View style={[styles.edgeSwipe, { top: insets.top + navHeight }]} />
-        </GestureDetector>
-      )}
-      {/* Full-bleed on both edges: the thread runs behind the status bar and
+            {!menuOpen && (
+              <GestureDetector gesture={edgeSwipeClosed}>
+                <View style={[styles.edgeSwipe, { top: insets.top + navHeight }]} />
+              </GestureDetector>
+            )}
+            {/* Full-bleed on both edges: the thread runs behind the status bar and
           down to the home indicator, and a CanvasCover covers each of those
           regions, so content fades out into the canvas colour at both ends
           rather than meeting a solid band. The dock carries the bottom inset
           itself. */}
-      {/* Left and right are inset because the app rotates: held sideways one
+            {/* Left and right are inset because the app rotates: held sideways one
           long edge is the notch, which hides text outright. */}
-      {/* The canvas's dot grid, behind home and every conversation, as on
+            {/* The canvas's dot grid, behind home and every conversation, as on
           onboarding, the agent switcher and calls. Drawn once (a static
           picture), so it costs nothing per frame. */}
-      <DotGrid />
-      <SafeAreaView style={styles.paneInner} edges={["left", "right"]}>
+            <DotGrid />
+            <SafeAreaView style={styles.paneInner} edges={["left", "right"]}>
+              <ScreenTopBar
+                daemon={daemon}
+                goals={goals}
+                insets={insets}
+                navHeight={navHeight}
+                setNavHeight={setNavHeight}
+                setMenuOpen={setMenuOpen}
+                onNewChat={openNewFromBar}
+                onHome={!inThread && !daemon.restoreTarget && !onHome ? goHome : undefined}
+                // Calls are about a conversation: not offered on home.
+                onTalk={talkVisible(voice.knowledge) && !onHome ? talk : undefined}
+                onTalkHold={talkVisible(voice.knowledge) && !onHome ? talkSettings : undefined}
+                talkArmed={talkArmed}
+                sessionTitle={sessionTitle}
+                inThread={inThread}
+                onOpenTools={openTools}
+                holdingRestore={holdingRestore}
+                active={active}
+              />
 
-      <ScreenTopBar
-        daemon={daemon}
-        goals={goals}
-        insets={insets}
-        navHeight={navHeight}
-        setNavHeight={setNavHeight}
-        setMenuOpen={setMenuOpen}
-        onNewChat={openNewFromBar}
-        onHome={!inThread && !daemon.restoreTarget && !onHome ? goHome : undefined}
-        // Calls are about a conversation: not offered on home.
-        onTalk={talkVisible(voice.knowledge) && !onHome ? talk : undefined}
-        onTalkHold={talkVisible(voice.knowledge) && !onHome ? talkSettings : undefined}
-        talkArmed={talkArmed}
-        sessionTitle={sessionTitle}
-        inThread={inThread}
-        onOpenTools={openTools}
-        holdingRestore={holdingRestore}
-        active={active}
-      />
-
-      {/* The one thing the keyboard moves: the thread and the dock ride up as a
+              {/* The one thing the keyboard moves: the thread and the dock ride up as a
           single transform, so the gap between them never changes and nothing
           re-lays out on the keyboard's clock. */}
-      <Reanimated.View style={[styles.body, keyboard.pane]}>
-        {inThread || daemon.restoreTarget ? (
-          // Remounted per conversation so `startRenderingFromBottom` re-arms:
-          // each transcript must open on its own newest message, not on the
-          // scroll offset the previous one happened to be left at.
-          <ChatThread
-            key={threadKey}
-            ref={scroller}
-            turns={holdingRestore ? NO_TURNS : shownTurns}
-            activeStream={daemon.activeStream}
-            restore={launching ? {
-              title: launchingGoal!,
-              state: "starting",
-              onRetry: NOOP,
-            } : daemon.restoreTarget ? {
-              title: daemon.restoreTarget.title,
-              state: restorePresentation(daemon.restoreTarget, daemon.loadingSession, daemon.restoreError, holdingRestore ? 0 : daemon.turns.length, daemon.status),
-              error: daemon.restoreError,
-              onRetry: () => daemon.openSession(daemon.restoreTarget!.id),
-            } : undefined}
-            threadTop={threadTop}
-            threadBottom={threadBottom}
-            working={working && !daemon.loadingSession && !daemon.restoreError}
-            receipt={daemon.receipt}
-            indicatorTop={insets.top + navHeight}
-            indicatorBottom={dockHeight + stripsHeight}
-            onAtBottomChange={setAtBottom}
-            onOpenThought={openThought}
-            onRetry={retrySend}
-            onOpenTools={openTools}
-          />
-        ) : daemon.loadingSession ? null : onHome ? (
-          <HomeDashboard
-            home={devHome ?? dashboard}
-            online={online}
-            fatal={daemon.fatal}
-            agents={daemon.providers.length > 0 ? daemon.providers.filter((p) => p.available).length : undefined}
-            color={active?.color}
-            settled={homeWaited && (online ? !daemon.loadingSessions : everOnline || offlineWaited || Boolean(daemon.fatal))}
-            top={threadTop}
-            bottom={insets.bottom + theme.space(2)}
-            onOpen={openSession}
-            onPressPew={openCarousel}
-          />
-        ) : (
-          // A new conversation, its project and agent chosen: Pew names both;
-          // tapping it switches agent, as everywhere.
-          <HomeView
-            daemon={daemon}
-            keyboard={keyboard}
-            active={active}
-            homeWaited={homeWaited}
-            reduceMotion={reduceMotion}
-            homeStatus={homeStatus}
-            openCarousel={openCarousel}
-            pewSmiling={pewSmiling}
-            greeting={greeting}
-            emptyReason={emptyReason}
-            hint="Tap Pew to switch agent"
-          />
-        )}
+              <Reanimated.View style={[styles.body, keyboard.pane]}>
+                {inThread || daemon.restoreTarget ? (
+                  // Remounted per conversation so `startRenderingFromBottom` re-arms:
+                  // each transcript must open on its own newest message, not on the
+                  // scroll offset the previous one happened to be left at.
+                  <ChatThread
+                    key={threadKey}
+                    ref={scroller}
+                    turns={holdingRestore ? NO_TURNS : shownTurns}
+                    activeStream={daemon.activeStream}
+                    restore={
+                      launching
+                        ? {
+                            title: launchingGoal!,
+                            state: "starting",
+                            onRetry: NOOP,
+                          }
+                        : daemon.restoreTarget
+                          ? {
+                              title: daemon.restoreTarget.title,
+                              state: restorePresentation(
+                                daemon.restoreTarget,
+                                daemon.loadingSession,
+                                daemon.restoreError,
+                                holdingRestore ? 0 : daemon.turns.length,
+                                daemon.status,
+                              ),
+                              error: daemon.restoreError,
+                              onRetry: () => daemon.openSession(daemon.restoreTarget!.id),
+                            }
+                          : undefined
+                    }
+                    threadTop={threadTop}
+                    threadBottom={threadBottom}
+                    working={working && !daemon.loadingSession && !daemon.restoreError}
+                    receipt={daemon.receipt}
+                    indicatorTop={insets.top + navHeight}
+                    indicatorBottom={dockHeight + stripsHeight}
+                    onAtBottomChange={setAtBottom}
+                    onOpenThought={openThought}
+                    onRetry={retrySend}
+                    onOpenTools={openTools}
+                  />
+                ) : daemon.loadingSession ? null : onHome ? (
+                  <HomeDashboard
+                    home={devHome ?? dashboard}
+                    online={online}
+                    fatal={daemon.fatal}
+                    agents={
+                      daemon.providers.length > 0
+                        ? daemon.providers.filter((p) => p.available).length
+                        : undefined
+                    }
+                    color={active?.color}
+                    settled={
+                      homeWaited &&
+                      (online
+                        ? !daemon.loadingSessions
+                        : everOnline || offlineWaited || Boolean(daemon.fatal))
+                    }
+                    top={threadTop}
+                    bottom={insets.bottom + theme.space(2)}
+                    onOpen={openSession}
+                    onPressPew={openCarousel}
+                  />
+                ) : (
+                  // A new conversation, its project and agent chosen: Pew names both;
+                  // tapping it switches agent, as everywhere.
+                  <HomeView
+                    daemon={daemon}
+                    keyboard={keyboard}
+                    active={active}
+                    homeWaited={homeWaited}
+                    reduceMotion={reduceMotion}
+                    homeStatus={homeStatus}
+                    openCarousel={openCarousel}
+                    pewSmiling={pewSmiling}
+                    greeting={greeting}
+                    emptyReason={emptyReason}
+                    hint="Tap Pew to switch agent"
+                  />
+                )}
 
-        {/* Home has no composer. Hidden rather than unmounted: the dock owns
+                {/* Home has no composer. Hidden rather than unmounted: the dock owns
             the draft, and a banner reply that must reopen its conversation
             first leaves its text there. */}
-        <View
-          style={[styles.dockOverlay, { bottom: 0 }, onHome && hiddenDock]}
-          pointerEvents={onHome ? "none" : "box-none"}
-          accessibilityElementsHidden={onHome}
-          importantForAccessibility={onHome ? "no-hide-descendants" : "auto"}
-        >
-          {/* Only ever a way back down: there is no jump-to-top, because the top
+                <View
+                  style={[styles.dockOverlay, { bottom: 0 }, onHome && hiddenDock]}
+                  pointerEvents={onHome ? "none" : "box-none"}
+                  accessibilityElementsHidden={onHome}
+                  importantForAccessibility={onHome ? "no-hide-descendants" : "auto"}
+                >
+                  {/* Only ever a way back down: there is no jump-to-top, because the top
               of a transcript is history and the end is where work happens. */}
-          <Animated.View
-            pointerEvents={atBottom ? "none" : "auto"}
-            style={[styles.jumpToEnd, { opacity: jumpOpacity }]}
-          >
-            <CircleButton
-              label="Scroll to latest message"
-              onPress={() => {
-                // The thread only rides the keyboard from the bottom, and the
-                // scroll that gets there is animated — so claim the state now
-                // rather than waiting for the last frame's scroll event.
-                setAtBottom(true);
-                scroller.current?.scrollToEnd({ animated: !reduceMotion });
-              }}
-              size={theme.size.chip}
-            >
-              <DotGlyph name="down" size={16} />
-            </CircleButton>
-          </Animated.View>
-          {dockHeight > 0 && (
-            <CanvasCover edge="bottom" height={dockHeight + stripsHeight} style={styles.dockCover} />
-          )}
-          {/* The dock keeps the composer even while an approval is pending:
+                  <Animated.View
+                    pointerEvents={atBottom ? "none" : "auto"}
+                    style={[styles.jumpToEnd, { opacity: jumpOpacity }]}
+                  >
+                    <CircleButton
+                      label="Scroll to latest message"
+                      onPress={() => {
+                        // The thread only rides the keyboard from the bottom, and the
+                        // scroll that gets there is animated — so claim the state now
+                        // rather than waiting for the last frame's scroll event.
+                        setAtBottom(true);
+                        scroller.current?.scrollToEnd({ animated: !reduceMotion });
+                      }}
+                      size={theme.size.chip}
+                    >
+                      <DotGlyph name="down" size={16} />
+                    </CircleButton>
+                  </Animated.View>
+                  {dockHeight > 0 && (
+                    <CanvasCover
+                      edge="bottom"
+                      height={dockHeight + stripsHeight}
+                      style={styles.dockCover}
+                    />
+                  )}
+                  {/* The dock keeps the composer even while an approval is pending:
               the request is its own blocking sheet now, so swapping this out
               under it would only resize the thread behind a covered surface.
 
               It owns the draft, so typing re-renders this subtree and not the
               whole app. That is what leaves the JS thread free for the
               composer's own growth animation while a line wraps. */}
-          <View
-            onLayout={(e) => {
-              const height = Math.round(e.nativeEvent.layout.height);
-              setStripsHeight((prev) => (prev === height ? prev : height));
-            }}
-          >
-            {/* GG's Checklist / Plan chips ride the composer's context row now. */}
-            <QueuedStrip messages={queuedHere} onCancel={cancelQueued} />
-          </View>
-          <ComposerDock
-            ref={composer}
-            style={[
-              styles.dock,
-              // Constant. The spacer below the body carries the keyboard, and it
-              // already gives this clearance back, so the composer keeps the
-              // same gap above either boundary without re-laying out.
-              { paddingBottom: insets.bottom + theme.space(2) },
-            ]}
-            // Settled heights only. The dock reports once its growth animation
-            // has stopped, not on every frame of it — measured at roughly one
-            // layout pass per two pixels, which turned a single wrapped line
-            // into about ten re-renders of this whole component, each one
-            // rebuilding the thread's spacers and re-running its follow-scroll
-            // on the exact frames the composer was trying to animate.
-            onHeightSettled={(height) => {
-              // Recorded against the state it was measured in, and only when it
-              // actually changed — the keyboard's own animation causes layout
-              // passes that have nothing to do with the draft.
-              setDockHeights((prev) => recordDockHeight(prev, typing, height));
-            }}
-            typing={typing}
-            workspace={isGoalsProvider(active?.id) && !openSessionId ? undefined : daemon.workspace}
-            usage={daemon.usage}
-            showCommands={daemon.commands.length > 0}
-            onCommands={openCommands}
-            onProjectDetails={openContext}
-            onChecklist={stripsHere.checklist ? openChecklist : undefined}
-            planMode={stripsHere.plan && planHere?.planMode === true}
-            showPreview={(daemon.preview?.servers.length ?? 0) > 0}
-            onPreview={openPreview}
-            onChooseProject={pillChooses ? chooseProject : undefined}
-            plan={daemon.plan}
-            onDraftChange={daemon.sendDraft}
-            selectors={composerSelectors}
-            onSend={send}
-            busy={showsStop(daemon)}
-            onStop={daemon.cancel}
-            // Never locked by the network. A dead socket used to disable the
-            // whole composer — no keyboard, no typing, nothing — which is the
-            // one moment a phone is most likely to be in a tunnel and the user
-            // most wants to get a thought down. Offline sends are queued and
-            // delivered on reconnect (see `outbox.ts`), so the only thing that
-            // still locks it is a refusal retrying cannot fix: a rotated key or
-            // a version mismatch, where nothing typed here could ever go.
-            editable={!daemon.fatal}
-            placeholder={
-              dictation.listening
-                ? "Listening..."
-                : daemon.status !== "online"
-                  ? "Offline. Sends when you reconnect"
-                  : !active
-                    ? "Waiting for an agent..."
-                    : isGoalsProvider(active.id)
-                      ? openSessionId
-                        ? "Message GG Goals..."
-                        : "Describe the goal..."
-                      : "Build anything..."
-            }
-            attachments={attachments}
-            onAttach={openAttach}
-            onRemoveAttachment={removeAttachment}
-            dictation={dictation}
-          />
-        </View>
-      </Reanimated.View>
+                  <View
+                    onLayout={(e) => {
+                      const height = Math.round(e.nativeEvent.layout.height);
+                      setStripsHeight((prev) => (prev === height ? prev : height));
+                    }}
+                  >
+                    {/* GG's Checklist / Plan chips ride the composer's context row now. */}
+                    <QueuedStrip messages={queuedHere} onCancel={cancelQueued} />
+                  </View>
+                  <ComposerDock
+                    ref={composer}
+                    style={[
+                      styles.dock,
+                      // Constant. The spacer below the body carries the keyboard, and it
+                      // already gives this clearance back, so the composer keeps the
+                      // same gap above either boundary without re-laying out.
+                      { paddingBottom: insets.bottom + theme.space(2) },
+                    ]}
+                    // Settled heights only. The dock reports once its growth animation
+                    // has stopped, not on every frame of it — measured at roughly one
+                    // layout pass per two pixels, which turned a single wrapped line
+                    // into about ten re-renders of this whole component, each one
+                    // rebuilding the thread's spacers and re-running its follow-scroll
+                    // on the exact frames the composer was trying to animate.
+                    onHeightSettled={(height) => {
+                      // Recorded against the state it was measured in, and only when it
+                      // actually changed — the keyboard's own animation causes layout
+                      // passes that have nothing to do with the draft.
+                      setDockHeights((prev) => recordDockHeight(prev, typing, height));
+                    }}
+                    typing={typing}
+                    workspace={
+                      isGoalsProvider(active?.id) && !openSessionId ? undefined : daemon.workspace
+                    }
+                    usage={daemon.usage}
+                    showCommands={daemon.commands.length > 0}
+                    onCommands={openCommands}
+                    onProjectDetails={openContext}
+                    onChecklist={stripsHere.checklist ? openChecklist : undefined}
+                    planMode={stripsHere.plan && planHere?.planMode === true}
+                    showPreview={(daemon.preview?.servers.length ?? 0) > 0}
+                    onPreview={openPreview}
+                    onChooseProject={pillChooses ? chooseProject : undefined}
+                    plan={daemon.plan}
+                    onDraftChange={daemon.sendDraft}
+                    selectors={composerSelectors}
+                    onSend={send}
+                    busy={showsStop(daemon)}
+                    onStop={daemon.cancel}
+                    // Never locked by the network. A dead socket used to disable the
+                    // whole composer — no keyboard, no typing, nothing — which is the
+                    // one moment a phone is most likely to be in a tunnel and the user
+                    // most wants to get a thought down. Offline sends are queued and
+                    // delivered on reconnect (see `outbox.ts`), so the only thing that
+                    // still locks it is a refusal retrying cannot fix: a rotated key or
+                    // a version mismatch, where nothing typed here could ever go.
+                    editable={!daemon.fatal}
+                    placeholder={
+                      dictation.listening
+                        ? "Listening..."
+                        : daemon.status !== "online"
+                          ? "Offline. Sends when you reconnect"
+                          : !active
+                            ? "Waiting for an agent..."
+                            : isGoalsProvider(active.id)
+                              ? openSessionId
+                                ? "Message GG Goals..."
+                                : "Describe the goal..."
+                              : "Build anything..."
+                    }
+                    attachments={attachments}
+                    onAttach={openAttach}
+                    onRemoveAttachment={removeAttachment}
+                    dictation={dictation}
+                  />
+                </View>
+              </Reanimated.View>
 
-      {/* Outside the lifted pane: a sheet belongs to the screen's bottom edge,
+              {/* Outside the lifted pane: a sheet belongs to the screen's bottom edge,
           not to the composer, so it must not ride up with the keyboard. */}
-      <ContextDetailsSheet visible={contextOpen} workspace={daemon.workspace} usage={daemon.usage} inConversation={daemon.sessionId !== undefined} onClose={closeContext} />
-      <ConnectionSheet visible={connectionOpen} machineLabel={daemon.machineName ?? "Your computer"} machineRemote={pairing.remote} status={daemon.status} update={daemon.update} keepAwake={daemon.keepAwake} onKeepAwake={daemon.setKeepAwake} catalog={daemon.catalog} onToggleAgent={daemon.setProviderEnabled} onClose={closeConnection} onUnpair={onUnpair}
-        alerts={{ value: alertsRowValue(alerts.status), onPress: alerts.status === "granted" ? () => void Linking.openSettings().catch(() => {}) : alertsFromRow }}
-        voice={voiceSettingsVisible(voice.knowledge) && voice.knowledge.kind === "known" ? { line: callsLine(voice.knowledge.status, voiceNow), onOpen: () => { setConnectionOpen(false); setVoiceSettingsOpen(true); } } : undefined} />
-      <VoiceSettingsSheet
-        visible={voiceSettingsOpen}
-        knowledge={voice.knowledge}
-        onClose={closeVoiceSheet}
-        onLogin={voice.login}
-        onPrefs={voice.setPrefs}
-        onArm={voice.arm}
-        onForget={voice.forgetHistory}
-        sessionId={daemon.sessionId}
-        forCall={voiceForCall}
-        onCall={callFromVoiceSheet}
-        consented={voiceConsent === true}
-        onAgree={agreeToVoice}
-        alertsGranted={alerts.status === "granted"}
-        onNeedAlerts={alertsForRing}
-      />
-      <AlertsCard card={alerts.card} onAllow={alerts.allow} onNotNow={alerts.notNow} />
-      <IncomingCallCard ring={androidRing.incoming} onAnswer={androidRing.answer} onDecline={androidRing.decline} />
-      <CallScreen call={voice.call} board={voice.board} providers={daemon.providers} onHangUp={voice.hangUp} onMute={voice.setMuted} onDismiss={voice.dismiss} onRetry={() => { const focus = voice.call.focus; voice.dismiss(); startCall(focus); }} onAnswer={voice.answerOnScreen} color={active?.color} onInterrupt={voice.interrupt} onType={voice.type} micLevel={voice.micLevel} speech={voice.speech} sessions={daemon.sessions} />
-      <CommandSheet
-        visible={commandsOpen}
-        commands={daemon.commands}
-        onSelect={pickCommand}
-        onClose={closeCommands}
-      />
+              <ContextDetailsSheet
+                visible={contextOpen}
+                workspace={daemon.workspace}
+                usage={daemon.usage}
+                inConversation={daemon.sessionId !== undefined}
+                onClose={closeContext}
+              />
+              <ConnectionSheet
+                visible={connectionOpen}
+                machineLabel={daemon.machineName ?? "Your computer"}
+                machineRemote={pairing.remote}
+                status={daemon.status}
+                update={daemon.update}
+                keepAwake={daemon.keepAwake}
+                onKeepAwake={daemon.setKeepAwake}
+                catalog={daemon.catalog}
+                onToggleAgent={daemon.setProviderEnabled}
+                onClose={closeConnection}
+                onUnpair={onUnpair}
+                alerts={{
+                  value: alertsRowValue(alerts.status),
+                  onPress:
+                    alerts.status === "granted"
+                      ? () => void Linking.openSettings().catch(() => {})
+                      : alertsFromRow,
+                }}
+                voice={
+                  voiceSettingsVisible(voice.knowledge) && voice.knowledge.kind === "known"
+                    ? {
+                        line: callsLine(voice.knowledge.status, voiceNow),
+                        onOpen: () => {
+                          setConnectionOpen(false);
+                          setVoiceSettingsOpen(true);
+                        },
+                      }
+                    : undefined
+                }
+              />
+              <VoiceSettingsSheet
+                visible={voiceSettingsOpen}
+                knowledge={voice.knowledge}
+                onClose={closeVoiceSheet}
+                onLogin={voice.login}
+                onPrefs={voice.setPrefs}
+                onArm={voice.arm}
+                onForget={voice.forgetHistory}
+                sessionId={daemon.sessionId}
+                forCall={voiceForCall}
+                onCall={callFromVoiceSheet}
+                consented={voiceConsent === true}
+                onAgree={agreeToVoice}
+                alertsGranted={alerts.status === "granted"}
+                onNeedAlerts={alertsForRing}
+              />
+              <AlertsCard card={alerts.card} onAllow={alerts.allow} onNotNow={alerts.notNow} />
+              <IncomingCallCard
+                ring={androidRing.incoming}
+                onAnswer={androidRing.answer}
+                onDecline={androidRing.decline}
+              />
+              <CallScreen
+                call={voice.call}
+                board={voice.board}
+                providers={daemon.providers}
+                onHangUp={voice.hangUp}
+                onMute={voice.setMuted}
+                onDismiss={voice.dismiss}
+                onRetry={() => {
+                  const focus = voice.call.focus;
+                  voice.dismiss();
+                  startCall(focus);
+                }}
+                onAnswer={voice.answerOnScreen}
+                color={active?.color}
+                onInterrupt={voice.interrupt}
+                onType={voice.type}
+                micLevel={voice.micLevel}
+                speech={voice.speech}
+                sessions={daemon.sessions}
+              />
+              <CommandSheet
+                visible={commandsOpen}
+                commands={daemon.commands}
+                onSelect={pickCommand}
+                onClose={closeCommands}
+              />
 
-      <NewChatSheet
-        visible={newChatOpen}
-        currentFolder={daemon.workspace?.folder}
-        currentCwd={selectedProjectPath ?? daemon.workspace?.cwd}
-        projects={projects}
-        agents={carouselAgents}
-        agentId={activeId}
-        onPickAgent={pickAgent}
-        onStart={startNewChat}
-        onClose={closeNewChat}
-        browse={daemon.browse}
-        onBrowse={daemon.browseWorkspaces}
-        startInBrowse={newChatBrowse}
-      />
+              <NewChatSheet
+                visible={newChatOpen}
+                currentFolder={daemon.workspace?.folder}
+                currentCwd={selectedProjectPath ?? daemon.workspace?.cwd}
+                projects={projects}
+                agents={carouselAgents}
+                agentId={activeId}
+                onPickAgent={pickAgent}
+                onStart={startNewChat}
+                onClose={closeNewChat}
+                browse={daemon.browse}
+                onBrowse={daemon.browseWorkspaces}
+                startInBrowse={newChatBrowse}
+              />
 
-      <AttachmentSheet visible={attachOpen} computer={daemon.desk?.capture === true} onSelect={pickAttachment} onClose={closeAttach} />
+              <AttachmentSheet
+                visible={attachOpen}
+                computer={daemon.desk?.capture === true}
+                onSelect={pickAttachment}
+                onClose={closeAttach}
+              />
 
-      {/* Live while the turn runs, then the receipt's copy: the activity resets
+              {/* Live while the turn runs, then the receipt's copy: the activity resets
           to idle the moment a turn ends, and the sheet must not go blank. */}
-      <ToolSheet
-        visible={toolsOpen}
-        tools={daemon.activity.tools.length > 0 ? daemon.activity.tools : (daemon.receipt?.runs ?? [])}
-        onClose={closeTools}
-      />
-      <PreviewSheet
-        visible={previewOpen}
-        lanHosts={daemon.preview?.lanHosts ?? []}
-        servers={daemon.preview?.servers ?? []}
-        images={daemon.images}
-        onSnapshot={daemon.snapshotPreview}
-        onClose={closePreview}
-      />
+              <ToolSheet
+                visible={toolsOpen}
+                tools={
+                  daemon.activity.tools.length > 0
+                    ? daemon.activity.tools
+                    : (daemon.receipt?.runs ?? [])
+                }
+                onClose={closeTools}
+              />
+              <PreviewSheet
+                visible={previewOpen}
+                lanHosts={daemon.preview?.lanHosts ?? []}
+                servers={daemon.preview?.servers ?? []}
+                images={daemon.images}
+                onSnapshot={daemon.snapshotPreview}
+                onClose={closePreview}
+              />
 
-      <ThoughtSheet visible={thought !== null} text={thought ?? ""} onClose={closeThought} />
-      {carouselOpen && carouselAgents.length > 0 && (
-        <AgentCarousel agents={carouselAgents} currentId={activeId} onSelect={daemon.select} onClose={closeCarousel} arriveSmiling />
-      )}
+              <ThoughtSheet
+                visible={thought !== null}
+                text={thought ?? ""}
+                onClose={closeThought}
+              />
+              {carouselOpen && carouselAgents.length > 0 && (
+                <AgentCarousel
+                  agents={carouselAgents}
+                  currentId={activeId}
+                  onSelect={daemon.select}
+                  onClose={closeCarousel}
+                  arriveSmiling
+                />
+              )}
 
-      {/* One picker, pointed at whichever pill opened it. The mode selector is
+              {/* One picker, pointed at whichever pill opened it. The mode selector is
           excluded from the model menu so each pill owns exactly one list. */}
-      <ConfigPicker
-        visible={picker !== null}
-        onClose={closePicker}
-        anchorX={pickerAnchor?.x}
-        anchorY={pickerAnchor?.y}
-        options={
-          picker === "mode"
-            ? mode
-              ? [mode]
-              : []
-            : daemon.configOptions.filter((option) => option.id !== mode?.id)
-        }
-        onSelect={daemon.setConfig}
-      />
+              <ConfigPicker
+                visible={picker !== null}
+                onClose={closePicker}
+                anchorX={pickerAnchor?.x}
+                anchorY={pickerAnchor?.y}
+                options={
+                  picker === "mode"
+                    ? mode
+                      ? [mode]
+                      : []
+                    : daemon.configOptions.filter((option) => option.id !== mode?.id)
+                }
+                onSelect={daemon.setConfig}
+              />
 
-      <GoalSheets
-        onTalk={talkable ? talkAbout : undefined}
-        daemon={daemon}
-        goals={goals}
-        newGoalOpen={newGoalOpen}
-        newGoalPrefill={newGoalPrefill}
-        answerPermission={answerPermission}
-        send={send}
-      />
+              <GoalSheets
+                onTalk={talkable ? talkAbout : undefined}
+                daemon={daemon}
+                goals={goals}
+                newGoalOpen={newGoalOpen}
+                newGoalPrefill={newGoalPrefill}
+                answerPermission={answerPermission}
+                send={send}
+              />
 
-      {/* While the drawer is open the pane itself is the way back: tapping
+              {/* While the drawer is open the pane itself is the way back: tapping
           anywhere on it closes, which matches the push metaphor better than a
           separate dimming layer would. */}
-      {menuOpen && (
-        // The gesture lives on this wrapper rather than the Pressable, so a drag
-        // and a tap stay two separate things: the detector claims the touch once
-        // it moves horizontally, and the Pressable keeps everything else.
-        <GestureDetector gesture={edgeSwipeOpen}>
-          <View style={StyleSheet.absoluteFill}>
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              accessibilityRole="button"
-              accessibilityLabel="Close menu"
-              onPress={() => {
-                haptics.tap();
-                setMenuOpen(false);
-              }}
-            />
-          </View>
-        </GestureDetector>
-      )}
-
-      </SafeAreaView>
-      </Reanimated.View>
-    </View>
-    </AgentColorProvider>
+              {menuOpen && (
+                // The gesture lives on this wrapper rather than the Pressable, so a drag
+                // and a tap stay two separate things: the detector claims the touch once
+                // it moves horizontally, and the Pressable keeps everything else.
+                <GestureDetector gesture={edgeSwipeOpen}>
+                  <View style={StyleSheet.absoluteFill}>
+                    <Pressable
+                      style={StyleSheet.absoluteFill}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close menu"
+                      onPress={() => {
+                        haptics.tap();
+                        setMenuOpen(false);
+                      }}
+                    />
+                  </View>
+                </GestureDetector>
+              )}
+            </SafeAreaView>
+          </Reanimated.View>
+        </View>
+      </AgentColorProvider>
     </ImageResolverProvider>
   );
 }

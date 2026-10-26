@@ -87,7 +87,12 @@ function openSession(sessionId: string, cwd: string) {
   return {
     _meta: {
       gg: {
-        goal: { id: goal.id, phase: "briefing", paused: goal.paused, needsKickoff: !goal.kickedOff },
+        goal: {
+          id: goal.id,
+          phase: "briefing",
+          paused: goal.paused,
+          needsKickoff: !goal.kickedOff,
+        },
       },
     },
   };
@@ -102,7 +107,13 @@ const app = agent({ name: "pew2-gg-test" })
     agentCapabilities: {
       loadSession: true,
       sessionCapabilities: { list: {}, resume: {} },
-      ...(old ? {} : { _meta: { gg: { queue: 1, askUser: 1, goals: 1, planReview: 1, autopilot: 1, checklist: 1 } } }),
+      ...(old
+        ? {}
+        : {
+            _meta: {
+              gg: { queue: 1, askUser: 1, goals: 1, planReview: 1, autopilot: 1, checklist: 1 },
+            },
+          }),
     },
     agentInfo: { name: "pew2-gg-test", version: "0.0.0" },
     authMethods: [],
@@ -115,7 +126,11 @@ const app = agent({ name: "pew2-gg-test" })
     // With GG_AGENT_DIR set: one goal-folder session and one normal session.
     sessions: process.env.GG_AGENT_DIR
       ? [
-          { sessionId: "goal_1", cwd: `${process.env.GG_AGENT_DIR}/goals/ship-it`, title: "coordinator" },
+          {
+            sessionId: "goal_1",
+            cwd: `${process.env.GG_AGENT_DIR}/goals/ship-it`,
+            title: "coordinator",
+          },
           { sessionId: "plain_1", cwd: process.env.GG_AGENT_DIR, title: "plain" },
         ]
       : [],
@@ -134,7 +149,12 @@ const app = agent({ name: "pew2-gg-test" })
     const { sessionId, prompt, _meta } = ctx.params as {
       sessionId: string;
       prompt: { type: string; text?: string }[];
-      _meta?: { gg?: { goalTurn?: string; planDecision?: { action: string; generation: number; feedback?: string } } };
+      _meta?: {
+        gg?: {
+          goalTurn?: string;
+          planDecision?: { action: string; generation: number; feedback?: string };
+        };
+      };
     };
     const say = (text: string) =>
       ctx.client.notify("session/update", {
@@ -147,7 +167,11 @@ const app = agent({ name: "pew2-gg-test" })
       if (decision.generation !== 1) throw invalid("Stale plan generation.");
       await ctx.client.notify("_gg/plan_state", { sessionId, planMode: false, pending: null });
       if (decision.action === "accept") {
-        await ctx.client.notify("_gg/session_reset", { sessionId, agentSessionId: `${sessionId}_impl`, planTotal: 3 });
+        await ctx.client.notify("_gg/session_reset", {
+          sessionId,
+          agentSessionId: `${sessionId}_impl`,
+          planTotal: 3,
+        });
       }
       await say(`decided: ${decision.action}`);
       return { stopReason: "end_turn" };
@@ -172,7 +196,10 @@ const app = agent({ name: "pew2-gg-test" })
       await say(`goalTurn: ${goalTurn}`);
       return { stopReason: "end_turn" };
     }
-    const text = prompt.map((block) => block.text ?? "").join(" ").trim();
+    const text = prompt
+      .map((block) => block.text ?? "")
+      .join(" ")
+      .trim();
     running.add(sessionId);
     queues.set(sessionId, []);
     try {
@@ -196,14 +223,24 @@ const app = agent({ name: "pew2-gg-test" })
         });
       }
       if (text.includes("ken")) {
-        await ctx.client.notify("_gg/autopilot_event", { sessionId, phase: "review_start", round: 1 });
-        await ctx.client.notify("_gg/autopilot_event", { sessionId, phase: "human", reason: "pick a db" });
+        await ctx.client.notify("_gg/autopilot_event", {
+          sessionId,
+          phase: "review_start",
+          round: 1,
+        });
+        await ctx.client.notify("_gg/autopilot_event", {
+          sessionId,
+          phase: "human",
+          reason: "pick a db",
+        });
         await ctx.client.notify("_gg/checklist_changed", { sessionId });
       }
       if (text.includes("ask")) {
         const answer = await ctx.client.request("_gg/ask_user", {
           sessionId,
-          questions: [{ id: "color", question: "Which colour?", kind: "choice", options: [{ label: "Red" }] }],
+          questions: [
+            { id: "color", question: "Which colour?", kind: "choice", options: [{ label: "Red" }] },
+          ],
         });
         await say(`answer: ${JSON.stringify(answer)} `);
       }
@@ -222,87 +259,137 @@ const app = agent({ name: "pew2-gg-test" })
       }
     }
   })
-  .onRequest("_gg/autopilot/set", (p: unknown) => p, async (ctx) => {
-    const { sessionId, enabled } = ctx.params as { sessionId: string; enabled: boolean };
-    await ctx.client.notify("_gg/autopilot_state", { sessionId, enabled, reviewing: false });
-    return { enabled };
-  })
-  .onRequest("_gg/checklist", (p: unknown) => p, async () => ({
-    staleAfterDays: 30,
-    detectionWarnings: [],
-    items: [
-      {
-        id: "tests", group: "Foundations", title: "Tests", description: "Has tests",
-        status: "passed", checkedAt: null, result: "pass", summary: null, findings: [],
-        evidence: [], changedSinceCheck: false, detection: null, runPrompt: "check tests",
-      },
-    ],
-  }))
-  .onRequest("_gg/queue", (p: unknown) => p, async (ctx) => {
-    const { sessionId, text } = ctx.params as { sessionId: string; text: string };
-    if (!running.has(sessionId)) throw invalid("No turn is running.");
-    const id = `agent_${++queueCounter}`;
-    const queue = queues.get(sessionId) ?? [];
-    queue.push({ id, text });
-    return { id, queued: queue };
-  })
-  .onRequest("_gg/queue/cancel", (p: unknown) => p, async (ctx) => {
-    const { sessionId, id } = ctx.params as { sessionId: string; id: string };
-    const queue = queues.get(sessionId) ?? [];
-    const index = queue.findIndex((item) => item.id === id);
-    if (index >= 0) queue.splice(index, 1);
-    return { cancelled: index >= 0, queued: queue };
-  })
-  .onRequest("_gg/goals/list", (p: unknown) => p, async () => {
-    // A slow disk, so a test can do something to this process mid-request.
-    const delay = Number(process.env.PEW2_TEST_GG_LIST_DELAY_MS ?? 0);
-    if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-    return { goals: [...load().values()].map(summary) };
-  })
-  .onRequest("_gg/goals/create", (p: unknown) => p, async (ctx) => {
-    const { name, goal, context } = ctx.params as { name: string; goal: string; context: string[] };
-    if (!name.trim()) throw invalid("A goal needs a name.");
-    const goals = load();
-    const id = `goal_${goals.size + 1}`;
-    const path = join(goalsRoot, id);
-    mkdirSync(path, { recursive: true });
-    const created: Goal = {
-      id,
-      name,
-      goal,
-      context: context.map((folder) => ({ kind: "folder" as const, path: folder })),
-      path,
-      createdAt: "2026-10-13T00:00:00.000Z",
-      lastActiveMs: 0,
-      status: "briefing",
-      kickedOff: false,
-      paused: false,
-      critterModel: null,
-    };
-    goals.set(id, created);
-    save(goals);
-    return { goal: summary(created) };
-  })
-  .onRequest("_gg/goals/delete", (p: unknown) => p, async (ctx) => {
-    const goals = load();
-    goals.delete((ctx.params as { id: string }).id);
-    save(goals);
-    return { ok: true };
-  })
-  .onRequest("_gg/goal/pause", (p: unknown) => p, async (ctx) => {
-    const { sessionId } = ctx.params as { sessionId: string };
-    withGoal(sessionGoal.get(sessionId), (goal) => {
-      goal.paused = true;
-    });
-    return { paused: true };
-  })
-  .onRequest("_gg/goal/critter_model", (p: unknown) => p, async (ctx) => {
-    const { sessionId, model } = ctx.params as { sessionId: string; model: string | null };
-    withGoal(sessionGoal.get(sessionId), (goal) => {
-      goal.critterModel = model;
-    });
-    return { critterModel: model };
-  });
+  .onRequest(
+    "_gg/autopilot/set",
+    (p: unknown) => p,
+    async (ctx) => {
+      const { sessionId, enabled } = ctx.params as { sessionId: string; enabled: boolean };
+      await ctx.client.notify("_gg/autopilot_state", { sessionId, enabled, reviewing: false });
+      return { enabled };
+    },
+  )
+  .onRequest(
+    "_gg/checklist",
+    (p: unknown) => p,
+    async () => ({
+      staleAfterDays: 30,
+      detectionWarnings: [],
+      items: [
+        {
+          id: "tests",
+          group: "Foundations",
+          title: "Tests",
+          description: "Has tests",
+          status: "passed",
+          checkedAt: null,
+          result: "pass",
+          summary: null,
+          findings: [],
+          evidence: [],
+          changedSinceCheck: false,
+          detection: null,
+          runPrompt: "check tests",
+        },
+      ],
+    }),
+  )
+  .onRequest(
+    "_gg/queue",
+    (p: unknown) => p,
+    async (ctx) => {
+      const { sessionId, text } = ctx.params as { sessionId: string; text: string };
+      if (!running.has(sessionId)) throw invalid("No turn is running.");
+      const id = `agent_${++queueCounter}`;
+      const queue = queues.get(sessionId) ?? [];
+      queue.push({ id, text });
+      return { id, queued: queue };
+    },
+  )
+  .onRequest(
+    "_gg/queue/cancel",
+    (p: unknown) => p,
+    async (ctx) => {
+      const { sessionId, id } = ctx.params as { sessionId: string; id: string };
+      const queue = queues.get(sessionId) ?? [];
+      const index = queue.findIndex((item) => item.id === id);
+      if (index >= 0) queue.splice(index, 1);
+      return { cancelled: index >= 0, queued: queue };
+    },
+  )
+  .onRequest(
+    "_gg/goals/list",
+    (p: unknown) => p,
+    async () => {
+      // A slow disk, so a test can do something to this process mid-request.
+      const delay = Number(process.env.PEW2_TEST_GG_LIST_DELAY_MS ?? 0);
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+      return { goals: [...load().values()].map(summary) };
+    },
+  )
+  .onRequest(
+    "_gg/goals/create",
+    (p: unknown) => p,
+    async (ctx) => {
+      const { name, goal, context } = ctx.params as {
+        name: string;
+        goal: string;
+        context: string[];
+      };
+      if (!name.trim()) throw invalid("A goal needs a name.");
+      const goals = load();
+      const id = `goal_${goals.size + 1}`;
+      const path = join(goalsRoot, id);
+      mkdirSync(path, { recursive: true });
+      const created: Goal = {
+        id,
+        name,
+        goal,
+        context: context.map((folder) => ({ kind: "folder" as const, path: folder })),
+        path,
+        createdAt: "2026-10-13T00:00:00.000Z",
+        lastActiveMs: 0,
+        status: "briefing",
+        kickedOff: false,
+        paused: false,
+        critterModel: null,
+      };
+      goals.set(id, created);
+      save(goals);
+      return { goal: summary(created) };
+    },
+  )
+  .onRequest(
+    "_gg/goals/delete",
+    (p: unknown) => p,
+    async (ctx) => {
+      const goals = load();
+      goals.delete((ctx.params as { id: string }).id);
+      save(goals);
+      return { ok: true };
+    },
+  )
+  .onRequest(
+    "_gg/goal/pause",
+    (p: unknown) => p,
+    async (ctx) => {
+      const { sessionId } = ctx.params as { sessionId: string };
+      withGoal(sessionGoal.get(sessionId), (goal) => {
+        goal.paused = true;
+      });
+      return { paused: true };
+    },
+  )
+  .onRequest(
+    "_gg/goal/critter_model",
+    (p: unknown) => p,
+    async (ctx) => {
+      const { sessionId, model } = ctx.params as { sessionId: string; model: string | null };
+      withGoal(sessionGoal.get(sessionId), (goal) => {
+        goal.critterModel = model;
+      });
+      return { critterModel: model };
+    },
+  );
 
 app.connect(
   ndJsonStream(

@@ -21,7 +21,9 @@ export interface AutopilotInfo {
 export type ChecklistItem = wire.ChecklistItemRow;
 
 function obj(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 export function readPlan(value: unknown): PlanInfo | undefined {
@@ -29,7 +31,10 @@ export function readPlan(value: unknown): PlanInfo | undefined {
   if (!v || typeof v.planMode !== "boolean") return undefined;
   const p = obj(v.pending);
   const pending =
-    p && typeof p.planPath === "string" && typeof p.content === "string" && typeof p.generation === "number"
+    p &&
+    typeof p.planPath === "string" &&
+    typeof p.content === "string" &&
+    typeof p.generation === "number"
       ? { planPath: p.planPath, content: p.content, generation: p.generation }
       : null;
   return { planMode: v.planMode, pending };
@@ -57,13 +62,22 @@ export interface GgEventRow {
 const AUTOPILOT_PHASES: Record<string, (p: Record<string, unknown>) => string | undefined> = {
   review_start: () => undefined,
   ignored: () => undefined,
-  prompted: (p) => (typeof p.body === "string" && p.body.trim() ? p.body : "Not quite done — sending GG Coder back in."),
-  done: (p) => (typeof p.reason === "string" && p.reason.trim() ? `All clear. ${p.reason}` : "All clear — that's done."),
+  prompted: (p) =>
+    typeof p.body === "string" && p.body.trim()
+      ? p.body
+      : "Not quite done — sending GG Coder back in.",
+  done: (p) =>
+    typeof p.reason === "string" && p.reason.trim()
+      ? `All clear. ${p.reason}`
+      : "All clear — that's done.",
   human: (p) =>
-    typeof p.reason === "string" && p.reason.trim() ? `Over to you: ${p.reason}` : "This one needs you.",
+    typeof p.reason === "string" && p.reason.trim()
+      ? `Over to you: ${p.reason}`
+      : "This one needs you.",
   capped: () => "That's enough rounds from me — over to you.",
   plan_accepted: () => "Plan looks good — approved.",
-  error: (p) => `Autopilot stopped: ${typeof p.reason === "string" ? p.reason : "something went wrong"}`,
+  error: (p) =>
+    `Autopilot stopped: ${typeof p.reason === "string" ? p.reason : "something went wrong"}`,
 };
 
 export function readGgEvent(payload: unknown): GgEventRow | undefined {
@@ -73,19 +87,24 @@ export function readGgEvent(payload: unknown): GgEventRow | undefined {
     if (p.action === "accept") return { role: "note", text: "Plan accepted" };
     if (p.action === "reject") return { role: "note", text: "Plan rejected" };
     if (p.action === "feedback") {
-      const fb = typeof p.feedback === "string" && p.feedback.trim() ? `: ${p.feedback.trim()}` : "";
+      const fb =
+        typeof p.feedback === "string" && p.feedback.trim() ? `: ${p.feedback.trim()}` : "";
       return { role: "note", text: `Plan feedback${fb}` };
     }
     return undefined;
   }
   if (p.kind === "plan_accepted") {
-    const n = typeof p.planTotal === "number" && p.planTotal > 0 ? ` · ${p.planTotal} step${p.planTotal === 1 ? "" : "s"}` : "";
+    const n =
+      typeof p.planTotal === "number" && p.planTotal > 0
+        ? ` · ${p.planTotal} step${p.planTotal === 1 ? "" : "s"}`
+        : "";
     return { role: "note", text: `Plan accepted · fresh context${n}` };
   }
   if (p.kind === "autopilot" && typeof p.phase === "string") {
     const text = AUTOPILOT_PHASES[p.phase]?.(p);
     if (!text) return undefined;
-    const ken = typeof p.round === "number" ? { phase: p.phase, round: p.round } : { phase: p.phase };
+    const ken =
+      typeof p.round === "number" ? { phase: p.phase, round: p.round } : { phase: p.phase };
     return { role: "ken", text, ken };
   }
   return undefined;
@@ -126,7 +145,9 @@ export function groupChecklist(items: readonly ChecklistItem[]): ChecklistGroup[
     g.items.push(item);
   }
   for (const g of groups) {
-    g.items.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.title.localeCompare(b.title));
+    g.items.sort(
+      (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.title.localeCompare(b.title),
+    );
   }
   return groups;
 }

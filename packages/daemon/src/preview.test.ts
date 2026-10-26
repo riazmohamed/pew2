@@ -74,7 +74,8 @@ describe("listeningPorts", () => {
   });
 
   test("lsof's exit 1 for an empty result still yields what it printed", async () => {
-    const exec = (() => Promise.reject(Object.assign(new Error("exit 1"), { stdout: "" }))) as never;
+    const exec = (() =>
+      Promise.reject(Object.assign(new Error("exit 1"), { stdout: "" }))) as never;
     expect(await listeningPorts("darwin", exec)).toEqual([]);
   });
 
@@ -176,7 +177,9 @@ test("pew2's own port is never offered for preview", async () => {
   ];
   expect(await previewablePorts({}, listeners)).toEqual([{ port: 5173, process: "node" }]);
   // A daemon on another port leaves 8787 alone (it may be the user's wrangler).
-  expect((await previewablePorts({ PEW2_PORT: "8899" }, listeners)).map((p) => p.port)).toEqual([8787, 5173]);
+  expect((await previewablePorts({ PEW2_PORT: "8899" }, listeners)).map((p) => p.port)).toEqual([
+    8787, 5173,
+  ]);
 });
 
 test("only listeners that serve a web page are offered", async () => {
@@ -193,7 +196,9 @@ test("only listeners that serve a web page are offered", async () => {
     res.end();
   });
   const listen = (server: ReturnType<typeof createServer>) =>
-    new Promise<number>((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as { port: number }).port)));
+    new Promise<number>((resolve) =>
+      server.listen(0, "127.0.0.1", () => resolve((server.address() as { port: number }).port)),
+    );
   const [h, j, r] = await Promise.all([listen(html), listen(json), listen(redirect)]);
   try {
     expect(await servesHtml(h)).toBe(true);

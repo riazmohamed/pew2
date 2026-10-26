@@ -20,15 +20,7 @@ import { readChunk } from "./chunks";
 
 /** ACP tool kinds. `other` is the documented default. */
 export type ToolKind =
-  | "read"
-  | "edit"
-  | "delete"
-  | "move"
-  | "search"
-  | "execute"
-  | "think"
-  | "fetch"
-  | "other";
+  "read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "other";
 
 export type ToolStatus = "pending" | "in_progress" | "completed" | "failed";
 
@@ -75,7 +67,11 @@ export function readToolContent(value: unknown): ToolContent[] | undefined {
   for (const item of value) {
     if (!item || typeof item !== "object") continue;
     const entry = item as Record<string, unknown>;
-    if (entry.type === "diff" && typeof entry.path === "string" && typeof entry.newText === "string") {
+    if (
+      entry.type === "diff" &&
+      typeof entry.path === "string" &&
+      typeof entry.newText === "string"
+    ) {
       out.push({
         type: "diff",
         path: entry.path,
@@ -97,7 +93,9 @@ export function readToolContent(value: unknown): ToolContent[] | undefined {
 function readLocations(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const paths = value
-    .map((entry) => (entry && typeof entry === "object" ? (entry as { path?: unknown }).path : undefined))
+    .map((entry) =>
+      entry && typeof entry === "object" ? (entry as { path?: unknown }).path : undefined,
+    )
     .filter((path): path is string => typeof path === "string");
   return paths.length > 0 ? paths : undefined;
 }
@@ -139,9 +137,7 @@ const KINDS = new Set<ToolKind>([
 const STATUSES = new Set<ToolStatus>(["pending", "in_progress", "completed", "failed"]);
 
 function readKind(value: unknown): ToolKind {
-  return typeof value === "string" && KINDS.has(value as ToolKind)
-    ? (value as ToolKind)
-    : "other";
+  return typeof value === "string" && KINDS.has(value as ToolKind) ? (value as ToolKind) : "other";
 }
 
 function readStatus(value: unknown): ToolStatus | undefined {

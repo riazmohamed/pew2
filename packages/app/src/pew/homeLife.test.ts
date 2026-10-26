@@ -1,8 +1,31 @@
 import { describe, expect, test } from "bun:test";
-import { HOME_PEW_MAX, HOME_PEW_MIN, holdPulseGap, holdPulseKind, homePewMood, homePewSize, LIFE_IDLE_MAX_MS, LIFE_IDLE_MIN_MS, LIFE_MOODS, nextLifeBeat, SPIN_STAGES, spinStage, WELCOME_SHOW, welcomeBeat } from "./homeLife";
+import {
+  HOME_PEW_MAX,
+  HOME_PEW_MIN,
+  holdPulseGap,
+  holdPulseKind,
+  homePewMood,
+  homePewSize,
+  LIFE_IDLE_MAX_MS,
+  LIFE_IDLE_MIN_MS,
+  LIFE_MOODS,
+  nextLifeBeat,
+  SPIN_STAGES,
+  spinStage,
+  WELCOME_SHOW,
+  welcomeBeat,
+} from "./homeLife";
 import { SPIN_BURST, makePewBody, advancePew, dragPew, releasePew } from "./engine";
 
-const space = { height: 956, top: 120, bottom: 42, cardHeight: 104, rowGap: 8, label: 28, chrome: 60 };
+const space = {
+  height: 956,
+  top: 120,
+  bottom: 42,
+  cardHeight: 104,
+  rowGap: 8,
+  label: 28,
+  chrome: 60,
+};
 
 describe("homePewSize", () => {
   test("max with no cards", () => expect(homePewSize({ ...space, cards: 0 })).toBe(HOME_PEW_MAX));
@@ -12,8 +35,12 @@ describe("homePewSize", () => {
     expect(size).toBeLessThanOrEqual(HOME_PEW_MAX);
     expect(size).toBe(Math.min(HOME_PEW_MAX, 956 - 120 - 42 - 28 - (3 * 104 + 16) - 60));
   });
-  test("never below min on a small phone", () => expect(homePewSize({ ...space, height: 600, cards: 6 })).toBe(HOME_PEW_MIN));
-  test("fewer card rows, bigger Pew", () => expect(homePewSize({ ...space, height: 700, cards: 2 })).toBeGreaterThan(homePewSize({ ...space, height: 700, cards: 6 })));
+  test("never below min on a small phone", () =>
+    expect(homePewSize({ ...space, height: 600, cards: 6 })).toBe(HOME_PEW_MIN));
+  test("fewer card rows, bigger Pew", () =>
+    expect(homePewSize({ ...space, height: 700, cards: 2 })).toBeGreaterThan(
+      homePewSize({ ...space, height: 700, cards: 6 }),
+    ));
 });
 
 describe("nextLifeBeat", () => {
@@ -32,7 +59,10 @@ describe("nextLifeBeat", () => {
       expect(LIFE_MOODS.map((m) => m.mood)).toContain(beat.mood);
     }
   });
-  test("out-of-range randoms are clamped", () => expect(nextLifeBeat("idle", undefined, 1).mood).toBe(LIFE_MOODS[LIFE_MOODS.length - 1]?.mood ?? "idle"));
+  test("out-of-range randoms are clamped", () =>
+    expect(nextLifeBeat("idle", undefined, 1).mood).toBe(
+      LIFE_MOODS[LIFE_MOODS.length - 1]?.mood ?? "idle",
+    ));
 });
 
 describe("homePewMood", () => {
@@ -79,7 +109,12 @@ describe("the spin toy", () => {
     expect(spinStage(16, 3)).toBe(2);
   });
   test("the lines Ken asked for, in order", () => {
-    expect(SPIN_STAGES.map((stage) => stage.line)).toEqual(["Spin me. Try it now", "Yes, keep going!", "Faster!", "Nearly there!"]);
+    expect(SPIN_STAGES.map((stage) => stage.line)).toEqual([
+      "Spin me. Try it now",
+      "Yes, keep going!",
+      "Faster!",
+      "Nearly there!",
+    ]);
     expect(SPIN_STAGES.at(-1)!.at).toBeLessThan(SPIN_BURST);
   });
 });

@@ -116,7 +116,11 @@ export abstract class DaemonConnectSession extends DaemonPromptQueue {
         // waiting until the reaper closes it an hour later. After `record`, so
         // the badge this carries already counts this request.
         const tool = (params as { toolCall?: { title?: unknown } } | null)?.toolCall?.title;
-        this.notifyPhones(session.log.sessionId, "approval", typeof tool === "string" ? tool : undefined);
+        this.notifyPhones(
+          session.log.sessionId,
+          "approval",
+          typeof tool === "string" ? tool : undefined,
+        );
       },
       gg: {
         // Same order as a permission: held, clock stamped, then told.
@@ -128,7 +132,11 @@ export abstract class DaemonConnectSession extends DaemonPromptQueue {
           this.record(session, { kind: "ask_user", requestId, questions });
           // Same reason as a permission: the agent is stopped on this.
           const first = (questions[0] as { question?: unknown } | undefined)?.question;
-          this.notifyPhones(session.log.sessionId, "question", typeof first === "string" ? first : undefined);
+          this.notifyPhones(
+            session.log.sessionId,
+            "question",
+            typeof first === "string" ? first : undefined,
+          );
         },
         // The agent withdrew it (JSON-RPC cancel, or a new ask superseded it).
         onAskClosed: (requestId: string) => this.closeAsk(session, requestId),
@@ -145,7 +153,8 @@ export abstract class DaemonConnectSession extends DaemonPromptQueue {
           if (session.providerId !== GG_GOALS_ID) this.applyAutopilotEvent(session, params);
         },
         onChecklistChanged: () => {
-          if (session.live && session.providerId !== GG_GOALS_ID) this.send({ t: "checklist", sessionId: session.log.sessionId, changed: true });
+          if (session.live && session.providerId !== GG_GOALS_ID)
+            this.send({ t: "checklist", sessionId: session.log.sessionId, changed: true });
         },
       },
       onConfigOptions: (configOptions: ConfigOption[]) =>
@@ -160,8 +169,11 @@ export abstract class DaemonConnectSession extends DaemonPromptQueue {
       ? provider.manifest.id === "claude-code"
         ? (await loadClaudeDisplayHistory(loadSessionId, cwd))?.map((message) => ({
             sessionUpdate:
-              message.role === "user" ? "user_message_chunk"
-                : message.role === "thought" ? "agent_thought_chunk" : "agent_message_chunk",
+              message.role === "user"
+                ? "user_message_chunk"
+                : message.role === "thought"
+                  ? "agent_thought_chunk"
+                  : "agent_message_chunk",
             // An array only when there are pictures to carry: the single block
             // is the shape every other replay path emits.
             content:
@@ -323,8 +335,7 @@ export abstract class DaemonConnectSession extends DaemonPromptQueue {
       // between versions must not break the session, and a value it no longer
       // lists must not be recorded as this conversation's choice.
       if (!option) continue;
-      const offered =
-        !option.options || option.options.some((choice) => choice.value === value);
+      const offered = !option.options || option.options.some((choice) => choice.value === value);
       if (!offered) continue;
       // Already right: re-sending it is a round trip for nothing, but it is
       // still what the session holds.

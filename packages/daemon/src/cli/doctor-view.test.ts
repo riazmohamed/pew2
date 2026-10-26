@@ -6,7 +6,6 @@ import type { DoctorReport, Problem } from "./doctor.js";
 /** A line is on the layout if it is a section mark, a closing square, or hangs under one. */
 const onLayout = (line: string): boolean => /^(■|░|▓|▒|\s{2})/.test(line);
 
-
 const plain = { style: styler(0), glyph: glyphs(true), columns: 80 };
 
 function report(over: Partial<DoctorReport> = {}): DoctorReport {
@@ -57,7 +56,12 @@ test("a blocking problem leads with what to run", () => {
     report({
       ok: false,
       problems: [
-        problem({ id: "daemon-unreachable", severity: "error", detail: "Nothing serving.", fix: "pew2 setup" }),
+        problem({
+          id: "daemon-unreachable",
+          severity: "error",
+          detail: "Nothing serving.",
+          fix: "pew2 setup",
+        }),
       ],
     }),
     plain,
@@ -74,7 +78,9 @@ test("a blocking problem leads with what to run", () => {
 test("warnings never contradict the closing line", () => {
   // The old screen ended "All good." underneath five warnings. Either it is
   // good or it is not, and both cannot be on screen at once.
-  const text = doctorView(report({ problems: [problem()] }), plain).map(stripAnsi).join("\n");
+  const text = doctorView(report({ problems: [problem()] }), plain)
+    .map(stripAnsi)
+    .join("\n");
 
   expect(text).toContain("Could be better");
   expect(text).toContain("Working.");

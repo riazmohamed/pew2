@@ -46,8 +46,7 @@ export function holdReason(inputs: AwakeInputs): string | undefined {
 }
 
 export type AwakePlatform =
-  | { supported: true; command: string; args: string[] }
-  | { supported: false; reason: string };
+  { supported: true; command: string; args: string[] } | { supported: false; reason: string };
 
 /** How to hold an idle-sleep assertion on this platform, if there is a way. */
 export function awakePlatform(
@@ -62,7 +61,8 @@ export function awakePlatform(
   }
   if (platform === "linux") {
     const inhibit = which("systemd-inhibit");
-    if (!inhibit) return { supported: false, reason: "systemd-inhibit was not found on this machine." };
+    if (!inhibit)
+      return { supported: false, reason: "systemd-inhibit was not found on this machine." };
     return {
       supported: true,
       command: inhibit,
@@ -76,7 +76,10 @@ export function awakePlatform(
       ],
     };
   }
-  return { supported: false, reason: `Keeping ${platform === "win32" ? "Windows" : platform} awake is not supported yet.` };
+  return {
+    supported: false,
+    reason: `Keeping ${platform === "win32" ? "Windows" : platform} awake is not supported yet.`,
+  };
 }
 
 function findOnPath(command: string): string | undefined {
@@ -199,7 +202,8 @@ export class KeepAwake {
       ...this.options.state(),
       now: (this.options.now ?? Date.now)(),
     });
-    if (reason && !this.child && platform.supported) this.hold(platform.command, platform.args, reason);
+    if (reason && !this.child && platform.supported)
+      this.hold(platform.command, platform.args, reason);
     else if (!reason && this.child) this.release();
     this.changed();
   }
@@ -257,7 +261,12 @@ export class KeepAwake {
   private changed() {
     const next = this.status;
     const prev = this.last;
-    if (next.supported === prev.supported && next.enabled === prev.enabled && next.active === prev.active) return;
+    if (
+      next.supported === prev.supported &&
+      next.enabled === prev.enabled &&
+      next.active === prev.active
+    )
+      return;
     this.last = next;
     this.options.onChange?.(next);
   }

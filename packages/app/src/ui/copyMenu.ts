@@ -24,7 +24,10 @@ export function openCopyMenu(message: string, code?: string): void {
   haptics.tap();
   if (Platform.OS === "ios") {
     ActionSheetIOS.showActionSheetWithOptions(
-      { options: [...options.map((option) => option.label), "Cancel"], cancelButtonIndex: options.length },
+      {
+        options: [...options.map((option) => option.label), "Cancel"],
+        cancelButtonIndex: options.length,
+      },
       (index) => {
         const chosen = options[index];
         if (chosen) void copy(chosen.text);
@@ -32,8 +35,13 @@ export function openCopyMenu(message: string, code?: string): void {
     );
     return;
   }
-  Alert.alert("", undefined, [
-    ...options.map((option) => ({ text: option.label, onPress: () => void copy(option.text) })),
-    { text: "Cancel", style: "cancel" as const },
-  ], { cancelable: true });
+  Alert.alert(
+    "",
+    undefined,
+    [
+      ...options.map((option) => ({ text: option.label, onPress: () => void copy(option.text) })),
+      { text: "Cancel", style: "cancel" as const },
+    ],
+    { cancelable: true },
+  );
 }

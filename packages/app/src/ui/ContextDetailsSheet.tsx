@@ -7,7 +7,13 @@ import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { StageScroll } from "./stage/StageScroll";
 import { Canvas, Circle, Group, Path, Skia } from "@shopify/react-native-skia";
-import { Easing, useDerivedValue, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
+import {
+  Easing,
+  useDerivedValue,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { Sheet, useSheetMaxContentHeight } from "./Sheet";
 import { theme } from "../theme";
 import { contextDetails } from "../contextDetails";
@@ -33,7 +39,15 @@ function tokens(n: number): string {
   return String(Math.round(n));
 }
 
-function DotRing({ fraction, color, visible }: { fraction: number; color: string; visible: boolean }) {
+function DotRing({
+  fraction,
+  color,
+  visible,
+}: {
+  fraction: number;
+  color: string;
+  visible: boolean;
+}) {
   const reduce = useReducedMotion();
   const lit = useSharedValue(0);
   useEffect(() => {
@@ -42,7 +56,9 @@ function DotRing({ fraction, color, visible }: { fraction: number; color: string
       lit.value = 0;
       return;
     }
-    lit.value = reduce ? target : withTiming(target, { duration: 900, easing: Easing.out(Easing.cubic) });
+    lit.value = reduce
+      ? target
+      : withTiming(target, { duration: 900, easing: Easing.out(Easing.cubic) });
   }, [fraction, visible, reduce, lit]);
   const path = useDerivedValue(() => {
     const p = Skia.Path.Make();
@@ -85,10 +101,16 @@ export function ContextDetailsSheet({
   const maxHeight = useSheetMaxContentHeight();
   const details = contextDetails(workspace, usage);
   const percent = usage ? usagePercent(usage) : undefined;
-  const mood = percent === undefined ? "sleepy" : percent < 60 ? "idle" : percent <= 85 ? "thinking" : "oops";
+  const mood =
+    percent === undefined ? "sleepy" : percent < 60 ? "idle" : percent <= 85 ? "thinking" : "oops";
   // Three honest states: a reading; no conversation yet (home); and a
   // conversation whose agent has sent nothing (some agents never do).
-  const title = percent !== undefined ? `${percent}% used` : inConversation ? "No reading yet" : "Nothing to measure yet";
+  const title =
+    percent !== undefined
+      ? `${percent}% used`
+      : inConversation
+        ? "No reading yet"
+        : "Nothing to measure yet";
   const sub = usage
     ? `${tokens(usage.used)} of ${tokens(usage.size)} tokens`
     : inConversation
@@ -96,31 +118,63 @@ export function ContextDetailsSheet({
       : "Starts with your first message.";
   const ringColor = percent !== undefined && percent > 85 ? theme.color.danger : agent;
   return (
-    <Sheet visible={visible} label="Context" title={title} onClose={onClose} dismissLabel="Close context details">
+    <Sheet
+      visible={visible}
+      label="Context"
+      title={title}
+      onClose={onClose}
+      dismissLabel="Close context details"
+    >
       <StageScroll style={{ maxHeight }} contentContainerStyle={styles.content}>
         <Text style={styles.sub} numberOfLines={1} accessibilityLabel={details.usageAccessibility}>
           {sub}
         </Text>
         <View style={styles.ring}>
-          <DotRing fraction={percent === undefined ? 0 : percent / 100} color={ringColor} visible={visible} />
+          <DotRing
+            fraction={percent === undefined ? 0 : percent / 100}
+            color={ringColor}
+            visible={visible}
+          />
           <View style={styles.center} pointerEvents="box-none">
-            <Pew size={88} mood={mood} color={agent} paused={!visible} accessibilityLabel={`Pew, ${mood}`} />
+            <Pew
+              size={88}
+              mood={mood}
+              color={agent}
+              paused={!visible}
+              accessibilityLabel={`Pew, ${mood}`}
+            />
           </View>
         </View>
         <DashedRule />
         <View style={styles.rows}>
           <View style={styles.row}>
-            <Led tone="dim" size={10}>Project</Led>
-            <Text selectable style={styles.value} numberOfLines={1}>{details.project}</Text>
+            <Led tone="dim" size={10}>
+              Project
+            </Led>
+            <Text selectable style={styles.value} numberOfLines={1}>
+              {details.project}
+            </Text>
           </View>
           <View style={styles.row}>
-            <Led tone="dim" size={10}>Changes</Led>
-            <Text style={styles.value} numberOfLines={1} accessibilityLabel={details.changesAccessibility}>{details.changes}</Text>
+            <Led tone="dim" size={10}>
+              Changes
+            </Led>
+            <Text
+              style={styles.value}
+              numberOfLines={1}
+              accessibilityLabel={details.changesAccessibility}
+            >
+              {details.changes}
+            </Text>
           </View>
           {usage && (
             <View style={styles.row}>
-              <Led tone="dim" size={10}>Free</Led>
-              <Text style={styles.value} numberOfLines={1}>{tokens(Math.max(0, usage.size - usage.used))}</Text>
+              <Led tone="dim" size={10}>
+                Free
+              </Led>
+              <Text style={styles.value} numberOfLines={1}>
+                {tokens(Math.max(0, usage.size - usage.used))}
+              </Text>
             </View>
           )}
         </View>
@@ -136,6 +190,11 @@ const styles = StyleSheet.create({
   canvas: { width: RING, height: RING },
   center: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
   rows: { gap: theme.space(3) },
-  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: theme.space(4) },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.space(4),
+  },
   value: { flexShrink: 1, color: theme.color.text, fontSize: theme.font.body, textAlign: "right" },
 });

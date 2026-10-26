@@ -57,7 +57,10 @@ test("an unfinished setup reads as a small task, not a breakage", () => {
     name: "Qwen Code",
     install: "npm install -g @qwen-code/qwen-code",
     command: "npx",
-    verify: { status: "failed", detail: "Authentication required: Use Qwen Code CLI to authenticate first." },
+    verify: {
+      status: "failed",
+      detail: "Authentication required: Use Qwen Code CLI to authenticate first.",
+    },
   });
 
   expect(bucketFor(qwen)).toBe("needs-setup");
@@ -79,7 +82,11 @@ test("an unfinished setup reads as a small task, not a breakage", () => {
 test("a real breakage is still called out, and only that", () => {
   // The one section that gets a cross. It has to keep working, or the screen
   // becomes uniformly reassuring and therefore useless.
-  const broken = agent({ id: "goose", name: "goose", verify: { status: "failed", detail: "Internal error" } });
+  const broken = agent({
+    id: "goose",
+    name: "goose",
+    verify: { status: "failed", detail: "Internal error" },
+  });
 
   expect(bucketFor(broken)).toBe("broken");
 
@@ -102,14 +109,18 @@ test("a failure says which kind of failure it is", () => {
   const outdated = agent({
     verify: {
       status: "failed",
-      detail: "'Gemini CLI' failed to start: Method not found. It was started with: npx -y @google/gemini-cli --acp",
+      detail:
+        "'Gemini CLI' failed to start: Method not found. It was started with: npx -y @google/gemini-cli --acp",
     },
   });
   expect(failureFor(outdated).kind).toBe("outdated");
   expect(failureFor(outdated).explain).toMatch(/does not speak ACP/);
 
   const stalled = agent({
-    verify: { status: "failed", detail: "Timed out after 150s — it started but never finished connecting." },
+    verify: {
+      status: "failed",
+      detail: "Timed out after 150s — it started but never finished connecting.",
+    },
   });
   expect(failureFor(stalled).kind).toBe("stalled");
 
@@ -119,7 +130,8 @@ test("a failure says which kind of failure it is", () => {
   const stalledLate = agent({
     verify: {
       status: "failed",
-      detail: "'Qwen' answered the handshake but never opened a session. It was started with: npx -y qwen",
+      detail:
+        "'Qwen' answered the handshake but never opened a session. It was started with: npx -y qwen",
     },
   });
   expect(failureFor(stalledLate).kind).toBe("stalled");
@@ -139,7 +151,9 @@ test("a failure says which kind of failure it is", () => {
   // an exit — and it lives on the second line, which the renderer used to drop.
   expect(failureFor(crashed).evidence).toBe("npm error 404 Not Found");
 
-  const silent = agent({ verify: { status: "failed", detail: "the agent failed without saying why" } });
+  const silent = agent({
+    verify: { status: "failed", detail: "the agent failed without saying why" },
+  });
   expect(failureFor(silent).kind).toBe("unknown");
   expect(failureFor(silent).explain).toMatch(/terminal/);
 });
@@ -185,7 +199,9 @@ test("the picker says why a row is not ready, never that it is broken", () => {
   expect(pickerNote(agent({ missingEnv: ["GEMINI_API_KEY"] }))).toBe("needs GEMINI_API_KEY");
   expect(pickerNote(agent({ notInstalled: true }))).toBe("not installed");
   expect(
-    pickerNote(agent({ verify: { status: "failed", detail: "'X' failed to start: Method not found" } })),
+    pickerNote(
+      agent({ verify: { status: "failed", detail: "'X' failed to start: Method not found" } }),
+    ),
   ).toBe("too old");
   // A working agent gets nothing: the note exists to explain a problem.
   expect(pickerNote(agent())).toBeUndefined();
@@ -202,14 +218,20 @@ test("an agent that only needs signing in can still be chosen", () => {
   // The two that genuinely cannot run: choosing one would promise the phone an
   // agent this machine will not start.
   expect(canPick(agent({ notInstalled: true }))).toBe(false);
-  expect(canPick(agent({ verify: { status: "failed", detail: "ACP connection closed" } }))).toBe(false);
+  expect(canPick(agent({ verify: { status: "failed", detail: "ACP connection closed" } }))).toBe(
+    false,
+  );
 });
 
 test("auth failures are recognised across the wordings agents actually use", () => {
   // None of them return a machine-readable code, so this matches on text. These
   // are the real strings observed from the agents pew2 ships with.
-  expect(needsSetup("Authentication required: Call authenticate before starting a session")).toBe(true);
-  expect(needsSetup("Authentication required: Use Qwen Code CLI to authenticate first.")).toBe(true);
+  expect(needsSetup("Authentication required: Call authenticate before starting a session")).toBe(
+    true,
+  );
+  expect(needsSetup("Authentication required: Use Qwen Code CLI to authenticate first.")).toBe(
+    true,
+  );
   expect(needsSetup("Please log in first")).toBe(true);
   expect(needsSetup("401 Unauthorized")).toBe(true);
   expect(needsSetup("Missing API key")).toBe(true);
@@ -219,7 +241,9 @@ test("auth failures are recognised across the wordings agents actually use", () 
   // goose reports this, and it is a setup step rather than a crash: the older
   // code showed the JSON-RPC wrapper ("Internal error") and buried this in the
   // `data` field, turning one command into an unexplained failure.
-  expect(needsSetup("Failed to resolve provider: Configuration value not found: GOOSE_PROVIDER")).toBe(true);
+  expect(
+    needsSetup("Failed to resolve provider: Configuration value not found: GOOSE_PROVIDER"),
+  ).toBe(true);
 
   expect(needsSetup("Internal error")).toBe(false);
   expect(needsSetup("ECONNREFUSED 127.0.0.1:8080")).toBe(false);
@@ -231,7 +255,13 @@ test("not being installed outranks every other state", () => {
   // An agent that is not on the machine cannot have an auth problem, and saying
   // it does would be nonsense.
   expect(
-    bucketFor(agent({ notInstalled: true, missingEnv: ["KEY"], verify: { status: "failed", detail: "authenticate" } })),
+    bucketFor(
+      agent({
+        notInstalled: true,
+        missingEnv: ["KEY"],
+        verify: { status: "failed", detail: "authenticate" },
+      }),
+    ),
   ).toBe("not-installed");
 });
 
@@ -357,8 +387,18 @@ test("the catalogue gives every absent agent its own row and install command", (
   // list cannot carry the command that makes it actionable.
   const lines = providerList(
     [
-      agent({ id: "codex", name: "Codex", notInstalled: true, install: "npm install -g @openai/codex" }),
-      agent({ id: "hermes", name: "Hermes", notInstalled: true, install: "pip install hermes-agent" }),
+      agent({
+        id: "codex",
+        name: "Codex",
+        notInstalled: true,
+        install: "npm install -g @openai/codex",
+      }),
+      agent({
+        id: "hermes",
+        name: "Hermes",
+        notInstalled: true,
+        install: "pip install hermes-agent",
+      }),
     ],
     plain,
   ).map(stripAnsi);

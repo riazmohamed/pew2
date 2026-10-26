@@ -11,7 +11,11 @@ import { theme } from "../theme";
  * for any command shown outside a message: onboarding, pairing. One look for
  * code everywhere. Pass the body text size; the code runs a point smaller.
  */
-export const CODE_FONT = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
+export const CODE_FONT = Platform.select({
+  ios: "Menlo",
+  android: "monospace",
+  default: "monospace",
+});
 
 export function codeBlockStyles(fontSize: number, lineHeight: number) {
   return {

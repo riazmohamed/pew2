@@ -167,6 +167,7 @@ export function waitingCount(
 ): number {
   const waiting = new Set<string>();
   for (const session of sessions) if (session.permission) waiting.add(session.id);
-  for (const [sessionId, open] of Object.entries(asks)) if (open && open.length > 0) waiting.add(sessionId);
+  for (const [sessionId, open] of Object.entries(asks))
+    if (open && open.length > 0) waiting.add(sessionId);
   return waiting.size;
 }

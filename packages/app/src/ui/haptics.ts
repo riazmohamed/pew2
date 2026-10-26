@@ -29,7 +29,8 @@ let pokes = 0;
  * (`onPress={haptics.tap}` hands it an event) still plays the default.
  */
 type Cue = SoundName | null | undefined;
-const cueOf = (cue: unknown): Cue => (typeof cue === "string" || cue === null ? (cue as Cue) : undefined);
+const cueOf = (cue: unknown): Cue =>
+  typeof cue === "string" || cue === null ? (cue as Cue) : undefined;
 
 /**
  * Play one pulse and its sound, unless it would arrive on top of the previous
@@ -52,7 +53,8 @@ function fire(kind: HapticKind, play: () => Promise<void>, cue: unknown, detentA
 
 export const haptics = {
   /** Any ordinary button press. The default. A dot clicking, barely heard. */
-  tap: (cue?: Cue) => fire("tap", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light), cue),
+  tap: (cue?: Cue) =>
+    fire("tap", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light), cue),
 
   /** Moving between options in a picker. */
   select: (cue?: Cue) => fire("select", () => Haptics.selectionAsync(), cue),
@@ -62,34 +64,47 @@ export const haptics = {
   toggleOff: (cue?: Cue) => fire("toggleOff", () => Haptics.selectionAsync(), cue),
 
   /** Committing something: sending a prompt, approving, submitting a pairing link. A soft "pew". */
-  sent: (cue?: Cue) => fire("sent", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium), cue),
+  sent: (cue?: Cue) =>
+    fire("sent", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium), cue),
 
   /** Choosing who you talk to: an agent picked. A firm tap; pass the agent's own sound (`agentSound`) where it isn't already playing. */
-  chosen: (cue?: Cue) => fire("chosen", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium), cue),
+  chosen: (cue?: Cue) =>
+    fire("chosen", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium), cue),
 
   /** A code scanned, a device paired, something copied. (A turn landing plays `done`.) */
-  finished: (cue?: Cue) => fire("finished", () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), cue),
+  finished: (cue?: Cue) =>
+    fire(
+      "finished",
+      () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
+      cue,
+    ),
 
   /** The agent is blocked and needs an answer. Distinct on purpose: this one
    *  is a request for the user, not a report about something already done. */
-  attention: (cue?: Cue) => fire("attention", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), cue),
+  attention: (cue?: Cue) =>
+    fire("attention", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), cue),
 
   /** Something destructive or refused: unpairing, rejecting a permission. */
-  warned: (cue?: Cue) => fire("warned", () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning), cue),
+  warned: (cue?: Cue) =>
+    fire("warned", () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning), cue),
 
   /** Pew was poked, or something small and alive answered a touch. Softer
    *  than a tap, so touching a mascot never feels like pressing a button.
    *  Pew answers in one of four little voices. */
-  poke: (cue?: Cue) => fire("poke", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft), cue),
+  poke: (cue?: Cue) =>
+    fire("poke", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft), cue),
 
   /** A dial or carousel clicked onto its next detent. */
-  detent: (cue?: Cue) => fire("detent", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid), cue),
+  detent: (cue?: Cue) =>
+    fire("detent", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid), cue),
 
   /** A detent at a position (a page): the click climbs in pitch with it. */
-  detentAt: (at: number) => fire("detent", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid), undefined, at),
+  detentAt: (at: number) =>
+    fire("detent", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid), undefined, at),
 
   /** Something went wrong. A low, soft "bonk", never a buzzer. */
-  failed: (cue?: Cue) => fire("failed", () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error), cue),
+  failed: (cue?: Cue) =>
+    fire("failed", () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error), cue),
 };
 
 /** The haptics a press can name as its `feel` (they take no argument). */

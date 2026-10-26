@@ -232,8 +232,19 @@ test("asked for files, browsing lists them after folders, capped, and never dotf
 
 test("goal rows from GG Coder keep their instructions through the daemon's reader", async () => {
   const { Daemon } = await import("./index.js");
-  const read = (Daemon as unknown as { readGoal: (v: unknown) => { instructions?: string } | undefined }).readGoal;
-  const row = { id: "g", name: "n", goal: "x", context: [], path: "/g", createdAt: "t", lastActiveMs: 1, status: "idle" };
+  const read = (
+    Daemon as unknown as { readGoal: (v: unknown) => { instructions?: string } | undefined }
+  ).readGoal;
+  const row = {
+    id: "g",
+    name: "n",
+    goal: "x",
+    context: [],
+    path: "/g",
+    createdAt: "t",
+    lastActiveMs: 1,
+    status: "idle",
+  };
   expect(read({ ...row, instructions: "be brief" })?.instructions).toBe("be brief");
   expect(read(row)?.instructions).toBeUndefined();
 });
@@ -248,7 +259,10 @@ test("suggestions come only from the folders the user added, never the whole hom
   const ggFile = join(dir, "projects.json");
   await writeFile(
     ggFile,
-    JSON.stringify({ a: { name: "mine", path: mine, secret: "sk_live_SHOULD_NOT_LEAK" }, gone: { path: join(dir, "deleted") } }),
+    JSON.stringify({
+      a: { name: "mine", path: mine, secret: "sk_live_SHOULD_NOT_LEAK" },
+      gone: { path: join(dir, "deleted") },
+    }),
   );
   const roots = await suggestionRoots([other, mine], ggFile);
   expect(roots).toEqual([resolve(other), resolve(mine)]);
@@ -258,5 +272,7 @@ test("suggestions come only from the folders the user added, never the whole hom
 test("with no GG Coder list, pew2's own folders are the whole answer", async () => {
   const dir = await mkdtemp(join(tmpdir(), "suggest-none-"));
   await mkdir(join(dir, "one"));
-  expect(await suggestionRoots([join(dir, "one")], join(dir, "missing.json"))).toEqual([resolve(join(dir, "one"))]);
+  expect(await suggestionRoots([join(dir, "one")], join(dir, "missing.json"))).toEqual([
+    resolve(join(dir, "one")),
+  ]);
 });

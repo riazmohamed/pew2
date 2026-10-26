@@ -6,7 +6,6 @@ import type { SyncResult } from "./registry-sync.js";
 /** A line is on the layout if it is a section mark, a closing square, or hangs under one. */
 const onLayout = (line: string): boolean => /^(■|░|▓|▒|\s{2})/.test(line);
 
-
 const plain = { style: styler(0), glyph: glyphs(true), columns: 80 };
 
 function result(over: Partial<SyncResult> = {}): SyncResult {
@@ -56,13 +55,18 @@ test("a conflict gets its own row, because it is the only thing to decide", () =
 });
 
 test("one conflict is referred to in the singular", () => {
-  const text = registryView(result({ conflicts: ["devin"] }), plain).map(stripAnsi).join("\n");
+  const text = registryView(result({ conflicts: ["devin"] }), plain)
+    .map(stripAnsi)
+    .join("\n");
   expect(text).toContain("--force to replace it.");
 });
 
 test("nothing to do is said plainly rather than as an empty screen", () => {
   const text = registryView(
-    result({ unchanged: ["a", "b"], skipped: [{ id: "c", kind: "bundled", reason: "ships with pew2" }] }),
+    result({
+      unchanged: ["a", "b"],
+      skipped: [{ id: "c", kind: "bundled", reason: "ships with pew2" }],
+    }),
     plain,
   )
     .map(stripAnsi)
@@ -75,7 +79,10 @@ test("nothing to do is said plainly rather than as an empty screen", () => {
 
 test("an agent that cannot run here is context, not a failure", () => {
   const text = registryView(
-    result({ written: ["a"], skipped: [{ id: "x", kind: "unsupported", reason: "no linux build" }] }),
+    result({
+      written: ["a"],
+      skipped: [{ id: "x", kind: "unsupported", reason: "no linux build" }],
+    }),
     plain,
   )
     .map(stripAnsi)

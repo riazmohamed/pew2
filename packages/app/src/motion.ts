@@ -187,14 +187,20 @@ export function withAlpha(color: string, alpha: number): string {
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(color.trim());
   if (hex) {
     let h = hex[1]!;
-    if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+    if (h.length === 3)
+      h = h
+        .split("")
+        .map((c) => c + c)
+        .join("");
     const r = Number.parseInt(h.slice(0, 2), 16);
     const g = Number.parseInt(h.slice(2, 4), 16);
     const b = Number.parseInt(h.slice(4, 6), 16);
     const base = h.length === 8 ? Number.parseInt(h.slice(6, 8), 16) / 255 : 1;
     return `rgba(${r},${g},${b},${round(base * a)})`;
   }
-  const fn = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i.exec(color.trim());
+  const fn = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i.exec(
+    color.trim(),
+  );
   if (fn) {
     const base = fn[4] === undefined ? 1 : Number(fn[4]);
     return `rgba(${fn[1]},${fn[2]},${fn[3]},${round(base * a)})`;

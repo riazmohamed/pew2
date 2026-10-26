@@ -27,7 +27,12 @@ export function useAgentFeedback(
     const frame = { busy, sessionId, loading };
     const finished = turnFinished(lastFrame.current, frame);
     // A load keeps its flag until the busy it caused has ended.
-    lastFrame.current = { ...frame, loading: loading || (busy && lastFrame.current?.loading === true && lastFrame.current.sessionId === sessionId) };
+    lastFrame.current = {
+      ...frame,
+      loading:
+        loading ||
+        (busy && lastFrame.current?.loading === true && lastFrame.current.sessionId === sessionId),
+    };
     if (!finished) return;
     // A turn that ended in an error already pulsed as a failure below; a success
     // buzz on top of it would contradict what the screen says.

@@ -58,7 +58,8 @@ function run(S: number, mood: PewMood, seconds: number, from = 0) {
 describe("body", () => {
   test("is a globe of unit-length dots, more of them the bigger it is", () => {
     const pts = gridPoints(420);
-    for (let i = 0; i < pts.length; i += 3) expect(Math.hypot(pts[i]!, pts[i + 1]!, pts[i + 2]!)).toBeCloseTo(1, 5);
+    for (let i = 0; i < pts.length; i += 3)
+      expect(Math.hypot(pts[i]!, pts[i + 1]!, pts[i + 2]!)).toBeCloseTo(1, 5);
     expect(pewCount(18)).toBeLessThan(pewCount(40));
     expect(pewCount(40)).toBeLessThan(pewCount(120));
     expect(pewCount(120)).toBeLessThan(pewCount(200));
@@ -89,7 +90,8 @@ describe("body", () => {
   test("settling puts every dot on its target at once", () => {
     const B = makePewBody(60);
     settlePew(B, 1, "idle");
-    for (let i = 0; i < B.n; i++) expect(Math.hypot(B.p[i * 3]!, B.p[i * 3 + 1]!, B.p[i * 3 + 2]!)).toBeGreaterThan(0.9);
+    for (let i = 0; i < B.n; i++)
+      expect(Math.hypot(B.p[i * 3]!, B.p[i * 3 + 1]!, B.p[i * 3 + 2]!)).toBeGreaterThan(0.9);
     expect(B.v.every((v) => v === 0)).toBe(true);
   });
 });
@@ -97,7 +99,8 @@ describe("body", () => {
 describe("face", () => {
   const lit = (mood: PewMood, open = 1) => {
     let n = 0;
-    for (let u = -0.6; u <= 0.6; u += 0.02) for (let w = -0.5; w <= 0.5; w += 0.02) n += ledFace(u, w, mood, open, 0.3);
+    for (let u = -0.6; u <= 0.6; u += 0.02)
+      for (let w = -0.5; w <= 0.5; w += 0.02) n += ledFace(u, w, mood, open, 0.3);
     return n;
   };
   test("every mood lights a face", () => {
@@ -127,7 +130,15 @@ describe("face", () => {
 });
 
 describe("call moods", () => {
-  const CALL: PewMood[] = ["listening", "typing", "reading", "dialing", "celebrate", "goodbye", "muted"];
+  const CALL: PewMood[] = [
+    "listening",
+    "typing",
+    "reading",
+    "dialing",
+    "celebrate",
+    "goodbye",
+    "muted",
+  ];
   const frames = (S: number, mood: PewMood) => {
     const B = makePewBody(S);
     const out: string[] = [];
@@ -138,7 +149,9 @@ describe("call moods", () => {
       if (i % 30 === 0) {
         const { painter, calls } = recorder();
         paintPew(B, t, mood, PEW2_PEW, painter);
-        out.push(calls.map((c) => `${c.kind}:${c.args.map((n) => n.toFixed(2)).join(",")}`).join("|"));
+        out.push(
+          calls.map((c) => `${c.kind}:${c.args.map((n) => n.toFixed(2)).join(",")}`).join("|"),
+        );
       }
     }
     return out;
@@ -304,7 +317,9 @@ describe("sleeping styles", () => {
       seen.add(s);
     }
     expect(seen.size).toBe(PEW_SLEEP_STYLES);
-    expect(new Set(["claude", "codex", "gemini", "gg-coder", "echo"].map(pewSleepStyle)).size).toBeGreaterThan(2);
+    expect(
+      new Set(["claude", "codex", "gemini", "gg-coder", "echo"].map(pewSleepStyle)).size,
+    ).toBeGreaterThan(2);
   });
 });
 
@@ -314,34 +329,39 @@ describe("sleeping styles", () => {
 // JS-thread tests can't see that, so the ordering is checked from the source.
 // Per file: the engine is split in two, and an import is always evaluated
 // before the importing file defines anything, so only same-file order matters.
-test.each(["engineBody.ts", "enginePaint.ts"])("no worklet in %s calls a helper declared below it", (file) => {
-  const raw = readFileSync(join(import.meta.dir, file), "utf8");
-  const src = raw
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
-    .replace(/\/\/[^\n]*/g, "")
-    .replace(/"(?:\\.|[^"\\])*"/g, '""');
-  const decl = new Map<string, number>();
-  for (const m of src.matchAll(/^(?:export )?(?:function|const|let) (\w+)/gm)) decl.set(m[1]!, m.index!);
-  const late: string[] = [];
-  for (const m of src.matchAll(/^(?:export )?function (\w+)\(([^)]*)\)[^{]*\{/gm)) {
-    let i = m.index! + m[0].length;
-    let depth = 1;
-    while (depth > 0) {
-      const c = src[i++];
-      if (c === "{") depth++;
-      else if (c === "}") depth--;
+test.each(["engineBody.ts", "enginePaint.ts"])(
+  "no worklet in %s calls a helper declared below it",
+  (file) => {
+    const raw = readFileSync(join(import.meta.dir, file), "utf8");
+    const src = raw
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+      .replace(/\/\/[^\n]*/g, "")
+      .replace(/"(?:\\.|[^"\\])*"/g, '""');
+    const decl = new Map<string, number>();
+    for (const m of src.matchAll(/^(?:export )?(?:function|const|let) (\w+)/gm))
+      decl.set(m[1]!, m.index!);
+    const late: string[] = [];
+    for (const m of src.matchAll(/^(?:export )?function (\w+)\(([^)]*)\)[^{]*\{/gm)) {
+      let i = m.index! + m[0].length;
+      let depth = 1;
+      while (depth > 0) {
+        const c = src[i++];
+        if (c === "{") depth++;
+        else if (c === "}") depth--;
+      }
+      const body = src.slice(m.index! + m[0].length, i);
+      const local = new Set([...m[2]!.matchAll(/(\w+)\s*[:?,)=]/g)].map((x) => x[1]!));
+      for (const x of body.matchAll(/\b(?:const|let|var)\s+(\w+)/g)) local.add(x[1]!);
+      for (const x of body.matchAll(/\b([A-Za-z_]\w*)\b/g)) {
+        const name = x[1]!;
+        const at = decl.get(name);
+        if (at !== undefined && at > m.index! && name !== m[1] && !local.has(name))
+          late.push(`${m[1]} -> ${name}`);
+      }
     }
-    const body = src.slice(m.index! + m[0].length, i);
-    const local = new Set([...m[2]!.matchAll(/(\w+)\s*[:?,)=]/g)].map((x) => x[1]!));
-    for (const x of body.matchAll(/\b(?:const|let|var)\s+(\w+)/g)) local.add(x[1]!);
-    for (const x of body.matchAll(/\b([A-Za-z_]\w*)\b/g)) {
-      const name = x[1]!;
-      const at = decl.get(name);
-      if (at !== undefined && at > m.index! && name !== m[1] && !local.has(name)) late.push(`${m[1]} -> ${name}`);
-    }
-  }
-  expect([...new Set(late)]).toEqual([]);
-});
+    expect([...new Set(late)]).toEqual([]);
+  },
+);
 
 describe("squishy under a finger", () => {
   const live = () => {
@@ -350,7 +370,8 @@ describe("squishy under a finger", () => {
     paintPew(B, t, "idle", PEW2_PEW, recorder().painter);
     return { B, t };
   };
-  const radius = (B: ReturnType<typeof makePewBody>, i: number) => Math.hypot(B.p[i * 3]!, B.p[i * 3 + 1]!, B.p[i * 3 + 2]!);
+  const radius = (B: ReturnType<typeof makePewBody>, i: number) =>
+    Math.hypot(B.p[i * 3]!, B.p[i * 3 + 1]!, B.p[i * 3 + 2]!);
   const nearest = (B: ReturnType<typeof makePewBody>, x: number, y: number) => {
     let best = 0;
     let bestD = Infinity;

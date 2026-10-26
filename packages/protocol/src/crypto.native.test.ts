@@ -7,12 +7,15 @@ const enc = (s: string) => new TextEncoder().encode(s);
 const faithful: NativeAead = {
   openText(key, nonce, aad, ct) {
     try {
-      return new TextDecoder("utf-8", { fatal: true }).decode(xchacha20poly1305(key, nonce, aad).decrypt(fromBase64Url(ct)));
+      return new TextDecoder("utf-8", { fatal: true }).decode(
+        xchacha20poly1305(key, nonce, aad).decrypt(fromBase64Url(ct)),
+      );
     } catch {
       return null;
     }
   },
-  sealText: (key, nonce, aad, text) => toBase64Url(xchacha20poly1305(key, nonce, aad).encrypt(enc(text))),
+  sealText: (key, nonce, aad, text) =>
+    toBase64Url(xchacha20poly1305(key, nonce, aad).encrypt(enc(text))),
 };
 let opened = 0;
 const counting: NativeAead = {
@@ -41,9 +44,17 @@ test("a faithful native cipher is installed and used both ways, interoperating w
 });
 
 test("a native cipher that disagrees is refused, and the JS cipher stays", () => {
-  const accepting: NativeAead = { ...faithful, openText: (key, nonce, aad, ct) => faithful.openText(key, nonce, aad, ct) ?? "{}" };
+  const accepting: NativeAead = {
+    ...faithful,
+    openText: (key, nonce, aad, ct) => faithful.openText(key, nonce, aad, ct) ?? "{}",
+  };
   const wrongBytes: NativeAead = { ...faithful, sealText: () => "AAAA" };
-  const throwing: NativeAead = { ...faithful, openText: () => { throw new Error("boom"); } };
+  const throwing: NativeAead = {
+    ...faithful,
+    openText: () => {
+      throw new Error("boom");
+    },
+  };
   for (const broken of [accepting, wrongBytes, throwing]) expect(useNativeAead(broken)).toBe(false);
 });
 

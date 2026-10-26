@@ -188,7 +188,13 @@ export interface HeldNews {
   pauseArmed: boolean;
 }
 
-const NO_NEWS: HeldNews = { urgent: [], finished: [], gathered: false, gathering: false, pauseArmed: false };
+const NO_NEWS: HeldNews = {
+  urgent: [],
+  finished: [],
+  gathered: false,
+  gathering: false,
+  pauseArmed: false,
+};
 
 export const IDLE_CALL: CallState = {
   phase: "idle",
@@ -224,9 +230,15 @@ export const IDLE_CALL: CallState = {
  * guard only, Pew not speaking.
  */
 export function micOpen(
-  state: Pick<CallState, "muted" | "pewAudio" | "echoTail"> & { echoGuard?: boolean; leadIn?: boolean; speaker?: boolean },
+  state: Pick<CallState, "muted" | "pewAudio" | "echoTail"> & {
+    echoGuard?: boolean;
+    leadIn?: boolean;
+    speaker?: boolean;
+  },
 ): boolean {
-  return !state.muted && !state.echoTail && state.leadIn !== true && (!guarded(state) || !state.pewAudio);
+  return (
+    !state.muted && !state.echoTail && state.leadIn !== true && (!guarded(state) || !state.pewAudio)
+  );
 }
 
 /** The mic closes while Pew talks: no echo cancelling here, or the loudspeaker is on. */
@@ -283,7 +295,11 @@ export function approvalNeedingReadBack(name: string, rawArgs: string): string |
   // the same way, whoever thought of it: the one place a planted instruction
   // (in a page an agent read, or an earlier call) could turn into damage.
   // Keyed by the text, so the confirmed message is the one that goes.
-  if ((name === "tell_agent" || name === "start_chat") && typeof args.text === "string" && RISKY.test(args.text)) {
+  if (
+    (name === "tell_agent" || name === "start_chat") &&
+    typeof args.text === "string" &&
+    RISKY.test(args.text)
+  ) {
     return `send:${args.text.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 200)}`;
   }
   const item = typeof args.item_id === "string" && args.item_id ? args.item_id : undefined;
@@ -310,8 +326,12 @@ export function readBackSendOutput(text: string): string {
 }
 
 /** What Pew is told when it approves without a read-back: say it, then wait for yes. */
-export function readBackOutput(item: Pick<VoiceInboxItem, "folder" | "title" | "kind"> | undefined): string {
-  const what = item ? `${item.folder ? `${item.folder}: ` : ""}${item.kind === "plan" ? "its plan" : item.title}` : "this";
+export function readBackOutput(
+  item: Pick<VoiceInboxItem, "folder" | "title" | "kind"> | undefined,
+): string {
+  const what = item
+    ? `${item.folder ? `${item.folder}: ` : ""}${item.kind === "plan" ? "its plan" : item.title}`
+    : "this";
   return JSON.stringify({
     ok: false,
     error: "read_back_first",
@@ -430,7 +450,11 @@ export interface CallStep {
 }
 
 /** The inbox item id the daemon builds: `${sessionId}:${kind}:${requestId}`. */
-export function inboxItemId(sessionId: string, kind: VoiceInboxItem["kind"], requestId: string): string {
+export function inboxItemId(
+  sessionId: string,
+  kind: VoiceInboxItem["kind"],
+  requestId: string,
+): string {
   return `${sessionId}:${kind}:${requestId}`;
 }
 
@@ -454,7 +478,8 @@ export function readInboxItems(value: unknown): VoiceInboxItem[] | undefined {
   for (const entry of value) {
     if (!isRecord(entry)) continue;
     const { id, sessionId, kind, requestId, title, since } = entry;
-    if (typeof id !== "string" || typeof sessionId !== "string" || typeof requestId !== "string") continue;
+    if (typeof id !== "string" || typeof sessionId !== "string" || typeof requestId !== "string")
+      continue;
     if (kind !== "approval" && kind !== "question" && kind !== "plan") continue;
     if (typeof title !== "string") continue;
     items.push({
@@ -473,15 +498,28 @@ export function readInboxItems(value: unknown): VoiceInboxItem[] | undefined {
 }
 
 /** The card's data, when a newer daemon sent it and it reads cleanly; otherwise nothing (voice-only). */
-function cardFields(entry: Record<string, unknown>): Pick<VoiceInboxItem, "questions" | "options" | "detail"> {
+function cardFields(
+  entry: Record<string, unknown>,
+): Pick<VoiceInboxItem, "questions" | "options" | "detail"> {
   const out: Pick<VoiceInboxItem, "questions" | "options" | "detail"> = {};
   // The chat's own reader, so the call's card accepts exactly what the chat's sheet does.
   const questions = readAskRequest({ requestId: "card", questions: entry.questions })?.questions;
   if (questions) out.questions = questions;
   if (Array.isArray(entry.options)) {
     const options = entry.options.flatMap((option) => {
-      if (!isRecord(option) || typeof option.optionId !== "string" || typeof option.name !== "string") return [];
-      return [{ optionId: option.optionId, name: option.name, ...(typeof option.kind === "string" ? { kind: option.kind } : {}) }];
+      if (
+        !isRecord(option) ||
+        typeof option.optionId !== "string" ||
+        typeof option.name !== "string"
+      )
+        return [];
+      return [
+        {
+          optionId: option.optionId,
+          name: option.name,
+          ...(typeof option.kind === "string" ? { kind: option.kind } : {}),
+        },
+      ];
     });
     if (options.length > 0) out.options = options;
   }
@@ -508,7 +546,8 @@ function systemText(text: string): RealtimeEvent {
 /** The line injected when an item starts waiting mid-call. */
 export function newItemText(item: VoiceInboxItem): string {
   const choices = itemChoices(item);
-  if (!choices) return `New: ${label(item)} (item_id ${item.id}). Bring it up at the next natural pause: read it out and wait for their answer.`;
+  if (!choices)
+    return `New: ${label(item)} (item_id ${item.id}). Bring it up at the next natural pause: read it out and wait for their answer.`;
   return `New question: ${label(item)}. ${choices} Read it out at the next natural pause and wait for their answer. Only once they choose, call answer_question with item_id "${item.id}" and answers keyed by question id.`;
 }
 
@@ -538,7 +577,10 @@ export function handledElsewhereText(item: { id: string; folder?: string; title:
  * What changed between what the model was told and the inbox now.
  * Pure diff, exported for tests: added in inbox order, removed in told order.
  */
-export function diffInbox(told: readonly string[], inbox: readonly VoiceInboxItem[]): { added: VoiceInboxItem[]; removed: string[] } {
+export function diffInbox(
+  told: readonly string[],
+  inbox: readonly VoiceInboxItem[],
+): { added: VoiceInboxItem[]; removed: string[] } {
   const now = new Set(inbox.map((item) => item.id));
   const known = new Set(told);
   return {
@@ -637,7 +679,12 @@ function pace(state: CallState, effects: CallEffect[], pauseOver = false): CallS
   }
   if (!pauseOver) {
     if (held.pauseArmed) return state;
-    effects.push({ kind: "timer", key: "pause", ms: PAUSE_MS, input: { type: "timeout", what: "pause" } });
+    effects.push({
+      kind: "timer",
+      key: "pause",
+      ms: PAUSE_MS,
+      input: { type: "timeout", what: "pause" },
+    });
     return { ...state, held: { ...held, pauseArmed: true } };
   }
   effects.push({ kind: "realtime", event: systemText(newsText(held)) });
@@ -654,7 +701,10 @@ const UNPROMPTED: RealtimeEvent = { type: "response.create", response: { tool_ch
  */
 function requestResponse(state: CallState, effects: CallEffect[]): CallState {
   if (state.responding) return { ...state, createQueued: true };
-  effects.push({ kind: "realtime", event: state.unprompted ? UNPROMPTED : { type: "response.create" } });
+  effects.push({
+    kind: "realtime",
+    event: state.unprompted ? UNPROMPTED : { type: "response.create" },
+  });
   return { ...state, responding: true, createQueued: false };
 }
 
@@ -663,17 +713,30 @@ function speakUnprompted(state: CallState, effects: CallEffect[]): CallState {
   return requestResponse({ ...state, unprompted: true }, effects);
 }
 
-function finish(state: CallState, effects: CallEffect[], reason: VoiceEndReason, error?: string): CallState {
+function finish(
+  state: CallState,
+  effects: CallEffect[],
+  reason: VoiceEndReason,
+  error?: string,
+): CallState {
   if (state.engine === "live") {
     state = settleLiveCaption(state);
-    effects.push({ kind: "cancelTimer", key: "liveSpeech" }, { kind: "cancelTimer", key: "liveHangup" });
+    effects.push(
+      { kind: "cancelTimer", key: "liveSpeech" },
+      { kind: "cancelTimer", key: "liveHangup" },
+    );
   }
   effects.push({ kind: "close" });
-  for (const tool of state.tools) effects.push({ kind: "cancelTimer", key: `tool:${tool.toolCallId}` });
+  for (const tool of state.tools)
+    effects.push({ kind: "cancelTimer", key: `tool:${tool.toolCallId}` });
   effects.push({ kind: "cancelTimer", key: "session" }, { kind: "cancelTimer", key: "goodbye" });
   effects.push({ kind: "cancelTimer", key: "gather" }, { kind: "cancelTimer", key: "pause" });
   if (state.callId) {
-    const message: Record<string, unknown> & { t: string } = { t: "voice.end", callId: state.callId, reason };
+    const message: Record<string, unknown> & { t: string } = {
+      t: "voice.end",
+      callId: state.callId,
+      reason,
+    };
     if (state.transcript.length > 0) message.transcript = state.transcript;
     effects.push({ kind: "daemon", message });
   }
@@ -698,7 +761,13 @@ function addTranscript(state: CallState, role: TranscriptLine["role"], raw: unkn
 }
 
 /** Start one function call on the daemon, once per `call_id`. */
-function dispatchTool(state: CallState, effects: CallEffect[], callIdRaw: unknown, nameRaw: unknown, argsRaw: unknown): CallState {
+function dispatchTool(
+  state: CallState,
+  effects: CallEffect[],
+  callIdRaw: unknown,
+  nameRaw: unknown,
+  argsRaw: unknown,
+): CallState {
   const toolCallId = str(callIdRaw);
   const name = str(nameRaw);
   if (!toolCallId || !name || state.seenToolCalls.includes(toolCallId)) return state;
@@ -707,10 +776,18 @@ function dispatchTool(state: CallState, effects: CallEffect[], callIdRaw: unknow
     // Refused here, never sent: nothing reaches a session the user hasn't asked about.
     effects.push({
       kind: "realtime",
-      event: { type: "conversation.item.create", item: { type: "function_call_output", call_id: toolCallId, output: NOT_ASKED_OUTPUT } },
+      event: {
+        type: "conversation.item.create",
+        item: { type: "function_call_output", call_id: toolCallId, output: NOT_ASKED_OUTPUT },
+      },
     });
-    const refused: CallState = { ...state, seenToolCalls: [...state.seenToolCalls, toolCallId].slice(-200) };
-    return state.responding ? { ...refused, createQueued: true } : requestResponse(refused, effects);
+    const refused: CallState = {
+      ...state,
+      seenToolCalls: [...state.seenToolCalls, toolCallId].slice(-200),
+    };
+    return state.responding
+      ? { ...refused, createQueued: true }
+      : requestResponse(refused, effects);
   }
   const approving = approvalNeedingReadBack(name, args);
   if (approving) {
@@ -718,29 +795,50 @@ function dispatchTool(state: CallState, effects: CallEffect[], callIdRaw: unknow
     if (asked === undefined || state.userTurns <= asked) {
       // Refused here: Pew says what it would approve, and the user's yes in
       // a later turn is what lets the same call through.
-      const item = state.inbox?.find((entry) => entry.id === approving) ?? state.items.find((entry) => entry.id === approving);
+      const item =
+        state.inbox?.find((entry) => entry.id === approving) ??
+        state.items.find((entry) => entry.id === approving);
       const sending = approving.startsWith("send:");
       const text = sending ? (JSON.parse(args || "{}") as { text?: unknown }).text : undefined;
-      const said = sending ? readBackSendOutput(typeof text === "string" ? text : "") : readBackOutput(item);
+      const said = sending
+        ? readBackSendOutput(typeof text === "string" ? text : "")
+        : readBackOutput(item);
       effects.push({
         kind: "realtime",
-        event: { type: "conversation.item.create", item: { type: "function_call_output", call_id: toolCallId, output: said } },
+        event: {
+          type: "conversation.item.create",
+          item: { type: "function_call_output", call_id: toolCallId, output: said },
+        },
       });
       const refused: CallState = {
         ...state,
         readBack: { ...state.readBack, [approving]: state.userTurns },
         seenToolCalls: [...state.seenToolCalls, toolCallId].slice(-200),
       };
-      return state.responding ? { ...refused, createQueued: true } : requestResponse(refused, effects);
+      return state.responding
+        ? { ...refused, createQueued: true }
+        : requestResponse(refused, effects);
     }
   }
   const requestId = `${state.requestId ?? "voice"}:tool:${state.toolCounter + 1}`;
   effects.push(
     {
       kind: "daemon",
-      message: { t: "voice.tool", requestId, callId: state.callId ?? state.requestId ?? "", toolCallId, name, arguments: args },
+      message: {
+        t: "voice.tool",
+        requestId,
+        callId: state.callId ?? state.requestId ?? "",
+        toolCallId,
+        name,
+        arguments: args,
+      },
     },
-    { kind: "timer", key: `tool:${toolCallId}`, ms: TOOL_TIMEOUT_MS, input: { type: "timeout", what: "tool", toolCallId } },
+    {
+      kind: "timer",
+      key: `tool:${toolCallId}`,
+      ms: TOOL_TIMEOUT_MS,
+      input: { type: "timeout", what: "tool", toolCallId },
+    },
   );
   return {
     ...state,
@@ -752,12 +850,24 @@ function dispatchTool(state: CallState, effects: CallEffect[], callIdRaw: unknow
 }
 
 /** Hand a tool's output to the model and, once nothing else is running, ask it to speak. */
-function completeTool(state: CallState, effects: CallEffect[], toolCallId: string, output: string, hangUp: boolean): CallState {
+function completeTool(
+  state: CallState,
+  effects: CallEffect[],
+  toolCallId: string,
+  output: string,
+  hangUp: boolean,
+): CallState {
   const tool = state.tools.find((entry) => entry.toolCallId === toolCallId);
   if (!tool) return state;
   effects.push(
     { kind: "cancelTimer", key: `tool:${toolCallId}` },
-    { kind: "realtime", event: { type: "conversation.item.create", item: { type: "function_call_output", call_id: toolCallId, output } } },
+    {
+      kind: "realtime",
+      event: {
+        type: "conversation.item.create",
+        item: { type: "function_call_output", call_id: toolCallId, output },
+      },
+    },
   );
   const sessionId = toolTarget(tool.name, tool.arguments, state.inbox);
   const itemId = ANSWERING_TOOLS.has(tool.name) ? answeredItem(tool.arguments) : undefined;
@@ -767,7 +877,9 @@ function completeTool(state: CallState, effects: CallEffect[], toolCallId: strin
     name: tool.name,
     arguments: tool.arguments,
     sessionId,
-    item: found ? { kind: found.kind, title: found.title, folder: found.folder, agentName: found.agentName } : undefined,
+    item: found
+      ? { kind: found.kind, title: found.title, folder: found.folder, agentName: found.agentName }
+      : undefined,
     ok: outputOk(output),
   };
   let next: CallState = {
@@ -777,7 +889,8 @@ function completeTool(state: CallState, effects: CallEffect[], toolCallId: strin
   };
   if (ANSWERING_TOOLS.has(tool.name)) {
     const itemId = answeredItem(tool.arguments);
-    if (itemId && !next.answeredHere.includes(itemId)) next = { ...next, answeredHere: [...next.answeredHere, itemId] };
+    if (itemId && !next.answeredHere.includes(itemId))
+      next = { ...next, answeredHere: [...next.answeredHere, itemId] };
   }
   if (hangUp) next = { ...next, hangUpPending: true, phase: "ending" };
   if (next.tools.length === 0) {
@@ -808,7 +921,11 @@ const SESSION_TOOLS = new Set(["tell_agent", "get_status"]);
  * `item_id` looked up in the inbox for the answering tools. Undefined when the
  * tool names none, or its item is no longer known.
  */
-export function toolTarget(name: string, args: string, inbox: readonly VoiceInboxItem[] | undefined): string | undefined {
+export function toolTarget(
+  name: string,
+  args: string,
+  inbox: readonly VoiceInboxItem[] | undefined,
+): string | undefined {
   const parsed = parseArgs(args);
   if (!parsed) return undefined;
   if (SESSION_TOOLS.has(name)) return str(parsed.session_id) || undefined;
@@ -824,13 +941,24 @@ function outputOk(output: string): boolean {
   return !parsed || parsed.error === undefined;
 }
 
-function setCaption(state: CallState, who: CallCaption["who"], text: string, final: boolean, ref: string | undefined): CallState {
+function setCaption(
+  state: CallState,
+  who: CallCaption["who"],
+  text: string,
+  final: boolean,
+  ref: string | undefined,
+): CallState {
   const serial = (state.caption?.serial ?? 0) + 1;
   return { ...state, caption: { who, text, final, ref, serial } };
 }
 
 /** A transcript delta: extends the open caption it belongs to, or starts a new one. */
-function captionDelta(state: CallState, who: CallCaption["who"], delta: unknown, ref: string | undefined): CallState {
+function captionDelta(
+  state: CallState,
+  who: CallCaption["who"],
+  delta: unknown,
+  ref: string | undefined,
+): CallState {
   if (typeof delta !== "string" || delta === "") return state;
   const open = state.caption;
   if (open && open.who === who && !open.final && open.ref === ref) {
@@ -840,7 +968,12 @@ function captionDelta(state: CallState, who: CallCaption["who"], delta: unknown,
 }
 
 /** The whole line arrived: settle the caption it belongs to (never steals one from the other speaker). */
-function captionDone(state: CallState, who: CallCaption["who"], transcript: unknown, ref: string | undefined): CallState {
+function captionDone(
+  state: CallState,
+  who: CallCaption["who"],
+  transcript: unknown,
+  ref: string | undefined,
+): CallState {
   const text = typeof transcript === "string" ? transcript.trim() : "";
   const open = state.caption;
   if (open && open.who === who && open.ref === ref) {
@@ -868,7 +1001,11 @@ function liveDelta(state: CallState, who: CallCaption["who"], delta: unknown): C
 }
 
 /** GPT-Live's data channel events (the daemon runs everything else). */
-function onLiveServer(state: CallState, event: Record<string, unknown>, effects: CallEffect[]): CallState {
+function onLiveServer(
+  state: CallState,
+  event: Record<string, unknown>,
+  effects: CallEffect[],
+): CallState {
   switch (event.type) {
     case "session.input_transcript.delta": {
       const next = liveDelta(state, "you", event.delta);
@@ -879,13 +1016,19 @@ function onLiveServer(state: CallState, event: Record<string, unknown>, effects:
     case "session.output_transcript.delta": {
       const next = liveDelta(state, "pew", event.delta);
       if (next === state) return state;
-      effects.push({ kind: "timer", key: "liveSpeech", ms: LIVE_SPEECH_MS, input: { type: "timeout", what: "liveSpeech" } });
+      effects.push({
+        kind: "timer",
+        key: "liveSpeech",
+        ms: LIVE_SPEECH_MS,
+        input: { type: "timeout", what: "liveSpeech" },
+      });
       return { ...next, activity: "speaking" };
     }
     case "session.closed":
       return finish(state, effects, "hangup");
     case "error":
-      if (typeof __DEV__ !== "undefined" && __DEV__) console.log(`[voice] live error ${JSON.stringify(event).slice(0, 300)}`);
+      if (typeof __DEV__ !== "undefined" && __DEV__)
+        console.log(`[voice] live error ${JSON.stringify(event).slice(0, 300)}`);
       return state;
     default:
       return state;
@@ -900,17 +1043,34 @@ function onDaemon(state: CallState, message: unknown, effects: CallEffect[]): Ca
     const next = { ...state, inbox };
     return state.phase === "live" || state.phase === "ending" ? reconcile(next, effects) : next;
   }
-  if (message.t === "error" && message.code === "unknown_message" && state.phase === "connecting" && !state.callId) {
+  if (
+    message.t === "error" &&
+    message.code === "unknown_message" &&
+    state.phase === "connecting" &&
+    !state.callId
+  ) {
     return finish(state, effects, "failed", CALL_ERRORS.oldDaemon);
   }
-  if (message.t === "voice.session" && message.requestId === state.requestId && state.phase === "connecting" && !state.callId) {
+  if (
+    message.t === "voice.session" &&
+    message.requestId === state.requestId &&
+    state.phase === "connecting" &&
+    !state.callId
+  ) {
     effects.push({ kind: "cancelTimer", key: "session" });
     if (message.ok === true && message.engine === "live") {
       const callId = str(message.callId) ?? state.requestId;
       const briefed = readInboxItems(message.items) ?? state.inbox ?? [];
       effects.push({ kind: "connect", live: true });
       // GPT-Live takes its own turns: the mic is never gated by Pew's voice.
-      return { ...state, engine: "live", echoGuard: false, callId, items: briefed.map(toCallItem), told: briefed.map((item) => item.id) };
+      return {
+        ...state,
+        engine: "live",
+        echoGuard: false,
+        callId,
+        items: briefed.map(toCallItem),
+        told: briefed.map((item) => item.id),
+      };
     }
     const secret = str(message.secret);
     if (message.ok !== true || !secret) {
@@ -920,12 +1080,26 @@ function onDaemon(state: CallState, message: unknown, effects: CallEffect[]): Ca
     const briefed = readInboxItems(message.items) ?? state.inbox ?? [];
     const expiresAt = typeof message.expiresAt === "number" ? message.expiresAt : undefined;
     effects.push({ kind: "connect", secret, expiresAt });
-    return { ...state, callId, items: briefed.map(toCallItem), told: briefed.map((item) => item.id) };
+    return {
+      ...state,
+      callId,
+      items: briefed.map(toCallItem),
+      told: briefed.map((item) => item.id),
+    };
   }
   if (state.engine === "live") {
     // The daemon tells GPT-Live itself (notes, tools). Only its hang-up matters here.
-    if (message.t === "voice.hangup" && message.callId === state.callId && (state.phase === "live" || state.phase === "connecting")) {
-      effects.push({ kind: "timer", key: "liveHangup", ms: LIVE_HANGUP_MS, input: { type: "timeout", what: "liveHangup" } });
+    if (
+      message.t === "voice.hangup" &&
+      message.callId === state.callId &&
+      (state.phase === "live" || state.phase === "connecting")
+    ) {
+      effects.push({
+        kind: "timer",
+        key: "liveHangup",
+        ms: LIVE_HANGUP_MS,
+        input: { type: "timeout", what: "liveHangup" },
+      });
       return { ...state, phase: "ending" };
     }
     return state;
@@ -939,12 +1113,21 @@ function onDaemon(state: CallState, message: unknown, effects: CallEffect[]): Ca
     if (message.speak !== true) return state;
     const held = { ...state.held, finished: [...state.held.finished, str(message.about) ?? ""] };
     if (!held.gathering && !held.gathered) {
-      effects.push({ kind: "timer", key: "gather", ms: GATHER_MS, input: { type: "timeout", what: "gather" } });
+      effects.push({
+        kind: "timer",
+        key: "gather",
+        ms: GATHER_MS,
+        input: { type: "timeout", what: "gather" },
+      });
       held.gathering = true;
     }
     return { ...state, held };
   }
-  if (message.t === "voice.tool" && message.callId === state.callId && typeof message.toolCallId === "string") {
+  if (
+    message.t === "voice.tool" &&
+    message.callId === state.callId &&
+    typeof message.toolCallId === "string"
+  ) {
     if (state.phase !== "live" && state.phase !== "ending") return state;
     const output = typeof message.output === "string" ? message.output : "{}";
     return completeTool(state, effects, message.toolCallId, output, message.hangUp === true);
@@ -973,28 +1156,57 @@ function onServer(state: CallState, raw: unknown, effects: CallEffect[]): CallSt
       }
       if (next.createQueued && next.tools.length === 0) next = requestResponse(next, effects);
       if (next.hangUpPending && next.tools.length === 0 && !next.responding) {
-        effects.push({ kind: "timer", key: "goodbye", ms: HANGUP_GRACE_MS, input: { type: "timeout", what: "goodbye" } });
+        effects.push({
+          kind: "timer",
+          key: "goodbye",
+          ms: HANGUP_GRACE_MS,
+          input: { type: "timeout", what: "goodbye" },
+        });
       }
       return next;
     }
     case "output_audio_buffer.started": {
       effects.push({ kind: "cancelTimer", key: "echoTail" });
       const leadIn = !guarded(state) && !state.pewAudio;
-      if (leadIn) effects.push({ kind: "timer", key: "leadIn", ms: LEAD_IN_MS, input: { type: "leadIn" } });
+      if (leadIn)
+        effects.push({ kind: "timer", key: "leadIn", ms: LEAD_IN_MS, input: { type: "leadIn" } });
       return gateMic(
         state,
-        { ...state, pewAudio: true, echoTail: false, leadIn: leadIn || state.leadIn, activity: state.tools.length > 0 ? "working" : "speaking" },
+        {
+          ...state,
+          pewAudio: true,
+          echoTail: false,
+          leadIn: leadIn || state.leadIn,
+          activity: state.tools.length > 0 ? "working" : "speaking",
+        },
         effects,
       );
     }
     case "output_audio_buffer.stopped":
     case "output_audio_buffer.cleared": {
-      if (state.hangUpPending && !state.responding && state.tools.length === 0) return finish(state, effects, "hangup");
+      if (state.hangUpPending && !state.responding && state.tools.length === 0)
+        return finish(state, effects, "hangup");
       // Cleared means cut off (an interrupt already opened the mic): no tail.
       const tail = event.type === "output_audio_buffer.stopped" && state.pewAudio && guarded(state);
-      if (tail) effects.push({ kind: "timer", key: "echoTail", ms: ECHO_TAIL_MS, input: { type: "echoTail" } });
+      if (tail)
+        effects.push({
+          kind: "timer",
+          key: "echoTail",
+          ms: ECHO_TAIL_MS,
+          input: { type: "echoTail" },
+        });
       if (state.leadIn) effects.push({ kind: "cancelTimer", key: "leadIn" });
-      return gateMic(state, { ...state, pewAudio: false, echoTail: tail, leadIn: false, activity: state.tools.length > 0 ? "working" : "listening" }, effects);
+      return gateMic(
+        state,
+        {
+          ...state,
+          pewAudio: false,
+          echoTail: tail,
+          leadIn: false,
+          activity: state.tools.length > 0 ? "working" : "listening",
+        },
+        effects,
+      );
     }
     case "input_audio_buffer.speech_started": {
       // Talked over Pew (only heard without the echo guard): stop it at once,
@@ -1002,7 +1214,11 @@ function onServer(state: CallState, raw: unknown, effects: CallEffect[]): CallSt
       // already sent keeps playing until the buffer is cleared.
       const base = state.pewAudio && !guarded(state) ? cutOff(state, effects) : state;
       const next = setCaption(base, "you", "", false, str(event.item_id));
-      return { ...next, userSpeaking: true, activity: state.tools.length > 0 ? "working" : "listening" };
+      return {
+        ...next,
+        userSpeaking: true,
+        activity: state.tools.length > 0 ? "working" : "listening",
+      };
     }
     case "input_audio_buffer.speech_stopped":
       return { ...state, userSpeaking: false };
@@ -1014,17 +1230,26 @@ function onServer(state: CallState, raw: unknown, effects: CallEffect[]): CallSt
     case "conversation.item.input_audio_transcription.delta":
       return captionDelta(state, "you", event.delta, str(event.item_id));
     case "conversation.item.input_audio_transcription.completed":
-      return addTranscript(captionDone(state, "you", event.transcript, str(event.item_id)), "user", event.transcript);
+      return addTranscript(
+        captionDone(state, "you", event.transcript, str(event.item_id)),
+        "user",
+        event.transcript,
+      );
     case "response.output_audio_transcript.delta":
       return captionDelta(state, "pew", event.delta, str(event.response_id));
     case "response.output_audio_transcript.done": {
-      const next = addTranscript(captionDone(state, "pew", event.transcript, str(event.response_id)), "assistant", event.transcript);
+      const next = addTranscript(
+        captionDone(state, "pew", event.transcript, str(event.response_id)),
+        "assistant",
+        event.transcript,
+      );
       return { ...next, held: dropSaid(next.held, str(event.transcript) ?? "") };
     }
     case "error": {
       const error = isRecord(event.error) ? event.error : {};
       // A create that raced a VAD-started response: retry it after that one.
-      if (error.code === "conversation_already_has_active_response") return { ...state, createQueued: true, responding: true };
+      if (error.code === "conversation_already_has_active_response")
+        return { ...state, createQueued: true, responding: true };
       return state;
     }
     default:
@@ -1040,7 +1265,11 @@ function cutOff(state: CallState, effects: CallEffect[]): CallState {
     { kind: "cancelTimer", key: "echoTail" },
     { kind: "cancelTimer", key: "leadIn" },
   );
-  return gateMic(state, { ...state, pewAudio: false, echoTail: false, leadIn: false, activity: "listening" }, effects);
+  return gateMic(
+    state,
+    { ...state, pewAudio: false, echoTail: false, leadIn: false, activity: "listening" },
+    effects,
+  );
 }
 
 /** One step of the call. Pure: the same state and input always give the same answer. */
@@ -1071,10 +1300,22 @@ function stepInner(state: CallState, input: CallInput): CallStep {
             engines: ["live"],
           },
         },
-        { kind: "timer", key: "session", ms: SESSION_TIMEOUT_MS, input: { type: "timeout", what: "session" } },
+        {
+          kind: "timer",
+          key: "session",
+          ms: SESSION_TIMEOUT_MS,
+          input: { type: "timeout", what: "session" },
+        },
       );
       return {
-        state: { ...IDLE_CALL, inbox: state.inbox, phase: "connecting", requestId: input.requestId, focus: input.focus, echoGuard: input.echoGuard ?? true },
+        state: {
+          ...IDLE_CALL,
+          inbox: state.inbox,
+          phase: "connecting",
+          requestId: input.requestId,
+          focus: input.focus,
+          echoGuard: input.echoGuard ?? true,
+        },
         effects,
       };
     }
@@ -1084,8 +1325,17 @@ function stepInner(state: CallState, input: CallInput): CallStep {
       if (state.phase !== "connecting" || !state.callId) return { state, effects };
       // The mic waits out the connect chime (and Pew is about to speak):
       // heard by the mic, it would be taken for the user's first words.
-      effects.push({ kind: "timer", key: "echoTail", ms: ECHO_TAIL_MS, input: { type: "echoTail" } });
-      let next: CallState = gateMic(state, { ...state, phase: "live", activity: "listening", echoTail: true }, effects);
+      effects.push({
+        kind: "timer",
+        key: "echoTail",
+        ms: ECHO_TAIL_MS,
+        input: { type: "echoTail" },
+      });
+      let next: CallState = gateMic(
+        state,
+        { ...state, phase: "live", activity: "listening", echoTail: true },
+        effects,
+      );
       next = reconcile(next, effects);
       // GPT-Live greets on its own.
       if (next.engine === "live") return { state: next, effects };
@@ -1106,7 +1356,8 @@ function stepInner(state: CallState, input: CallInput): CallStep {
       if (!callActive(state)) return { state, effects };
       return { state: gateMic(state, { ...state, muted: input.muted }, effects), effects };
     case "interrupt": {
-      if (state.phase !== "live" || !state.pewAudio || state.engine === "live") return { state, effects };
+      if (state.phase !== "live" || !state.pewAudio || state.engine === "live")
+        return { state, effects };
       return { state: cutOff(state, effects), effects };
     }
     case "echoTail":
@@ -1124,7 +1375,14 @@ function stepInner(state: CallState, input: CallInput): CallStep {
       for (const tool of state.tools) {
         effects.push({
           kind: "daemon",
-          message: { t: "voice.tool", requestId: tool.requestId, callId: state.callId, toolCallId: tool.toolCallId, name: tool.name, arguments: tool.arguments },
+          message: {
+            t: "voice.tool",
+            requestId: tool.requestId,
+            callId: state.callId,
+            toolCallId: tool.toolCallId,
+            name: tool.name,
+            arguments: tool.arguments,
+          },
         });
       }
       return { state, effects };
@@ -1155,9 +1413,15 @@ function stepInner(state: CallState, input: CallInput): CallStep {
       }
       if (input.what === "pause") {
         if (!state.held.pauseArmed) return { state, effects };
-        return { state: pace({ ...state, held: { ...state.held, pauseArmed: false } }, effects, true), effects };
+        return {
+          state: pace({ ...state, held: { ...state.held, pauseArmed: false } }, effects, true),
+          effects,
+        };
       }
-      const output = JSON.stringify({ error: "The computer didn't answer in time.", say: "I couldn't reach your computer for that one." });
+      const output = JSON.stringify({
+        error: "The computer didn't answer in time.",
+        say: "I couldn't reach your computer for that one.",
+      });
       return { state: completeTool(state, effects, input.toolCallId, output, false), effects };
     }
     case "reset":
@@ -1167,26 +1431,47 @@ function stepInner(state: CallState, input: CallInput): CallStep {
       const text = input.text.trim().slice(0, TRANSCRIPT_MAX_CHARS);
       if (state.phase !== "live" || !text) return { state, effects };
       if (state.engine === "live") {
-        effects.push({ kind: "daemon", message: { t: "voice.typed", callId: state.callId ?? "", text } });
-        const next = addTranscript(setCaption(settleLiveCaption(state), "you", text, true, undefined), "user", text);
-        return { state: { ...next, heardUser: true, userTurns: next.userTurns + 1, activity: "listening" }, effects };
+        effects.push({
+          kind: "daemon",
+          message: { t: "voice.typed", callId: state.callId ?? "", text },
+        });
+        const next = addTranscript(
+          setCaption(settleLiveCaption(state), "you", text, true, undefined),
+          "user",
+          text,
+        );
+        return {
+          state: { ...next, heardUser: true, userTurns: next.userTurns + 1, activity: "listening" },
+          effects,
+        };
       }
       // Pew stops talking to read it, as if they had spoken over it.
       const base = state.pewAudio ? cutOff(state, effects) : state;
       effects.push({
         kind: "realtime",
-        event: { type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text }] } },
+        event: {
+          type: "conversation.item.create",
+          item: { type: "message", role: "user", content: [{ type: "input_text", text }] },
+        },
       });
       // Their own turn: Pew may act on it, as on a spoken one.
       let next = addTranscript(setCaption(base, "you", text, true, undefined), "user", text);
-      next = { ...next, heardUser: true, unprompted: false, userTurns: next.userTurns + 1, activity: "listening" };
+      next = {
+        ...next,
+        heardUser: true,
+        unprompted: false,
+        userTurns: next.userTurns + 1,
+        activity: "listening",
+      };
       return { state: requestResponse(next, effects), effects };
     }
     case "answeredOnScreen": {
       if (!callActive(state)) return { state, effects };
       const item = state.inbox?.find((entry) => entry.id === input.itemId);
       // Answered here: its leaving the inbox is not "handled elsewhere".
-      const answeredHere = state.answeredHere.includes(input.itemId) ? state.answeredHere : [...state.answeredHere, input.itemId];
+      const answeredHere = state.answeredHere.includes(input.itemId)
+        ? state.answeredHere
+        : [...state.answeredHere, input.itemId];
       effects.push({ kind: "daemon", message: input.message });
       const toolCounter = state.toolCounter + 1;
       // On the end card like any answer Pew gave.
@@ -1197,13 +1482,30 @@ function stepInner(state: CallState, input: CallInput): CallStep {
           name: input.tool,
           arguments: JSON.stringify(input.arguments),
           sessionId: item?.sessionId,
-          item: item ? { kind: item.kind, title: item.title, folder: item.folder, agentName: item.agentName } : undefined,
+          item: item
+            ? { kind: item.kind, title: item.title, folder: item.folder, agentName: item.agentName }
+            : undefined,
           ok: true,
         },
       ];
-      let next: CallState = { ...state, answeredHere, completed, toolCounter, heardUser: true, unprompted: false };
+      let next: CallState = {
+        ...state,
+        answeredHere,
+        completed,
+        toolCounter,
+        heardUser: true,
+        unprompted: false,
+      };
       if (state.phase === "live" && state.engine === "live") {
-        effects.push({ kind: "daemon", message: { t: "voice.typed", callId: state.callId ?? "", text: input.tell, context: true } });
+        effects.push({
+          kind: "daemon",
+          message: {
+            t: "voice.typed",
+            callId: state.callId ?? "",
+            text: input.tell,
+            context: true,
+          },
+        });
       } else if (state.phase === "live") {
         effects.push({ kind: "realtime", event: systemText(input.tell) });
         next = requestResponse(next, effects);
@@ -1241,7 +1543,12 @@ export function foldVoiceStatus(knowledge: VoiceKnowledge, message: unknown): Vo
   }
   // The rejection names no request, so it is read as voice's only while a
   // `voice.status` is outstanding and nothing has answered it.
-  if (message.t === "error" && message.code === "unknown_message" && knowledge.kind === "unknown" && knowledge.asked) {
+  if (
+    message.t === "error" &&
+    message.code === "unknown_message" &&
+    knowledge.kind === "unknown" &&
+    knowledge.asked
+  ) {
     return { kind: "unsupported" };
   }
   return knowledge;

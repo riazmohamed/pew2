@@ -30,7 +30,14 @@ export interface ConversationRestoreProps {
   unlocking?: boolean;
 }
 
-export function ConversationRestore({ title, state, error, onRetry, settled = false, unlocking = false }: ConversationRestoreProps) {
+export function ConversationRestore({
+  title,
+  state,
+  error,
+  onRetry,
+  settled = false,
+  unlocking = false,
+}: ConversationRestoreProps) {
   const agent = useAgentColor();
   const waiting = state === "loading" || state === "reconnecting";
   // A launched goal is already being watched for (the launch just opened onto
@@ -104,7 +111,9 @@ export function ConversationRestore({ title, state, error, onRetry, settled = fa
         <View style={styles.loadingInner}>
           <Pew size={UNLOCK_PEW} mood={unlocking ? "celebrate" : "thinking"} color={agent} />
           <Dissolve kind="swap" dissolveKey={unlocking ? "open" : state}>
-            <Led>{unlocking ? "Opened" : state === "reconnecting" ? "Reconnecting" : "Reopening"}</Led>
+            <Led>
+              {unlocking ? "Opened" : state === "reconnecting" ? "Reconnecting" : "Reopening"}
+            </Led>
           </Dissolve>
         </View>
       </Dissolve>

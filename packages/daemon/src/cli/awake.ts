@@ -58,7 +58,12 @@ export async function cmdAwake(command: string | undefined, flags: Set<string>):
   if (command === undefined || command === "status") {
     const enabled = await readKeepAwakeEnabled();
     const held = await heldOnDarwin();
-    const status = { ok: true, enabled, path: keepAwakePath(), holding: held === undefined ? undefined : held.length > 0 };
+    const status = {
+      ok: true,
+      enabled,
+      path: keepAwakePath(),
+      holding: held === undefined ? undefined : held.length > 0,
+    };
     if (json) {
       console.log(JSON.stringify(status));
     } else {

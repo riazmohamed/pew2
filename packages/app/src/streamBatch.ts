@@ -94,7 +94,11 @@ interface StreamState {
 }
 
 /** One list copy and one session projection per owner batch, against latest state. */
-export function foldStreamBatch<S extends StreamState>(state: S, events: readonly StreamChunk[], generation = 0): S {
+export function foldStreamBatch<S extends StreamState>(
+  state: S,
+  events: readonly StreamChunk[],
+  generation = 0,
+): S {
   const first = events[0];
   if (!first) return state;
   const visible = state.sessionId === first.sessionId;
@@ -108,10 +112,15 @@ export function foldStreamBatch<S extends StreamState>(state: S, events: readonl
     if (visible) activity = foldActivity(activity, event.payload, event.now);
   }
   const capped = capTurns(turns);
-  const sessions = state.sessions.map((row) => row.id === first.sessionId ? { ...row, turns: capped } : row);
+  const sessions = state.sessions.map((row) =>
+    row.id === first.sessionId ? { ...row, turns: capped } : row,
+  );
   const last = capped.at(-1);
-  const activeStream = last?.role === "agent"
-    ? { sessionId: first.sessionId, turnKey: last.key ?? last.id, generation }
-    : undefined;
-  return visible ? { ...state, turns: capped, sessions, activity, busy: true, activeStream } : { ...state, sessions };
+  const activeStream =
+    last?.role === "agent"
+      ? { sessionId: first.sessionId, turnKey: last.key ?? last.id, generation }
+      : undefined;
+  return visible
+    ? { ...state, turns: capped, sessions, activity, busy: true, activeStream }
+    : { ...state, sessions };
 }

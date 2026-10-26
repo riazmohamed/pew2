@@ -23,12 +23,14 @@ export abstract class DaemonProjects extends DaemonProbes {
     // The probe is already resolved by the time a session starts, so this is a
     // map lookup in practice rather than a wait on the agent.
     const probed = await this.probes.get(providerId);
-    const sessions = probed?.sessions ?? (await readProbeCache(providerId, this.env))?.sessions ?? [];
+    const sessions =
+      probed?.sessions ?? (await readProbeCache(providerId, this.env))?.sessions ?? [];
     // The raw probe of GG Coder includes its goal conversations (GG Goals runs
     // on the same `ggcoder acp`), and a goal is often what it ran last: that
     // put a goal folder in GG Coder's composer as "the project". Goal folders
     // belong to GG Goals alone.
-    const own = providerId === GG_PROVIDER_ID ? sessions.filter((s) => !this.isGoalFolder(s.cwd)) : sessions;
+    const own =
+      providerId === GG_PROVIDER_ID ? sessions.filter((s) => !this.isGoalFolder(s.cwd)) : sessions;
     return own[0]?.cwd;
   }
 

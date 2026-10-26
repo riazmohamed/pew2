@@ -21,10 +21,22 @@ const started = new Promise((resolve) => {
   });
 });
 await new Promise((r) => ws.addEventListener("open", r));
-ws.send(JSON.stringify({ t: "hello", wire: wire.WIRE_VERSION, role: "app", deviceId, proof: channel.proof(deviceId), cursors: {} }));
+ws.send(
+  JSON.stringify({
+    t: "hello",
+    wire: wire.WIRE_VERSION,
+    role: "app",
+    deviceId,
+    proof: channel.proof(deviceId),
+    cursors: {},
+  }),
+);
 await new Promise((r) => setTimeout(r, 300));
 send({ t: "session.start", requestId: "e2e", providerId: "echo" });
-const sessionId = await Promise.race([started, new Promise((r) => setTimeout(() => r(undefined), 20000))]);
+const sessionId = await Promise.race([
+  started,
+  new Promise((r) => setTimeout(() => r(undefined), 20000)),
+]);
 if (!sessionId) {
   console.log("no session");
   process.exit(1);

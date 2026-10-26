@@ -182,12 +182,32 @@ test("the machine itself coming back replaces its lingering socket at once", () 
   // reconnect key only it holds, it is let straight back in.
   const now = Date.now();
   expect(
-    admit({ role: "daemon", deviceId: "mac", daemons: 1, total: 2, daemonLastSeen: now - 5_000, now, resumes: true }),
+    admit({
+      role: "daemon",
+      deviceId: "mac",
+      daemons: 1,
+      total: 2,
+      daemonLastSeen: now - 5_000,
+      now,
+      resumes: true,
+    }),
   ).toEqual({ ok: true, role: "daemon", deviceId: "mac", evictDaemons: true });
   // Without the key (a stranger, or an older daemon) nothing changes.
-  expect(admit({ role: "daemon", deviceId: "mac", daemons: 1, total: 2, daemonLastSeen: now - 5_000, now, resumes: false }).ok).toBe(false);
+  expect(
+    admit({
+      role: "daemon",
+      deviceId: "mac",
+      daemons: 1,
+      total: 2,
+      daemonLastSeen: now - 5_000,
+      now,
+      resumes: false,
+    }).ok,
+  ).toBe(false);
   // An app can never use it.
-  expect(admit({ role: "app", deviceId: "phone", daemons: 1, total: 2, now, resumes: true })).toEqual({
+  expect(
+    admit({ role: "app", deviceId: "phone", daemons: 1, total: 2, now, resumes: true }),
+  ).toEqual({
     ok: true,
     role: "app",
     deviceId: "phone",

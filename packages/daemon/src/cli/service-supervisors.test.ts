@@ -195,8 +195,8 @@ test("a path with a space is quoted in the task's command line", async () => {
 test("environment and log redirection are carried, since a task has neither", () => {
   const xml = buildTaskXml({ port: 9001, experimental: true });
 
-  expect(xml).toContain('set &quot;PEW2_PORT=9001&quot;');
-  expect(xml).toContain('set &quot;PEW2_EXPERIMENTAL=1&quot;');
+  expect(xml).toContain("set &quot;PEW2_PORT=9001&quot;");
+  expect(xml).toContain("set &quot;PEW2_EXPERIMENTAL=1&quot;");
   expect(xml).toContain("daemon.log");
 });
 
@@ -210,7 +210,15 @@ test("installing registers the task and starts it without waiting for a logon", 
 
   const status = await installScheduledTask({ home }, rec);
 
-  expect(rec.calls).toContainEqual(["schtasks", "/create", "/tn", TASK_NAME, "/xml", taskXmlPath(home), "/f"]);
+  expect(rec.calls).toContainEqual([
+    "schtasks",
+    "/create",
+    "/tn",
+    TASK_NAME,
+    "/xml",
+    taskXmlPath(home),
+    "/f",
+  ]);
   expect(rec.calls).toContainEqual(["schtasks", "/run", "/tn", TASK_NAME]);
   expect(status.state).toBe("running");
 });

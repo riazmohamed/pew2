@@ -152,9 +152,7 @@ test("a project chosen from the app outlives the daemon that offered it", async 
     cwd: "/Users/someone/code/api",
   });
 
-  expect(restarted.started).toEqual([
-    { providerId: "echo", cwd: "/Users/someone/code/api" },
-  ]);
+  expect(restarted.started).toEqual([{ providerId: "echo", cwd: "/Users/someone/code/api" }]);
   expect(out.find((m) => m.t === "session.started")?.cwd).toBe("/Users/someone/code/api");
 });
 
@@ -206,12 +204,9 @@ test("a project with agent history is recognised before any probe has landed", a
   // agent spawn, and losing it looked identical to the bug above: the composer
   // named whatever the agent had open last.
   const env = scratchHome();
-  await writeProbeCache(
-    "echo",
-    { canResume: true, configOptions: [], sessions: [] },
-    env,
-    [{ sessionId: "s1", cwd: "/Users/someone/code/api", updatedAt: "2026-08-10T12:00:00Z" }],
-  );
+  await writeProbeCache("echo", { canResume: true, configOptions: [], sessions: [] }, env, [
+    { sessionId: "s1", cwd: "/Users/someone/code/api", updatedAt: "2026-08-10T12:00:00Z" },
+  ]);
 
   const { daemon, started } = stubbed(env);
   await send(daemon, {
@@ -276,9 +271,7 @@ test("resuming falls back instead of refusing an unrecognised directory", async 
     agentSessionId: "agent-1",
     cwd: "/etc",
   });
-  expect(resumed).toEqual([
-    { agentSessionId: "agent-1", cwd: "/Users/someone/fallback" },
-  ]);
+  expect(resumed).toEqual([{ agentSessionId: "agent-1", cwd: "/Users/someone/fallback" }]);
 
   // A directory the daemon did publish is used as given.
   daemon.rememberOfferedWorkspaces(["/Users/someone/code/api"]);
@@ -391,8 +384,16 @@ test("reconnecting with a rotated token replaces the old one", async () => {
   // Otherwise every app restart costs another copy of every banner.
   const { daemon } = stubbed();
 
-  await send(daemon, { t: "app.push", token: "ExponentPushToken[old]", platform: "ios" }, "phone-1");
-  await send(daemon, { t: "app.push", token: "ExponentPushToken[new]", platform: "ios" }, "phone-1");
+  await send(
+    daemon,
+    { t: "app.push", token: "ExponentPushToken[old]", platform: "ios" },
+    "phone-1",
+  );
+  await send(
+    daemon,
+    { t: "app.push", token: "ExponentPushToken[new]", platform: "ios" },
+    "phone-1",
+  );
 
   expect(daemon.pushTargets.list()).toEqual([{ token: "ExponentPushToken[new]", platform: "ios" }]);
 });
@@ -427,10 +428,19 @@ test("preview.snapshot refuses a port nothing listens on, as an image error", as
 test("a draft is re-broadcast stamped with the proved sender, never logged", async () => {
   const { daemon } = stubbed();
 
-  const out = await send(daemon, { t: "session.draft", sessionId: "s1", text: "hel", from: "forged" }, "phone-1");
+  const out = await send(
+    daemon,
+    { t: "session.draft", sessionId: "s1", text: "hel", from: "forged" },
+    "phone-1",
+  );
 
   expect(out).toHaveLength(1);
-  expect(out[0]).toMatchObject({ t: "session.draft", sessionId: "s1", text: "hel", from: "phone-1" });
+  expect(out[0]).toMatchObject({
+    t: "session.draft",
+    sessionId: "s1",
+    text: "hel",
+    from: "phone-1",
+  });
   expect(typeof out[0].at).toBe("number");
   // Held for a client that joins later, as a frame of its own (not a seq'd event).
   expect(daemon.draftFrames()).toEqual([
@@ -450,11 +460,23 @@ test("an empty draft clears it, and a not-yet-started conversation keys as no se
 
 test("a prompt clears that conversation's draft everywhere, from the sender", async () => {
   const { daemon } = stubbed();
-  Object.assign(daemon, { prompt: async () => {}, sessionOrigin: () => ({}), sessionNotice: () => ({}) });
-  await send(daemon, { t: "session.draft", sessionId: "s1", text: "fix it" }, "pew2-cli@mac#chat-1");
+  Object.assign(daemon, {
+    prompt: async () => {},
+    sessionOrigin: () => ({}),
+    sessionNotice: () => ({}),
+  });
+  await send(
+    daemon,
+    { t: "session.draft", sessionId: "s1", text: "fix it" },
+    "pew2-cli@mac#chat-1",
+  );
   await send(daemon, { t: "session.draft", sessionId: "s2", text: "other" }, "phone-1");
 
-  const out = await send(daemon, { t: "session.prompt", sessionId: "s1", text: "fix it" }, "phone-1");
+  const out = await send(
+    daemon,
+    { t: "session.prompt", sessionId: "s1", text: "fix it" },
+    "phone-1",
+  );
 
   expect(out[0]).toMatchObject({ t: "session.draft", sessionId: "s1", text: "", from: "phone-1" });
   expect(daemon.draftFrames().map((d) => d.sessionId)).toEqual(["s2"]);

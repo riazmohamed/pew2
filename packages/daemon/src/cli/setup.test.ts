@@ -57,7 +57,12 @@ test("setup configures what is installed and stops blocking once it can run", as
 
   // Verification is skipped: spawning a real agent needs the network, and what
   // is under test here is the decision loop, not the ACP handshake.
-  const first = await setup({ env, searchDirs: [providersDir], verify: false, probeDaemon: noDaemon });
+  const first = await setup({
+    env,
+    searchDirs: [providersDir],
+    verify: false,
+    probeDaemon: noDaemon,
+  });
 
   expect(first.detect.detected.map((d) => d.id)).toEqual(["claude-code"]);
   expect(first.ok).toBe(false);
@@ -66,7 +71,14 @@ test("setup configures what is installed and stops blocking once it can run", as
   expect(first.nextSteps).toHaveLength(1);
 
   // Start the daemon — the one remaining fix — and the loop terminates.
-  const second = await setup({ env, searchDirs: [providersDir], verify: false, probeDaemon: daemonUp, pairing: async () => ({ token: "t".repeat(48), relay: "wss://relay.test" }), service: async () => ({ state: "running" }) });
+  const second = await setup({
+    env,
+    searchDirs: [providersDir],
+    verify: false,
+    probeDaemon: daemonUp,
+    pairing: async () => ({ token: "t".repeat(48), relay: "wss://relay.test" }),
+    service: async () => ({ state: "running" }),
+  });
   expect(second.ok).toBe(true);
   expect(second.nextSteps).toEqual([]);
   // Re-running never re-configures what is already there.
@@ -88,7 +100,13 @@ test("a missing optional API key warns without blocking", async () => {
     }),
   );
 
-  const report = await doctor({ env, searchDirs: [providersDir], probeDaemon: daemonUp, pairing: async () => ({ token: "t".repeat(48), relay: "wss://relay.test" }), service: async () => ({ state: "running" }) });
+  const report = await doctor({
+    env,
+    searchDirs: [providersDir],
+    probeDaemon: daemonUp,
+    pairing: async () => ({ token: "t".repeat(48), relay: "wss://relay.test" }),
+    service: async () => ({ state: "running" }),
+  });
 
   // An agent with its own login flow must not trap the setup loop.
   expect(report.ok).toBe(true);
@@ -110,7 +128,13 @@ test("a required API key is reported but never blocks the loop", async () => {
     }),
   );
 
-  const report = await doctor({ env, searchDirs: [providersDir], probeDaemon: daemonUp, pairing: async () => ({ token: "t".repeat(48), relay: "wss://relay.test" }), service: async () => ({ state: "running" }) });
+  const report = await doctor({
+    env,
+    searchDirs: [providersDir],
+    probeDaemon: daemonUp,
+    pairing: async () => ({ token: "t".repeat(48), relay: "wss://relay.test" }),
+    service: async () => ({ state: "running" }),
+  });
 
   const problem = report.problems.find((p) => p.id === "provider-missing-env");
   expect(problem).toBeDefined();
@@ -126,7 +150,13 @@ test("a broken manifest blocks, and names the file to fix", async () => {
   const { providersDir, env } = await sandbox();
   await writeFile(join(providersDir, "broken.json"), "{ not json");
 
-  const report = await doctor({ env, searchDirs: [providersDir], probeDaemon: daemonUp, pairing: async () => ({ token: "t".repeat(48), relay: "wss://relay.test" }), service: async () => ({ state: "running" }) });
+  const report = await doctor({
+    env,
+    searchDirs: [providersDir],
+    probeDaemon: daemonUp,
+    pairing: async () => ({ token: "t".repeat(48), relay: "wss://relay.test" }),
+    service: async () => ({ state: "running" }),
+  });
 
   const problem = report.problems.find((p) => p.id === "manifest-invalid");
   expect(problem).toBeDefined();

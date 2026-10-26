@@ -10,14 +10,21 @@ export const MAX_CHAR_INTERVAL_MS = 5;
 export const COMMIT_MS = 33;
 export const SETTLE_MS = 700;
 
-export interface LiveStreamIdentity { sessionId: string; turnKey: string; generation: number }
+export interface LiveStreamIdentity {
+  sessionId: string;
+  turnKey: string;
+  generation: number;
+}
 export function streamIdentityKey(identity: LiveStreamIdentity): string {
   return JSON.stringify([identity.sessionId, identity.turnKey, identity.generation]);
 }
 export function advance(shown: number, target: number, dt: number): number {
   const remaining = target - Math.floor(shown);
   if (remaining <= 0) return target;
-  return Math.min(target, shown + Math.max(0, dt) / Math.min(MAX_CHAR_INTERVAL_MS, DRAIN_MS / remaining));
+  return Math.min(
+    target,
+    shown + Math.max(0, dt) / Math.min(MAX_CHAR_INTERVAL_MS, DRAIN_MS / remaining),
+  );
 }
 
 // Hermes lacks Intl.Segmenter. Use the explicitly approved, pinned iterator
@@ -42,19 +49,47 @@ export interface Reveal {
   growthAt: number;
 }
 export function resetReveal(identity: string, text: string, now: number): Reveal {
-  return { identity, target: text, shown: text.length, committed: text.length, tickAt: now, commitAt: now, growthAt: now - SETTLE_MS };
+  return {
+    identity,
+    target: text,
+    shown: text.length,
+    committed: text.length,
+    tickAt: now,
+    commitAt: now,
+    growthAt: now - SETTLE_MS,
+  };
 }
-export function updateReveal(previous: Reveal, identity: string, text: string, now: number, enabled: boolean): Reveal {
-  if (!enabled || identity !== previous.identity || !text.startsWith(previous.target)) return resetReveal(identity, text, now);
+export function updateReveal(
+  previous: Reveal,
+  identity: string,
+  text: string,
+  now: number,
+  enabled: boolean,
+): Reveal {
+  if (!enabled || identity !== previous.identity || !text.startsWith(previous.target))
+    return resetReveal(identity, text, now);
   if (text === previous.target) return previous;
-  return { ...previous, target: text, growthAt: now, tickAt: previous.shown >= previous.target.length ? now : previous.tickAt };
+  return {
+    ...previous,
+    target: text,
+    growthAt: now,
+    tickAt: previous.shown >= previous.target.length ? now : previous.tickAt,
+  };
 }
 export function tickReveal(previous: Reveal, now: number): Reveal {
   const shown = advance(previous.shown, previous.target.length, now - previous.tickAt);
   const final = shown >= previous.target.length;
-  const committed = final || now - previous.commitAt >= COMMIT_MS
-    ? safePrefixLength(previous.target, Math.floor(shown)) : previous.committed;
-  return { ...previous, shown, committed, tickAt: now, commitAt: committed !== previous.committed ? now : previous.commitAt };
+  const committed =
+    final || now - previous.commitAt >= COMMIT_MS
+      ? safePrefixLength(previous.target, Math.floor(shown))
+      : previous.committed;
+  return {
+    ...previous,
+    shown,
+    committed,
+    tickAt: now,
+    commitAt: committed !== previous.committed ? now : previous.commitAt,
+  };
 }
 export function revealSettled(state: Reveal, now: number): boolean {
   return state.committed === state.target.length && now - state.growthAt >= SETTLE_MS;

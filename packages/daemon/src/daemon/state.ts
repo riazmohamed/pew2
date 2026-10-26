@@ -175,10 +175,7 @@ export abstract class DaemonState {
    * plus a message count read for every stored conversation — seconds of disk
    * work that opening a new conversation does not need at all.
    */
-  protected readonly spareReady = new Map<
-    string,
-    { ready: Promise<void>; announce: () => void }
-  >();
+  protected readonly spareReady = new Map<string, { ready: Promise<void>; announce: () => void }>();
   protected static readonly SPARE_TTL_MS = 15 * 60 * 1000;
 
   /**
@@ -341,7 +338,11 @@ export abstract class DaemonState {
   protected abstract isEnabled(providerId: string): boolean;
   protected abstract record(session: ActiveSession, payload: unknown): void;
   protected abstract require(sessionId: string): ActiveSession;
-  abstract sessionNotice(sessionId: string): { folder?: string; agentName?: string; lastText?: string };
+  abstract sessionNotice(sessionId: string): {
+    folder?: string;
+    agentName?: string;
+    lastText?: string;
+  };
   abstract cancel(sessionId: string): Promise<void>;
   abstract sessionOrigin(sessionId: string): { providerId?: string; folder?: string };
   protected abstract closeAsk(session: ActiveSession, requestId: string): void;

@@ -23,7 +23,11 @@ function setup() {
   const sent: any[] = [];
   const timers: { at: number; fn: () => void; live: boolean }[] = [];
   const voice = new VoiceController(
-    { inboxSources: () => sources, broadcast: (m) => sent.push(m), ring: (push) => rings.push(push) },
+    {
+      inboxSources: () => sources,
+      broadcast: (m) => sent.push(m),
+      ring: (push) => rings.push(push),
+    },
     {
       paths: {
         voicePrefs: join(root, "voice-prefs.json"),
@@ -56,7 +60,9 @@ function setup() {
     sources.push({
       sessionId,
       folder: sessionId,
-      permissions: new Map([[requestId, { toolCall: { title: `run in ${sessionId}` }, options: [] }]]) as any,
+      permissions: new Map([
+        [requestId, { toolCall: { title: `run in ${sessionId}` }, options: [] }],
+      ]) as any,
     } as InboxSource);
     voice.inboxChanged();
   };
@@ -68,7 +74,12 @@ const QUIET_OFF = { on: false, from: 0, to: 0 };
 
 test("with ringing narrowed to chosen chats, only an armed session rings", async () => {
   const { voice, rings, block, advance } = setup();
-  await voice.setPrefs({ mode: "onthego", batchSeconds: 0, quietHours: QUIET_OFF, ringScope: "chosen" });
+  await voice.setPrefs({
+    mode: "onthego",
+    batchSeconds: 0,
+    quietHours: QUIET_OFF,
+    ringScope: "chosen",
+  });
   block("docs");
   advance(M);
   expect(rings).toEqual([]);
@@ -94,7 +105,12 @@ test("Ring me rings for any chat that gets stuck by default, never about what wa
 
 test("arming never rings about what was already waiting", async () => {
   const { voice, rings, block, advance } = setup();
-  await voice.setPrefs({ mode: "onthego", batchSeconds: 0, quietHours: QUIET_OFF, ringScope: "chosen" });
+  await voice.setPrefs({
+    mode: "onthego",
+    batchSeconds: 0,
+    quietHours: QUIET_OFF,
+    ringScope: "chosen",
+  });
   block("billing");
   voice.arm("billing", true);
   advance(30 * M);
@@ -114,7 +130,8 @@ test("arming is listed, expires after 12 hours, and goes with its session", asyn
   expect(voice.armedSessions).toEqual([]);
   expect(voice.isArmed("b")).toBe(false);
   // The broadcast follows a credentials read: wait for it rather than one tick.
-  for (let i = 0; i < 50 && statuses().length === 0; i++) await new Promise((r) => setTimeout(r, 5));
+  for (let i = 0; i < 50 && statuses().length === 0; i++)
+    await new Promise((r) => setTimeout(r, 5));
   expect(statuses().length).toBeGreaterThan(0);
 });
 
@@ -133,7 +150,8 @@ test("ringUntil switches On the go back to notify by itself, and says so", async
   await voice.setPrefs({ mode: "onthego", ringUntil: T0 + 60 * M });
   advance(60 * M);
   // setPrefs is async (it writes the file).
-  for (let i = 0; i < 20 && voice.currentPrefs.mode !== "notify"; i++) await new Promise((r) => setTimeout(r, 5));
+  for (let i = 0; i < 20 && voice.currentPrefs.mode !== "notify"; i++)
+    await new Promise((r) => setTimeout(r, 5));
   expect(voice.currentPrefs.mode).toBe("notify");
   expect(voice.currentPrefs.ringUntil).toBe(0);
   expect(statuses().at(-1)?.prefs?.mode).toBe("notify");
@@ -141,7 +159,12 @@ test("ringUntil switches On the go back to notify by itself, and says so", async
 
 test("a declined ring snoozes the next one", async () => {
   const { voice, rings, block, advance } = setup();
-  await voice.setPrefs({ mode: "onthego", batchSeconds: 0, cooldownMinutes: 0, quietHours: QUIET_OFF });
+  await voice.setPrefs({
+    mode: "onthego",
+    batchSeconds: 0,
+    cooldownMinutes: 0,
+    quietHours: QUIET_OFF,
+  });
   voice.arm("a", true);
   block("a");
   expect(rings).toHaveLength(1);
@@ -156,23 +179,59 @@ test("a declined ring snoozes the next one", async () => {
 test("mid-call, a session Pew prompted finishing is told to Pew with its reply", async () => {
   const sent: any[] = [];
   const sources = [
-    { sessionId: "s1", folder: "drjones", agentName: "Codex", working: true, events: [] as wire.SessionEvent[] },
+    {
+      sessionId: "s1",
+      folder: "drjones",
+      agentName: "Codex",
+      working: true,
+      events: [] as wire.SessionEvent[],
+    },
     { sessionId: "s2", folder: "other", working: true, events: [] as wire.SessionEvent[] },
   ];
   const root = mkdtempSync(join(tmpdir(), "pew2-voice-note-"));
-  writeFileSync(join(root, "g.json"), JSON.stringify({ openai: { accessToken: "tok", expiresAt: Date.now() + 3_600_000 } }));
+  writeFileSync(
+    join(root, "g.json"),
+    JSON.stringify({ openai: { accessToken: "tok", expiresAt: Date.now() + 3_600_000 } }),
+  );
   const voice = new VoiceController(
-    { inboxSources: () => [], boardSources: () => sources, broadcast: (m) => sent.push(m), ring: () => {} },
     {
-      paths: { voicePrefs: join(root, "p.json"), voiceAuth: join(root, "a.json"), ggAuth: join(root, "g.json"), codexAuth: join(root, "c.json") },
-      fetchImpl: (async () => new Response(JSON.stringify({ value: "ek_1", expires_at: 9e9 }), { status: 200 })) as never,
+      inboxSources: () => [],
+      boardSources: () => sources,
+      broadcast: (m) => sent.push(m),
+      ring: () => {},
+    },
+    {
+      paths: {
+        voicePrefs: join(root, "p.json"),
+        voiceAuth: join(root, "a.json"),
+        ggAuth: join(root, "g.json"),
+        codexAuth: join(root, "c.json"),
+      },
+      fetchImpl: (async () =>
+        new Response(JSON.stringify({ value: "ek_1", expires_at: 9e9 }), { status: 200 })) as never,
       setTimer: () => ({ cancel: () => {} }),
     },
   );
-  const opened = await voice.openSession("r1", undefined, [{ sessionId: "s1", folder: "drjones", working: true, lastLines: [] }], "s1");
+  const opened = await voice.openSession(
+    "r1",
+    undefined,
+    [{ sessionId: "s1", folder: "drjones", working: true, lastLines: [] }],
+    "s1",
+  );
   expect(opened.ok).toBe(true);
   sources[0]!.working = false;
-  sources[0]!.events = [{ seq: 1, at: 1, payload: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "**Tests pass.**" } } } } as never];
+  sources[0]!.events = [
+    {
+      seq: 1,
+      at: 1,
+      payload: {
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "**Tests pass.**" },
+        },
+      },
+    } as never,
+  ];
   sources[1]!.working = false;
   voice.boardChanged();
   const notes = sent.filter((m) => m.t === "voice.note");
@@ -184,7 +243,10 @@ test("mid-call, a session Pew prompted finishing is told to Pew with its reply",
 
 test("call me back: rings with nothing waiting and Ring me off, and the callback call remembers the last one", async () => {
   const root = mkdtempSync(join(tmpdir(), "pew2-voice-callback-"));
-  writeFileSync(join(root, "g.json"), JSON.stringify({ openai: { accessToken: "tok", expiresAt: T0 + 24 * 3_600_000 } }));
+  writeFileSync(
+    join(root, "g.json"),
+    JSON.stringify({ openai: { accessToken: "tok", expiresAt: T0 + 24 * 3_600_000 } }),
+  );
   let now = T0;
   const rings: VoiceRingPush[] = [];
   const minted: string[] = [];
@@ -192,7 +254,12 @@ test("call me back: rings with nothing waiting and Ring me off, and the callback
   const voice = new VoiceController(
     { inboxSources: () => [], broadcast: () => {}, ring: (push) => rings.push(push) },
     {
-      paths: { voicePrefs: join(root, "p.json"), voiceAuth: join(root, "a.json"), ggAuth: join(root, "g.json"), codexAuth: join(root, "c.json") },
+      paths: {
+        voicePrefs: join(root, "p.json"),
+        voiceAuth: join(root, "a.json"),
+        ggAuth: join(root, "g.json"),
+        codexAuth: join(root, "c.json"),
+      },
       now: () => now,
       threads: new ThreadStore(join(root, "threads.json"), () => now),
       fetchImpl: (async (_url: string, init: { body?: string }) => {
@@ -243,12 +310,29 @@ test("call me back when it's done: rings once that session's turn ends, not befo
   let now = T0;
   const rings: VoiceRingPush[] = [];
   const timers: { at: number; fn: () => void; live: boolean }[] = [];
-  const source = { sessionId: "s1", providerId: "claude", folder: "billing-api", working: true, permissions: new Map(), events: [] } as never as { working: boolean };
+  const source = {
+    sessionId: "s1",
+    providerId: "claude",
+    folder: "billing-api",
+    working: true,
+    permissions: new Map(),
+    events: [],
+  } as never as { working: boolean };
   const root = mkdtempSync(join(tmpdir(), "pew2-voice-wait-"));
   const voice = new VoiceController(
-    { inboxSources: () => [], boardSources: () => [source as never], broadcast: () => {}, ring: (push) => rings.push(push) },
     {
-      paths: { voicePrefs: join(root, "p.json"), voiceAuth: join(root, "a.json"), ggAuth: join(root, "g.json"), codexAuth: join(root, "c.json") },
+      inboxSources: () => [],
+      boardSources: () => [source as never],
+      broadcast: () => {},
+      ring: (push) => rings.push(push),
+    },
+    {
+      paths: {
+        voicePrefs: join(root, "p.json"),
+        voiceAuth: join(root, "a.json"),
+        ggAuth: join(root, "g.json"),
+        codexAuth: join(root, "c.json"),
+      },
       now: () => now,
       setTimer: (fn, ms) => {
         const timer = { at: now + ms, fn, live: true };
@@ -270,22 +354,36 @@ test("call me back when it's done: rings once that session's turn ends, not befo
   expect(rings).toHaveLength(1);
 });
 
-
 test("each chat has its own voice thread: a call from it carries on, a new chat starts fresh", async () => {
   const root = mkdtempSync(join(tmpdir(), "pew2-voice-threads-"));
-  writeFileSync(join(root, "g.json"), JSON.stringify({ openai: { accessToken: "tok", expiresAt: T0 + 24 * 3_600_000 } }));
+  writeFileSync(
+    join(root, "g.json"),
+    JSON.stringify({ openai: { accessToken: "tok", expiresAt: T0 + 24 * 3_600_000 } }),
+  );
   const minted: string[] = [];
-  const conversations: Record<string, string | undefined> = { live1: "conv-billing", live2: "conv-docs", live3: undefined };
+  const conversations: Record<string, string | undefined> = {
+    live1: "conv-billing",
+    live2: "conv-docs",
+    live3: undefined,
+  };
   const make = () =>
     new VoiceController(
       {
         inboxSources: () => [],
         broadcast: () => {},
         ring: () => {},
-        threadFor: (id) => (conversations[id] ? { key: `claude:${conversations[id]}`, label: id === "live1" ? "billing-api" : "docs" } : undefined),
+        threadFor: (id) =>
+          conversations[id]
+            ? { key: `claude:${conversations[id]}`, label: id === "live1" ? "billing-api" : "docs" }
+            : undefined,
       },
       {
-        paths: { voicePrefs: join(root, "p.json"), voiceAuth: join(root, "a.json"), ggAuth: join(root, "g.json"), codexAuth: join(root, "c.json") },
+        paths: {
+          voicePrefs: join(root, "p.json"),
+          voiceAuth: join(root, "a.json"),
+          ggAuth: join(root, "g.json"),
+          codexAuth: join(root, "c.json"),
+        },
         now: () => T0,
         threads: new ThreadStore(join(root, "threads.json"), () => T0),
         setTimer: () => ({ cancel: () => {} }),
@@ -298,7 +396,10 @@ test("each chat has its own voice thread: a call from it carries on, a new chat 
   const status = (sessionId: string) => [{ sessionId, folder: "x", working: false, lastLines: [] }];
   let voice = make();
   const a = await voice.openSession("r1", undefined, status("live1"), "live1");
-  voice.endCall(a.callId!, "hangup", [{ role: "user", text: "Make billing retry twice." }, { role: "assistant", text: "Sent." }]);
+  voice.endCall(a.callId!, "hangup", [
+    { role: "user", text: "Make billing retry twice." },
+    { role: "assistant", text: "Sent." },
+  ]);
   await new Promise((resolve) => setTimeout(resolve, 20));
   // A different chat: its own (empty) thread, nothing about billing.
   await voice.openSession("r2", undefined, status("live2"), "live2");
@@ -321,16 +422,31 @@ test("each chat has its own voice thread: a call from it carries on, a new chat 
   expect(minted.at(-1)).not.toContain("Your earlier calls");
 });
 
-
 test("a call from one chat that acts on another leaves a note in the other's thread", async () => {
   const root = mkdtempSync(join(tmpdir(), "pew2-voice-cross-"));
-  writeFileSync(join(root, "g.json"), JSON.stringify({ openai: { accessToken: "tok", expiresAt: T0 + 24 * 3_600_000 } }));
+  writeFileSync(
+    join(root, "g.json"),
+    JSON.stringify({ openai: { accessToken: "tok", expiresAt: T0 + 24 * 3_600_000 } }),
+  );
   const minted: string[] = [];
   const keys: Record<string, string> = { a: "conv-billing", b: "conv-docs" };
   const voice = new VoiceController(
-    { inboxSources: () => [], broadcast: () => {}, ring: () => {}, threadFor: (id) => (keys[id] ? { key: `claude:${keys[id]}`, label: id === "a" ? "billing-api" : "docs" } : undefined) },
     {
-      paths: { voicePrefs: join(root, "p.json"), voiceAuth: join(root, "a.json"), ggAuth: join(root, "g.json"), codexAuth: join(root, "c.json") },
+      inboxSources: () => [],
+      broadcast: () => {},
+      ring: () => {},
+      threadFor: (id) =>
+        keys[id]
+          ? { key: `claude:${keys[id]}`, label: id === "a" ? "billing-api" : "docs" }
+          : undefined,
+    },
+    {
+      paths: {
+        voicePrefs: join(root, "p.json"),
+        voiceAuth: join(root, "a.json"),
+        ggAuth: join(root, "g.json"),
+        codexAuth: join(root, "c.json"),
+      },
       now: () => T0,
       threads: new ThreadStore(join(root, "threads.json"), () => T0),
       setTimer: () => ({ cancel: () => {} }),
@@ -343,7 +459,9 @@ test("a call from one chat that acts on another leaves a note in the other's thr
   const status = (sessionId: string) => [{ sessionId, folder: "x", working: false, lastLines: [] }];
   const call = await voice.openSession("r1", undefined, status("a"), "a");
   voice.noteAction(call.callId!, 'Sent docs: "fix the links"', "b");
-  voice.endCall(call.callId!, "hangup", [{ role: "user", text: "Also tell docs to fix the links." }]);
+  voice.endCall(call.callId!, "hangup", [
+    { role: "user", text: "Also tell docs to fix the links." },
+  ]);
   await new Promise((resolve) => setTimeout(resolve, 20));
   await voice.openSession("r2", undefined, status("b"), "b");
   const docs = minted.at(-1)!;

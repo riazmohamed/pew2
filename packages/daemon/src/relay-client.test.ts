@@ -50,7 +50,9 @@ function fakeDaemon({
         cursorsSeen.push(cursors);
         return catchUp(cursors);
       },
-      draftFrames: () => [{ t: "session.draft", sessionId: "s1", text: "half a sen", from: "desk", at: 1 }],
+      draftFrames: () => [
+        { t: "session.draft", sessionId: "s1", text: "half a sen", from: "desk", at: 1 },
+      ],
       noteClientActivity: () => {
         calls.push("noteClientActivity");
       },
@@ -609,7 +611,13 @@ test("a reconnecting phone is answered with everything it missed", async () => {
 });
 
 test("a joining phone is sent the drafts in progress, after the catch-up", async () => {
-  const missed = { t: "session.replay", sessionId: "s1", events: [], catchUp: true, working: false };
+  const missed = {
+    t: "session.replay",
+    sessionId: "s1",
+    events: [],
+    catchUp: true,
+    working: false,
+  };
   const { relay, calls } = client({}, { catchUp: () => [missed] });
 
   relay.start();

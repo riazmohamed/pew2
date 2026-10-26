@@ -56,7 +56,8 @@ const KEEP_RECENT = 64;
 export function beginFrame(w: number, h: number): SkCanvas {
   "worklet";
   const g = globalThis as unknown as { __pewFrameKit?: FrameKit };
-  if (!g.__pewFrameKit) g.__pewFrameKit = { recorder: Skia.PictureRecorder(), rects: {}, recent: [], next: 0 };
+  if (!g.__pewFrameKit)
+    g.__pewFrameKit = { recorder: Skia.PictureRecorder(), rects: {}, recent: [], next: 0 };
   const kit = g.__pewFrameKit;
   const key = w + "x" + h;
   let rect = kit.rects[key];

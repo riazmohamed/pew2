@@ -41,7 +41,11 @@ function setup() {
   } as any;
   (daemon as any).sessions.set("s1", session);
   const replies: any[] = [];
-  const ctx = { daemon, reply: (m: unknown) => replies.push(m), broadcast: (m: unknown) => sent.push(m) };
+  const ctx = {
+    daemon,
+    reply: (m: unknown) => replies.push(m),
+    broadcast: (m: unknown) => sent.push(m),
+  };
   const ask = (title: string, requestId = "p1") => {
     (session.permissions ??= new Map()).set(requestId, {
       toolCall: { title },
@@ -62,7 +66,14 @@ test("a permission enters the inbox, an answer by voice takes it out", async () 
   const { daemon, sent, replies, ctx, ask, answered } = setup();
   ask("npm test");
   expect(inboxes(sent).at(-1).items).toMatchObject([
-    { id: "s1:approval:p1", sessionId: "s1", kind: "approval", requestId: "p1", folder: "pew2", title: "npm test" },
+    {
+      id: "s1:approval:p1",
+      sessionId: "s1",
+      kind: "approval",
+      requestId: "p1",
+      folder: "pew2",
+      title: "npm test",
+    },
   ]);
   (daemon.voice as any).calls.add("c1");
   await handleMessage(
@@ -77,7 +88,12 @@ test("a permission enters the inbox, an answer by voice takes it out", async () 
     ctx,
   );
   expect(answered).toEqual([["p1", "once"]]);
-  expect(replies.at(-1)).toMatchObject({ t: "voice.tool", requestId: "r1", callId: "c1", toolCallId: "tc1" });
+  expect(replies.at(-1)).toMatchObject({
+    t: "voice.tool",
+    requestId: "r1",
+    callId: "c1",
+    toolCallId: "tc1",
+  });
   expect(JSON.parse(replies.at(-1).output)).toEqual({ ok: true, say: "Approved." });
   expect(inboxes(sent).at(-1).items).toEqual([]);
   daemon.closeAll();
@@ -90,7 +106,14 @@ test("a destructive approval needs confirmed:true", async () => {
   let calls = 0;
   const call = (args: object) =>
     handleMessage(
-      JSON.stringify({ t: "voice.tool", requestId: "r", callId: "c1", toolCallId: `t${++calls}`, name: "answer_permission", arguments: JSON.stringify(args) }),
+      JSON.stringify({
+        t: "voice.tool",
+        requestId: "r",
+        callId: "c1",
+        toolCallId: `t${++calls}`,
+        name: "answer_permission",
+        arguments: JSON.stringify(args),
+      }),
       ctx,
     );
   await call({ item_id: "s1:approval:p1", decision: "allow" });
@@ -105,7 +128,14 @@ test("a tool on an unknown call hangs up without acting", async () => {
   const { daemon, replies, ctx, ask, answered } = setup();
   ask("npm test");
   await handleMessage(
-    JSON.stringify({ t: "voice.tool", requestId: "r", callId: "nope", toolCallId: "t", name: "answer_permission", arguments: "{\"item_id\":\"s1:approval:p1\",\"decision\":\"allow\"}" }),
+    JSON.stringify({
+      t: "voice.tool",
+      requestId: "r",
+      callId: "nope",
+      toolCallId: "t",
+      name: "answer_permission",
+      arguments: '{"item_id":"s1:approval:p1","decision":"allow"}',
+    }),
     ctx,
   );
   expect(replies.at(-1).hangUp).toBe(true);
@@ -153,9 +183,15 @@ test("a call opens a board; tell_agent puts Pew's line on the echo session's lan
   const sent: any[] = [];
   daemon.attach((message) => sent.push(message));
   (daemon.voice as any).fetchImpl = async () =>
-    new Response(JSON.stringify({ value: "ek_test", expires_at: 9_999_999_999, session: { model: "m" } }));
+    new Response(
+      JSON.stringify({ value: "ek_test", expires_at: 9_999_999_999, session: { model: "m" } }),
+    );
   const replies: any[] = [];
-  const ctx = { daemon, reply: (m: unknown) => replies.push(m), broadcast: (m: unknown) => sent.push(m) };
+  const ctx = {
+    daemon,
+    reply: (m: unknown) => replies.push(m),
+    broadcast: (m: unknown) => sent.push(m),
+  };
   try {
     await daemon.refreshProviders();
     const sessionId = await daemon.startSession("echo", process.cwd());
@@ -182,7 +218,9 @@ test("a call opens a board; tell_agent puts Pew's line on the echo session's lan
       .at(-1)
       .sessions.find((s: any) => s.sessionId === sessionId);
     expect(lane.touchedAt).toBeGreaterThan(0);
-    expect(lane.lines).toContainEqual(expect.objectContaining({ kind: "pew", text: "run the tests" }));
+    expect(lane.lines).toContainEqual(
+      expect.objectContaining({ kind: "pew", text: "run the tests" }),
+    );
     const count = boards().length;
     await handleMessage(JSON.stringify({ t: "voice.end", callId: opened.callId }), ctx);
     await new Promise((r) => setTimeout(r, 300));
@@ -205,13 +243,26 @@ test("open_chat reopens a stored chat that wasn't open; start_chat starts one an
   const sent: any[] = [];
   daemon.attach((message) => sent.push(message));
   (daemon.voice as any).fetchImpl = async () =>
-    new Response(JSON.stringify({ value: "ek_test", expires_at: 9_999_999_999, session: { model: "m" } }));
+    new Response(
+      JSON.stringify({ value: "ek_test", expires_at: 9_999_999_999, session: { model: "m" } }),
+    );
   const replies: any[] = [];
-  const ctx = { daemon, reply: (m: unknown) => replies.push(m), broadcast: (m: unknown) => sent.push(m) };
+  const ctx = {
+    daemon,
+    reply: (m: unknown) => replies.push(m),
+    broadcast: (m: unknown) => sent.push(m),
+  };
   let toolCalls = 0;
   const tool = async (callId: string, name: string, args: object) => {
     await handleMessage(
-      JSON.stringify({ t: "voice.tool", requestId: "r", callId, toolCallId: `${name}-${++toolCalls}`, name, arguments: JSON.stringify(args) }),
+      JSON.stringify({
+        t: "voice.tool",
+        requestId: "r",
+        callId,
+        toolCallId: `${name}-${++toolCalls}`,
+        name,
+        arguments: JSON.stringify(args),
+      }),
       ctx,
     );
     return JSON.parse(replies.at(-1).output);
@@ -222,7 +273,8 @@ test("open_chat reopens a stored chat that wasn't open; start_chat starts one an
     // The echo agent dates its stored chat in July: worked in today instead,
     // so it is inside Pew's two-week reach.
     const stored = daemon.voiceChats.bind(daemon);
-    daemon.voiceChats = async () => (await stored()).map((c) => ({ ...c, updatedAt: new Date().toISOString() }));
+    daemon.voiceChats = async () =>
+      (await stored()).map((c) => ({ ...c, updatedAt: new Date().toISOString() }));
     const project = basename(process.cwd());
     await handleMessage(JSON.stringify({ t: "voice.session", requestId: "v" }), ctx);
     const opened = replies.at(-1);
@@ -232,15 +284,30 @@ test("open_chat reopens a stored chat that wasn't open; start_chat starts one an
     expect((await daemon.voiceChats()).map((c) => c.agentSessionId)).toContain("echo_history_1");
 
     const reopened = await tool(opened.callId, "open_chat", { project });
-    expect(reopened).toMatchObject({ ok: true, already_open: false, title: "Unopened echo session" });
+    expect(reopened).toMatchObject({
+      ok: true,
+      already_open: false,
+      title: "Unopened echo session",
+    });
     expect(daemon.voiceStatuses().map((s) => s.sessionId)).toEqual([reopened.session_id]);
-    expect(sent).toContainEqual(expect.objectContaining({ t: "session.started", sessionId: reopened.session_id, resumed: true }));
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        t: "session.started",
+        sessionId: reopened.session_id,
+        resumed: true,
+      }),
+    );
     // Asked again: the same live session, not a second copy.
-    expect(await tool(opened.callId, "open_chat", { project })).toMatchObject({ session_id: reopened.session_id, already_open: true });
+    expect(await tool(opened.callId, "open_chat", { project })).toMatchObject({
+      session_id: reopened.session_id,
+      already_open: true,
+    });
 
     const started = await tool(opened.callId, "start_chat", { project, text: "hello there" });
     expect(started).toMatchObject({ ok: true, sent: true, agent: "Echo (test)" });
-    expect(sent).toContainEqual(expect.objectContaining({ t: "session.started", sessionId: started.session_id }));
+    expect(sent).toContainEqual(
+      expect.objectContaining({ t: "session.started", sessionId: started.session_id }),
+    );
     await new Promise((r) => setTimeout(r, 600));
     const lines = daemon.voiceStatuses(started.session_id)[0]?.lastLines.join(" ") ?? "";
     expect(lines).toContain("hello there");
@@ -248,7 +315,9 @@ test("open_chat reopens a stored chat that wasn't open; start_chat starts one an
     // "Carry it on in ... on <model>": the new chat is switched before its first message.
     const onMax = await tool(opened.callId, "start_chat", { project, text: "again", model: "max" });
     expect(onMax).toMatchObject({ ok: true, model: "Echo Max" });
-    expect(daemon.configOptions(onMax.session_id).find((option) => option.id === "model")?.currentValue).toBe("echo-max");
+    expect(
+      daemon.configOptions(onMax.session_id).find((option) => option.id === "model")?.currentValue,
+    ).toBe("echo-max");
     // A model it doesn't have still starts the chat, on its usual model, and says so.
     const unknown = await tool(opened.callId, "start_chat", { project, model: "llama" });
     expect(unknown).toMatchObject({ ok: true, model_not_found: "llama" });
@@ -260,24 +329,45 @@ test("open_chat reopens a stored chat that wasn't open; start_chat starts one an
 
 test("a call from a new, empty chat in a known project tells Pew where it came from", async () => {
   const root = mkdtempSync(join(tmpdir(), "pew2-place-"));
-  const env: NodeJS.ProcessEnv = { ...process.env, PEW2_HOME: join(root, "pew2"), GG_AGENT_DIR: join(root, "gg"), CODEX_HOME: join(root, "codex"), OPENAI_API_KEY: "sk-test" };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PEW2_HOME: join(root, "pew2"),
+    GG_AGENT_DIR: join(root, "gg"),
+    CODEX_HOME: join(root, "codex"),
+    OPENAI_API_KEY: "sk-test",
+  };
   const daemon = new Daemon({ id: "t", name: "t" }, true, env);
   daemon.attach(() => {});
   let instructions = "";
   (daemon.voice as any).fetchImpl = async (_url: string, init: { body?: string }) => {
     instructions = JSON.parse(init.body ?? "{}")?.session?.instructions ?? "";
-    return new Response(JSON.stringify({ value: "ek_test", expires_at: 9_999_999_999, session: { model: "m" } }));
+    return new Response(
+      JSON.stringify({ value: "ek_test", expires_at: 9_999_999_999, session: { model: "m" } }),
+    );
   };
   const replies: any[] = [];
   const ctx = { daemon, reply: (m: unknown) => replies.push(m), broadcast: () => {} };
   try {
     await daemon.refreshProviders();
     await daemon.capabilitiesFor("echo");
-    await handleMessage(JSON.stringify({ t: "voice.session", requestId: "v", cwd: process.cwd(), providerId: "echo" }), ctx);
+    await handleMessage(
+      JSON.stringify({
+        t: "voice.session",
+        requestId: "v",
+        cwd: process.cwd(),
+        providerId: "echo",
+      }),
+      ctx,
+    );
     expect(replies.at(-1)).toMatchObject({ ok: true });
-    expect(instructions).toContain(`They called from a new, empty ${basename(process.cwd())} (Echo (test)) chat`);
+    expect(instructions).toContain(
+      `They called from a new, empty ${basename(process.cwd())} (Echo (test)) chat`,
+    );
     // A path this daemon never published is not taken on the phone's word.
-    await handleMessage(JSON.stringify({ t: "voice.session", requestId: "w", cwd: "/etc", providerId: "echo" }), ctx);
+    await handleMessage(
+      JSON.stringify({ t: "voice.session", requestId: "w", cwd: "/etc", providerId: "echo" }),
+      ctx,
+    );
     expect(instructions).not.toContain("They called from");
   } finally {
     daemon.closeAll();
@@ -301,7 +391,14 @@ test("a tool request sent twice (the phone resends after a drop) runs once", asy
   (daemon.voice as any).calls.add("c1");
   const send = () =>
     handleMessage(
-      JSON.stringify({ t: "voice.tool", requestId: "r", callId: "c1", toolCallId: "same", name: "answer_permission", arguments: JSON.stringify({ item_id: "s1:approval:p1", decision: "allow" }) }),
+      JSON.stringify({
+        t: "voice.tool",
+        requestId: "r",
+        callId: "c1",
+        toolCallId: "same",
+        name: "answer_permission",
+        arguments: JSON.stringify({ item_id: "s1:approval:p1", decision: "allow" }),
+      }),
       ctx,
     );
   await send();

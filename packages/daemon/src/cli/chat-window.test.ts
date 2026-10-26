@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { HERE_FLAG, openWindowScript, pickTerminal, shellQuote, windowCommand } from "./chat-window.js";
+import {
+  HERE_FLAG,
+  openWindowScript,
+  pickTerminal,
+  shellQuote,
+  windowCommand,
+} from "./chat-window.js";
 
 test("shellQuote leaves plain paths alone and quotes the rest", () => {
   expect(shellQuote("/Users/me/.bun/bin/bun")).toBe("/Users/me/.bun/bin/bun");
@@ -26,7 +32,9 @@ test("a compiled binary is run on its own, and test env is forwarded", () => {
     args: [],
     env: { PEW2_PORT: "8899", PEW2_HOME: "/tmp/a b", HOME: "/x" },
   });
-  expect(command).toBe("exec env PEW2_PORT=8899 PEW2_HOME='/tmp/a b' /usr/local/bin/pew2 chat --here");
+  expect(command).toBe(
+    "exec env PEW2_PORT=8899 PEW2_HOME='/tmp/a b' /usr/local/bin/pew2 chat --here",
+  );
 });
 
 test("iTerm is used when that is where the command was run", () => {

@@ -10,7 +10,13 @@
 import type { wire } from "@pew2/protocol";
 import { readAskEvent, readAskList, type AskRequest } from "./askUser";
 import type { QueuedMessage } from "./queue";
-import { readAutopilot, readPlan, type AutopilotInfo, type ChecklistItem, type PlanInfo } from "./ggReview";
+import {
+  readAutopilot,
+  readPlan,
+  type AutopilotInfo,
+  type ChecklistItem,
+  type PlanInfo,
+} from "./ggReview";
 
 export type GoalSummary = wire.GoalSummary;
 export type GoalState = wire.GoalState;
@@ -67,7 +73,11 @@ function readQueue(value: unknown): QueuedMessage[] | undefined {
   return Array.isArray(value) ? value.filter(isQueued) : undefined;
 }
 
-function withKey<T>(record: Record<string, T>, key: string, value: T | undefined): Record<string, T> {
+function withKey<T>(
+  record: Record<string, T>,
+  key: string,
+  value: T | undefined,
+): Record<string, T> {
   if (value === undefined) {
     if (!(key in record)) return record;
     const next = { ...record };
@@ -80,20 +90,33 @@ function withKey<T>(record: Record<string, T>, key: string, value: T | undefined
 function isGoalState(value: unknown): value is GoalState {
   if (typeof value !== "object" || value === null) return false;
   const g = value as Record<string, unknown>;
-  return typeof g.sessionId === "string" && typeof g.goalId === "string" &&
-    typeof g.phase === "string" && typeof g.paused === "boolean" && Array.isArray(g.workers);
+  return (
+    typeof g.sessionId === "string" &&
+    typeof g.goalId === "string" &&
+    typeof g.phase === "string" &&
+    typeof g.paused === "boolean" &&
+    Array.isArray(g.workers)
+  );
 }
 
 /** A `session.queue` frame: replace the list; note anything handed back. */
-export function applyQueue(state: GgState, message: { sessionId: string; queued?: unknown; returned?: unknown }): GgState {
+export function applyQueue(
+  state: GgState,
+  message: { sessionId: string; queued?: unknown; returned?: unknown },
+): GgState {
   const queued = readQueue(message.queued) ?? [];
   const returned = readQueue(message.returned);
   return {
     ...state,
     queues: withKey(state.queues, message.sessionId, queued.length > 0 ? queued : undefined),
-    returned: returned && returned.length > 0
-      ? { sessionId: message.sessionId, messages: returned, nonce: (state.returned?.nonce ?? 0) + 1 }
-      : state.returned,
+    returned:
+      returned && returned.length > 0
+        ? {
+            sessionId: message.sessionId,
+            messages: returned,
+            nonce: (state.returned?.nonce ?? 0) + 1,
+          }
+        : state.returned,
   };
 }
 
@@ -103,20 +126,36 @@ export function applyQueue(state: GgState, message: { sessionId: string; queued?
  */
 export function applyReplayExtras(
   state: GgState,
-  message: { sessionId: string; queued?: unknown; asks?: unknown; goal?: unknown; plan?: unknown; autopilot?: unknown },
+  message: {
+    sessionId: string;
+    queued?: unknown;
+    asks?: unknown;
+    goal?: unknown;
+    plan?: unknown;
+    autopilot?: unknown;
+  },
 ): GgState {
   let next = state;
   const queued = readQueue(message.queued);
-  if (queued) next = { ...next, queues: withKey(next.queues, message.sessionId, queued.length > 0 ? queued : undefined) };
+  if (queued)
+    next = {
+      ...next,
+      queues: withKey(next.queues, message.sessionId, queued.length > 0 ? queued : undefined),
+    };
   const asks = readAskList(message.asks);
-  if (asks) next = { ...next, asks: withKey(next.asks, message.sessionId, asks.length > 0 ? asks : undefined) };
+  if (asks)
+    next = {
+      ...next,
+      asks: withKey(next.asks, message.sessionId, asks.length > 0 ? asks : undefined),
+    };
   if (isGoalState(message.goal)) {
     next = { ...next, goalStates: { ...next.goalStates, [message.sessionId]: message.goal } };
   }
   const plan = readPlan(message.plan);
   if (plan) next = { ...next, plans: { ...next.plans, [message.sessionId]: plan } };
   const autopilot = readAutopilot(message.autopilot);
-  if (autopilot) next = { ...next, autopilot: { ...next.autopilot, [message.sessionId]: autopilot } };
+  if (autopilot)
+    next = { ...next, autopilot: { ...next.autopilot, [message.sessionId]: autopilot } };
   return next;
 }
 
@@ -159,14 +198,26 @@ export function dropQueued(state: GgState, sessionId: string, id: string): GgSta
 }
 
 /** `goals`, `goal.result` and `goal.state` frames. */
-export function applyGoalMessage(state: GgState, message: { t: string } & Record<string, unknown>): GgState {
+export function applyGoalMessage(
+  state: GgState,
+  message: { t: string } & Record<string, unknown>,
+): GgState {
   if (message.t === "goals") {
-    if (typeof message.error === "string") return { ...state, goalsLoading: false, goalsError: message.error };
+    if (typeof message.error === "string")
+      return { ...state, goalsLoading: false, goalsError: message.error };
     if (!Array.isArray(message.goals)) return { ...state, goalsLoading: false };
-    return { ...state, goals: message.goals as GoalSummary[], goalsLoading: false, goalsError: undefined };
+    return {
+      ...state,
+      goals: message.goals as GoalSummary[],
+      goalsLoading: false,
+      goalsError: undefined,
+    };
   }
   if (message.t === "goal.result" && typeof message.requestId === "string") {
-    return { ...state, goalResults: { ...state.goalResults, [message.requestId]: message as unknown as GoalResult } };
+    return {
+      ...state,
+      goalResults: { ...state.goalResults, [message.requestId]: message as unknown as GoalResult },
+    };
   }
   if (message.t === "goal.state" && isGoalState(message)) {
     return { ...state, goalStates: { ...state.goalStates, [message.sessionId]: message } };
@@ -181,11 +232,13 @@ export function goalForSession(
   state?: GoalState,
 ): GoalSummary | undefined {
   if (!goals) return undefined;
-  return goals.find((goal) =>
-    (state !== undefined && goal.id === state.goalId) ||
-    (session.sessionId !== undefined && goal.sessionId === session.sessionId) ||
-    (session.agentSessionId !== undefined && goal.agentSessionId === session.agentSessionId) ||
-    (session.cwd !== undefined && goal.path === session.cwd));
+  return goals.find(
+    (goal) =>
+      (state !== undefined && goal.id === state.goalId) ||
+      (session.sessionId !== undefined && goal.sessionId === session.sessionId) ||
+      (session.agentSessionId !== undefined && goal.agentSessionId === session.agentSessionId) ||
+      (session.cwd !== undefined && goal.path === session.cwd),
+  );
 }
 
 export const GOAL_STATUS_LABEL: Record<wire.GoalStatus, string> = {
@@ -230,7 +283,10 @@ export function workerElapsed(worker: GoalWorker, now: number): number | undefin
 }
 
 /** `plan.state` / `autopilot.state` / `checklist` frames. */
-export function applyReviewMessage(state: GgState, message: { t: string } & Record<string, unknown>): GgState {
+export function applyReviewMessage(
+  state: GgState,
+  message: { t: string } & Record<string, unknown>,
+): GgState {
   if (message.t === "provider.capabilities") {
     const ext = message.extensions;
     const id = message.providerId;
@@ -258,7 +314,8 @@ export function applyReviewMessage(state: GgState, message: { t: string } & Reco
         [sessionId]: {
           items: Array.isArray(message.items) ? (message.items as ChecklistItem[]) : undefined,
           error: typeof message.error === "string" ? message.error : undefined,
-          staleAfterDays: typeof message.staleAfterDays === "number" ? message.staleAfterDays : undefined,
+          staleAfterDays:
+            typeof message.staleAfterDays === "number" ? message.staleAfterDays : undefined,
         },
       },
     };

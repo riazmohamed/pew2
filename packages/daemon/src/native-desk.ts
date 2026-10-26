@@ -70,12 +70,19 @@ export function nativeProviders(
 }
 
 /** The shell line the window runs: the agent, resumed, in the project. */
-export function nativeCommand(command: string, providerId: string, agentSessionId: string | undefined, cwd: string): string {
+export function nativeCommand(
+  command: string,
+  providerId: string,
+  agentSessionId: string | undefined,
+  cwd: string,
+): string {
   const app = NATIVE_APPS[providerId];
   if (!app) throw new Error(`No native app for '${providerId}'`);
   // No id: a new conversation, the app started plain in the project.
   const resume = agentSessionId ? app.resumeArgs(agentSessionId) : [];
-  return ["cd", shellQuote(cwd), "&&", "exec", shellQuote(command), ...resume.map(shellQuote)].join(" ");
+  return ["cd", shellQuote(cwd), "&&", "exec", shellQuote(command), ...resume.map(shellQuote)].join(
+    " ",
+  );
 }
 
 /** AppleScript string literal. */
@@ -180,7 +187,9 @@ export function nativeWriteScript(sessionId: string, steps: Keystrokes): string 
     // Enter, and anything after a multi-character write, waits out OG Coder's
     // 100ms paste window so the paste is settled first; single keys go faster.
     if (index > 0) {
-      const settle = step === KEYS.enter || [...(steps[index - 1] ?? "")].length > 1 && steps[index - 1] !== KEYS.shiftTab;
+      const settle =
+        step === KEYS.enter ||
+        ([...(steps[index - 1] ?? "")].length > 1 && steps[index - 1] !== KEYS.shiftTab);
       body.push(settle ? "delay 0.15" : "delay 0.03");
     }
     body.push(`tell aSession to write text ${appleText(step)} newline NO`);
@@ -263,7 +272,10 @@ export function parseOgCoderScreen(contents: string): DeskScreen {
       if (!next.startsWith("   ")) break;
       parts.push(next.slice(3));
     }
-    const text = parts.map((p) => p.trimEnd()).join(" ").trimEnd();
+    const text = parts
+      .map((p) => p.trimEnd())
+      .join(" ")
+      .trimEnd();
     if (!text.includes("[Pasted text #")) {
       screen.input = text.trim() === PLACEHOLDER_TEXT ? "" : text;
     }
@@ -288,10 +300,15 @@ export function parseOgCoderScreen(contents: string): DeskScreen {
 }
 
 /** Selectors updated to what OG Coder's status line shows. */
-export function applyDeskScreen<T extends { id: string; name?: string; category?: string | null; currentValue?: unknown; options?: { value: string; name?: string }[] }>(
-  options: T[],
-  screen: DeskScreen,
-): { options: T[]; changed: boolean } {
+export function applyDeskScreen<
+  T extends {
+    id: string;
+    name?: string;
+    category?: string | null;
+    currentValue?: unknown;
+    options?: { value: string; name?: string }[];
+  },
+>(options: T[], screen: DeskScreen): { options: T[]; changed: boolean } {
   let changed = false;
   const next = options.map((option) => {
     const values = option.options ?? [];
@@ -300,8 +317,9 @@ export function applyDeskScreen<T extends { id: string; name?: string; category?
       const label = screen.model.toLowerCase();
       const word = new RegExp(`\\b${screen.model.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
       value = (
-        values.find((v) => v.value.toLowerCase() === label || (v.name ?? "").toLowerCase() === label) ??
-        values.find((v) => word.test(v.name ?? "") || word.test(v.value))
+        values.find(
+          (v) => v.value.toLowerCase() === label || (v.name ?? "").toLowerCase() === label,
+        ) ?? values.find((v) => word.test(v.name ?? "") || word.test(v.value))
       )?.value;
     } else if (option.category === "thought_level" && screen.thinking) {
       value = values.find((v) => v.value === screen.thinking)?.value;
@@ -333,7 +351,10 @@ export interface OsaResult {
 }
 
 /** osascript with stdout. Killed on timeout, so a late window never opens. */
-export function runOsa(script: string, timeoutMs: number = APPLESCRIPT_TIMEOUT_MS): Promise<OsaResult> {
+export function runOsa(
+  script: string,
+  timeoutMs: number = APPLESCRIPT_TIMEOUT_MS,
+): Promise<OsaResult> {
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
@@ -344,7 +365,9 @@ export function runOsa(script: string, timeoutMs: number = APPLESCRIPT_TIMEOUT_M
       clearTimeout(timer);
       resolve(result);
     };
-    const child = spawn("/usr/bin/osascript", ["-e", script], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("/usr/bin/osascript", ["-e", script], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     const timer = setTimeout(() => {
       child.kill();
       finish({ code: null, stdout, stderr, timedOut: true });
@@ -352,7 +375,9 @@ export function runOsa(script: string, timeoutMs: number = APPLESCRIPT_TIMEOUT_M
     timer.unref?.();
     child.stdout?.on("data", (chunk) => (stdout += String(chunk)));
     child.stderr?.on("data", (chunk) => (stderr += String(chunk)));
-    child.on("error", (error) => finish({ code: -1, stdout, stderr: String(error), timedOut: false }));
+    child.on("error", (error) =>
+      finish({ code: -1, stdout, stderr: String(error), timedOut: false }),
+    );
     child.on("spawn", () => {});
     child.on("exit", (code) => finish({ code, stdout, stderr, timedOut: false }));
   });
@@ -362,11 +387,20 @@ export function runOsa(script: string, timeoutMs: number = APPLESCRIPT_TIMEOUT_M
 function ttyCommands(tty: string): Promise<string[] | undefined> {
   return new Promise((resolve) => {
     let out = "";
-    const child = spawn("/bin/ps", ["-o", "comm=", "-t", tty.replace(/^\/dev\//, "")], { stdio: ["ignore", "pipe", "ignore"] });
+    const child = spawn("/bin/ps", ["-o", "comm=", "-t", tty.replace(/^\/dev\//, "")], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
     child.stdout?.on("data", (chunk) => (out += String(chunk)));
     child.on("error", () => resolve(undefined));
     child.on("spawn", () => {});
-    child.on("exit", () => resolve(out.split("\n").map((line) => line.trim()).filter(Boolean)));
+    child.on("exit", () =>
+      resolve(
+        out
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean),
+      ),
+    );
   });
 }
 
@@ -391,7 +425,12 @@ export async function openNativeWindow(
 ): Promise<{ ok: true; itermSessionId: string } | { ok: false; message: string }> {
   const app = NATIVE_APPS[options.providerId];
   const title = `${app?.name ?? options.providerId} · ${folderName(options.cwd) ?? options.cwd}`;
-  const line = nativeCommand(options.command, options.providerId, options.agentSessionId, options.cwd);
+  const line = nativeCommand(
+    options.command,
+    options.providerId,
+    options.agentSessionId,
+    options.cwd,
+  );
   const outcome = await deps.osa(nativeOpenScript(line, title));
   const id = outcome.stdout.trim();
   if (outcome.code === 0 && id) return { ok: true, itermSessionId: id };
@@ -400,7 +439,8 @@ export async function openNativeWindow(
   if (why.kind === "denied") {
     return {
       ok: false,
-      message: "pew2 isn't allowed to control iTerm. Allow it in System Settings › Privacy & Security › Automation › bun › iTerm.",
+      message:
+        "pew2 isn't allowed to control iTerm. Allow it in System Settings › Privacy & Security › Automation › bun › iTerm.",
     };
   }
   // iTerm hands back no window when the command quit before it could be

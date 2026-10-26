@@ -52,7 +52,9 @@ test("the fallback off Claude is the first plain GPT", () => {
 });
 
 test("a turn that stopped on a limit is spotted, an ordinary reply is not", () => {
-  expect(hitLimit(["You've hit your session limit · resets 8:50pm (Asia/Riyadh)"])).toContain("session limit");
+  expect(hitLimit(["You've hit your session limit · resets 8:50pm (Asia/Riyadh)"])).toContain(
+    "session limit",
+  );
   expect(hitLimit(["API Error: 429 rate_limit_error"])).toBeDefined();
   expect(hitLimit(["Error: Overloaded"])).toBeDefined();
   expect(hitLimit(["Done. I fixed the tests.", "All 12 pass."])).toBeUndefined();
@@ -62,11 +64,22 @@ test("the briefing tells Pew which session hit a limit, and what to offer", asyn
   const { buildInstructions } = await import("./session.js");
   const text = buildInstructions(
     [],
-    [{ sessionId: "s1", folder: "billing", agentName: "Claude Code", working: false, lastLines: [], limit: "You've hit your session limit · resets 8:50pm" }],
+    [
+      {
+        sessionId: "s1",
+        folder: "billing",
+        agentName: "Claude Code",
+        working: false,
+        lastLines: [],
+        limit: "You've hit your session limit · resets 8:50pm",
+      },
+    ],
     undefined,
     Date.now(),
   );
-  expect(text).toContain("billing (Claude Code): idle. HIT A USAGE LIMIT: You've hit your session limit · resets 8:50pm");
+  expect(text).toContain(
+    "billing (Claude Code): idle. HIT A USAGE LIMIT: You've hit your session limit · resets 8:50pm",
+  );
   expect(text).toContain("Want me to switch it to GPT?");
   expect(text).toContain('agent "OG Coder", model "GPT"');
 });

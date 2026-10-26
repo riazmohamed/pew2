@@ -52,10 +52,7 @@ test("a failure with nothing above it is not a retry", () => {
 });
 
 test("an image-only prompt has no text to send again", () => {
-  const target = retryTarget([
-    turn("user", "   "),
-    turn("system", "Agent exited with code 1"),
-  ]);
+  const target = retryTarget([turn("user", "   "), turn("system", "Agent exited with code 1")]);
   expect(target).toBeUndefined();
 });
 

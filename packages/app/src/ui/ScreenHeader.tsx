@@ -36,13 +36,31 @@ interface Props {
   style?: StyleProp<ViewStyle>;
 }
 
-export function ScreenHeader({ title, titleStyle, ellipsize = "tail", leading, trailing, slots = 1, noInset = false, style }: Props) {
+export function ScreenHeader({
+  title,
+  titleStyle,
+  ellipsize = "tail",
+  leading,
+  trailing,
+  slots = 1,
+  noInset = false,
+  style,
+}: Props) {
   const insets = useSafeAreaInsets();
   const side = slots === 2 ? appStyles.navActionsGoal : appStyles.navAction;
   return (
     // One height whether or not a side has a button: an empty row collapsed,
     // and a page without a back button sat everything higher than the next.
-    <View style={[appStyles.topBar, { paddingTop: (noInset ? 0 : insets.top) + theme.headerInset, minHeight: (noInset ? 0 : insets.top) + theme.headerInset * 2 + theme.size.control }, style]}>
+    <View
+      style={[
+        appStyles.topBar,
+        {
+          paddingTop: (noInset ? 0 : insets.top) + theme.headerInset,
+          minHeight: (noInset ? 0 : insets.top) + theme.headerInset * 2 + theme.size.control,
+        },
+        style,
+      ]}
+    >
       <View style={[side, appStyles.navLeadGoal]}>{leading}</View>
       <Text
         style={[appStyles.sessionTitle, titleStyle]}

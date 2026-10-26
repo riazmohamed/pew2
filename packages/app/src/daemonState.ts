@@ -317,12 +317,7 @@ export interface State {
  * A user turn rendered before the daemon has echoed it back. Its id is replaced
  * with the server's once the echo arrives, so it never renders twice.
  */
-export function localTurn(
-  seq: number,
-  text: string,
-  images?: ChatImage[],
-  queued?: boolean,
-): Turn {
+export function localTurn(seq: number, text: string, images?: ChatImage[], queued?: boolean): Turn {
   // `key` outlives the id swap in the echo path, so the cell rendering this
   // prompt survives reconciliation instead of remounting.
   return {
@@ -381,8 +376,6 @@ export function firstUserText(turns: Turn[]): string | undefined {
   return first?.text.trim().slice(0, 60);
 }
 
-
-
 /**
  * A turn that just ended, reported to the app so it can announce it.
  *
@@ -413,7 +406,6 @@ export interface TurnFinished {
  * enough to contain it past any leading blank lines or a fenced block.
  */
 export const NOTICE_BUFFER = 2000;
-
 
 /** Where the daemon should push when this phone's app is asleep. */
 export interface PushAddress {

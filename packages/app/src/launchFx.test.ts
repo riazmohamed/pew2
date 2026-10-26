@@ -19,10 +19,22 @@ import {
 } from "./launchFx";
 
 const SCENE: FxScene = { w: 393, h: 852, cx: 196, cy: 470, kenR: 84 };
-const PAL: FxPalette = { bg: [10, 10, 12], base: [139, 124, 246], light: [200, 190, 255], off: [52, 54, 62] };
+const PAL: FxPalette = {
+  bg: [10, 10, 12],
+  base: [139, 124, 246],
+  light: [200, 190, 255],
+  off: [52, 54, 62],
+};
 
 function recorder() {
-  const calls = { dot: 0, glow: 0, ring: 0, cover: [] as { a: number; hole: number }[], radial: 0, bad: 0 };
+  const calls = {
+    dot: 0,
+    glow: 0,
+    ring: 0,
+    cover: [] as { a: number; hole: number }[],
+    radial: 0,
+    bad: 0,
+  };
   const check = (...n: number[]) => {
     if (n.some((v) => !Number.isFinite(v))) calls.bad++;
   };
@@ -115,7 +127,18 @@ describe("the burst", () => {
     const { p, calls } = recorder();
     for (let f = 0; f < 240; f++) {
       const t = f / 60;
-      paintLaunch(SCENE, { t, charge: Math.min(1, t), burst: t - 1.5, reveal: Math.max(0, (t - 2.6) / 0.8), fade: 1 }, PAL, p);
+      paintLaunch(
+        SCENE,
+        {
+          t,
+          charge: Math.min(1, t),
+          burst: t - 1.5,
+          reveal: Math.max(0, (t - 2.6) / 0.8),
+          fade: 1,
+        },
+        PAL,
+        p,
+      );
     }
     expect(calls.bad).toBe(0);
   });
@@ -138,15 +161,32 @@ test("worklets never call a helper declared below them", () => {
 
 describe("calling glow", () => {
   const scene = { w: 393, h: 852, cx: 196, cy: 426, kenR: 60 };
-  const pal = { bg: [10, 10, 12], base: [217, 119, 87], light: [255, 200, 180], off: [52, 54, 62] } as const;
+  const pal = {
+    bg: [10, 10, 12],
+    base: [217, 119, 87],
+    light: [255, 200, 180],
+    off: [52, 54, 62],
+  } as const;
   const record = () => {
     const calls = { dot: 0, glow: 0, ring: 0, cover: 0, radial: 0, maxA: 0 };
     const painter = {
-      dot: (_x: number, _y: number, _r: number, _c: unknown, a: number) => { calls.dot++; calls.maxA = Math.max(calls.maxA, a); },
-      glow: () => { calls.glow++; },
-      ring: () => { calls.ring++; },
-      cover: () => { calls.cover++; },
-      radial: (_x: number, _y: number, _r: number, _c: unknown, a: number) => { calls.radial++; calls.maxA = Math.max(calls.maxA, a); },
+      dot: (_x: number, _y: number, _r: number, _c: unknown, a: number) => {
+        calls.dot++;
+        calls.maxA = Math.max(calls.maxA, a);
+      },
+      glow: () => {
+        calls.glow++;
+      },
+      ring: () => {
+        calls.ring++;
+      },
+      cover: () => {
+        calls.cover++;
+      },
+      radial: (_x: number, _y: number, _r: number, _c: unknown, a: number) => {
+        calls.radial++;
+        calls.maxA = Math.max(calls.maxA, a);
+      },
     };
     return { calls, painter };
   };
@@ -176,7 +216,13 @@ describe("calling glow", () => {
     const { paintCalling } = await import("./launchFx");
     const radials: number[] = [];
     for (const t of [0, 0.5, 1]) {
-      paintCalling(scene, t, 1, pal, { dot() {}, glow() {}, ring() {}, cover() {}, radial: (_x, _y, r) => radials.push(r) });
+      paintCalling(scene, t, 1, pal, {
+        dot() {},
+        glow() {},
+        ring() {},
+        cover() {},
+        radial: (_x, _y, r) => radials.push(r),
+      });
     }
     expect(radials[1]).not.toBeCloseTo(radials[0]!, 3);
     expect(radials[2]).toBeCloseTo(radials[0]!, 3);

@@ -12,11 +12,7 @@ const BLOCK_MARKDOWN =
   /(?:^|\n)[ \t]{0,3}(?:#{1,6}\s|>\s?|(?:[-+*]|\d+[.)])\s+|```|~~~|(?: {4}|\t)\S)/;
 
 export function userPromptNeedsFullWidth(text: string): boolean {
-  return (
-    BLOCK_MARKDOWN.test(text) ||
-    text.includes("\n\n") ||
-    /\n\s*\|?\s*:?-{3,}/.test(text)
-  );
+  return BLOCK_MARKDOWN.test(text) || text.includes("\n\n") || /\n\s*\|?\s*:?-{3,}/.test(text);
 }
 
 /** Percentage-width Markdown descendants must resolve inside their message rail. */

@@ -7,7 +7,8 @@ import { SPRING } from "../motion";
 // bounces: shared springs in motion.ts are near critically damped, and no
 // screen sets its own bouncy spring.
 test("every shared spring is near critically damped", () => {
-  for (const spring of Object.values(SPRING)) expect(spring.dampingRatio).toBeGreaterThanOrEqual(0.9);
+  for (const spring of Object.values(SPRING))
+    expect(spring.dampingRatio).toBeGreaterThanOrEqual(0.9);
 });
 
 test("no screen defines a bouncy spring of its own", () => {

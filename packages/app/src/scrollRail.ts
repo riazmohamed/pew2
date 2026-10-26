@@ -22,7 +22,12 @@ export interface RailThumb {
  * the scroll offset. Overscroll (a bounce past either end) squeezes the thumb
  * against that end instead of sliding it out of the rail.
  */
-export function railThumb(view: number, content: number, y: number, minThumb: number = 24): RailThumb {
+export function railThumb(
+  view: number,
+  content: number,
+  y: number,
+  minThumb: number = 24,
+): RailThumb {
   "worklet";
   if (!(view > 0) || !(content > view + 1)) return { overflows: false, length: 0, offset: 0 };
   const full = Math.max(minThumb, Math.min(view, (view * view) / content));

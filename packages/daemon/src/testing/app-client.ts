@@ -157,8 +157,7 @@ export class AppClient {
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
         throw new Error(
-          this.daemon.died() ??
-            `timed out waiting for ${what}. Received: ${this.summary()}`,
+          this.daemon.died() ?? `timed out waiting for ${what}. Received: ${this.summary()}`,
         );
       }
       await this.settled(remaining);
@@ -238,10 +237,13 @@ export class AppClient {
   /** Resolve on the next frame or close, or when `ms` elapses. */
   private settled(ms: number): Promise<void> {
     return new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        this.waiters = this.waiters.filter((waiter) => waiter !== wake);
-        resolve();
-      }, Math.min(ms, 50));
+      const timer = setTimeout(
+        () => {
+          this.waiters = this.waiters.filter((waiter) => waiter !== wake);
+          resolve();
+        },
+        Math.min(ms, 50),
+      );
       const wake = () => {
         clearTimeout(timer);
         resolve();

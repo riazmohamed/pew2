@@ -17,32 +17,63 @@ function files(dir: string): string[] {
   });
 }
 
-const sources = files(SRC).map((path) => ({ path: relative(SRC, path), text: readFileSync(path, "utf8") }));
-const painters = sources.filter((s) => s.text.includes("useFrameCallback") && s.text.includes("@shopify/react-native-skia"));
+const sources = files(SRC).map((path) => ({
+  path: relative(SRC, path),
+  text: readFileSync(path, "utf8"),
+}));
+const painters = sources.filter(
+  (s) => s.text.includes("useFrameCallback") && s.text.includes("@shopify/react-native-skia"),
+);
 
 test("there are painters to check", () => {
-  expect(painters.map((p) => p.path).sort()).toEqual(["pew/Pew.tsx", "ui/LaunchFx.tsx", "ui/ListeningWave.tsx", "ui/ThinkingDial.tsx"]);
+  expect(painters.map((p) => p.path).sort()).toEqual([
+    "pew/Pew.tsx",
+    "ui/LaunchFx.tsx",
+    "ui/ListeningWave.tsx",
+    "ui/ThinkingDial.tsx",
+  ]);
 });
 
 test("a painter starts from the shared blank picture, never one of its own", () => {
   for (const p of painters) {
-    expect({ file: p.path, blank: p.text.includes("blankPicture()") }).toEqual({ file: p.path, blank: true });
-    expect({ file: p.path, own: /useState\([^)]*[Pp]icture/.test(p.text) }).toEqual({ file: p.path, own: false });
+    expect({ file: p.path, blank: p.text.includes("blankPicture()") }).toEqual({
+      file: p.path,
+      blank: true,
+    });
+    expect({ file: p.path, own: /useState\([^)]*[Pp]icture/.test(p.text) }).toEqual({
+      file: p.path,
+      own: false,
+    });
   }
 });
 
 test("frames are recorded with the shared recorder", () => {
   for (const p of [...painters, ...sources.filter((s) => s.path === "ui/LaunchFx.tsx")]) {
-    expect({ file: p.path, recorder: p.text.includes("Skia.PictureRecorder(") }).toEqual({ file: p.path, recorder: false });
+    expect({ file: p.path, recorder: p.text.includes("Skia.PictureRecorder(") }).toEqual({
+      file: p.path,
+      recorder: false,
+    });
   }
 });
 
 test("nothing painted per frame makes a shader, a colour or a path", () => {
-  // Made once per runtime and cached on `globalThis` (the tools line) is fine.
+  // Made once per runtime and cached on `globalThis` (the tools assignment) is
+  // fine. Dropped as a whole statement, not a line: Prettier wraps a long
+  // `g.__tools = { … }` across lines, which a line filter would only half see.
   for (const p of painters) {
-    const lines = p.text.split("\n").filter((line) => !line.includes("g.__"));
-    for (const made of ["MakeRadialGradient", "MakeLinearGradient", "Skia.Color(", "Skia.Path.Make("]) {
-      const found = lines.some((line) => line.includes(made) && !line.trim().startsWith("*") && !line.includes("typeof"));
+    const lines = p.text
+      .replace(/g\.__\w+\s*=\s*\{[^;]*\};/g, "")
+      .split("\n")
+      .filter((line) => !line.includes("g.__"));
+    for (const made of [
+      "MakeRadialGradient",
+      "MakeLinearGradient",
+      "Skia.Color(",
+      "Skia.Path.Make(",
+    ]) {
+      const found = lines.some(
+        (line) => line.includes(made) && !line.trim().startsWith("*") && !line.includes("typeof"),
+      );
       expect({ file: p.path, made, found }).toEqual({ file: p.path, made, found: false });
     }
   }

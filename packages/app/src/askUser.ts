@@ -25,7 +25,12 @@ export function questionOptions(question: AskQuestion): AskOption[] {
   if (question.kind === "text") return [];
   const options = question.options ?? [];
   if (options.length > 0) return options;
-  return question.kind === "confirm" ? [{ label: "Yes", value: "yes" }, { label: "No", value: "no" }] : [];
+  return question.kind === "confirm"
+    ? [
+        { label: "Yes", value: "yes" },
+        { label: "No", value: "no" },
+      ]
+    : [];
 }
 
 /** A one-line nudge under a question. */
@@ -38,9 +43,11 @@ export function questionHint(question: AskQuestion): string | undefined {
 function isOption(value: unknown): value is AskOption {
   if (typeof value !== "object" || value === null) return false;
   const option = value as Record<string, unknown>;
-  return typeof option.label === "string" &&
+  return (
+    typeof option.label === "string" &&
     (option.value === undefined || typeof option.value === "string") &&
-    (option.hint === undefined || typeof option.hint === "string");
+    (option.hint === undefined || typeof option.hint === "string")
+  );
 }
 
 const KINDS = new Set(["confirm", "choice", "multi", "text"]);
@@ -48,18 +55,22 @@ const KINDS = new Set(["confirm", "choice", "multi", "text"]);
 function isQuestion(value: unknown): value is AskQuestion {
   if (typeof value !== "object" || value === null) return false;
   const q = value as Record<string, unknown>;
-  return typeof q.id === "string" &&
+  return (
+    typeof q.id === "string" &&
     typeof q.question === "string" &&
-    typeof q.kind === "string" && KINDS.has(q.kind) &&
+    typeof q.kind === "string" &&
+    KINDS.has(q.kind) &&
     // A non-array here once blanked a whole window in gg-app.
-    (q.options === undefined || (Array.isArray(q.options) && q.options.every(isOption)));
+    (q.options === undefined || (Array.isArray(q.options) && q.options.every(isOption)))
+  );
 }
 
 /** An `ask_user` request in any shape the daemon sends it, or undefined. */
 export function readAskRequest(value: unknown): AskRequest | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const { requestId, questions } = value as Record<string, unknown>;
-  if (typeof requestId !== "string" || !Array.isArray(questions) || questions.length === 0) return undefined;
+  if (typeof requestId !== "string" || !Array.isArray(questions) || questions.length === 0)
+    return undefined;
   if (!questions.every(isQuestion)) return undefined;
   return { requestId, questions };
 }
@@ -126,7 +137,10 @@ export function answerFor(draft: AskDraft, question: AskQuestion): AskAnswer | u
  * The whole card's answer: every question answered, keyed by question id.
  * Undefined until complete — a half-filled form never reaches the agent.
  */
-export function buildAskResult(questions: readonly AskQuestion[], draft: AskDraft): AskResult | undefined {
+export function buildAskResult(
+  questions: readonly AskQuestion[],
+  draft: AskDraft,
+): AskResult | undefined {
   const answers: Record<string, AskAnswer> = {};
   for (const question of questions) {
     const answer = answerFor(draft, question);

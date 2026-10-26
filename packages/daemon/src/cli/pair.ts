@@ -172,8 +172,7 @@ export function waitForDevice(options: {
       if (typeof event.data !== "string") return;
       try {
         const raw: unknown = JSON.parse(event.data);
-        const opened =
-          (raw as { t?: string }).t === "e" && channel ? channel.open(raw) : raw;
+        const opened = (raw as { t?: string }).t === "e" && channel ? channel.open(raw) : raw;
         if (!opened) return;
         const message = opened as { t?: string; deviceId?: string };
         if (message.t !== "device.joined") return;

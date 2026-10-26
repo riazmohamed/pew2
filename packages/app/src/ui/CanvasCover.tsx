@@ -75,7 +75,12 @@ function CanvasCoverView({ height, edge = "top", style }: CanvasCoverProps) {
 
   return (
     <View
-      style={[styles.container, edge === "top" ? styles.top : styles.bottom, { height: total }, style]}
+      style={[
+        styles.container,
+        edge === "top" ? styles.top : styles.bottom,
+        { height: total },
+        style,
+      ]}
       pointerEvents="none"
     >
       {blur && (

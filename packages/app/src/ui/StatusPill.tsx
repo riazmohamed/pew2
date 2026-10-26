@@ -8,7 +8,14 @@
  */
 import { memo, useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
+import Animated, {
+  cancelAnimation,
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { theme } from "../theme";
 import type { Pill, PillTone } from "../statusPill";
 import { useReducedMotion } from "./useReducedMotion";
@@ -34,7 +41,11 @@ function StatusPillView({ pill }: { pill: Pill }) {
       breath.value = 1;
       return;
     }
-    breath.value = withRepeat(withTiming(0.35, { duration: 800, easing: Easing.inOut(Easing.quad) }), -1, true);
+    breath.value = withRepeat(
+      withTiming(0.35, { duration: 800, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    );
     return () => cancelAnimation(breath);
   }, [breathing, breath]);
   const dotStyle = useAnimatedStyle(() => ({ opacity: breath.value }));

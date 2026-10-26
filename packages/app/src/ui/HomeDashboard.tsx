@@ -12,7 +12,13 @@
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { runOnJS, useAnimatedReaction, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
+import {
+  runOnJS,
+  useAnimatedReaction,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from "react-native-reanimated";
 import { theme } from "../theme";
 import { text } from "../appStyles";
 import { lastActiveLabel } from "../ggState";
@@ -21,7 +27,16 @@ import type { DashboardCard, HomeDashboard as Dashboard } from "../homeDashboard
 import { homeMood, pewInk } from "../pew/palette";
 import { Pew } from "../pew/Pew";
 import type { PewMood } from "../pew/engine";
-import { homePewMood, homePewSize, nextLifeBeat, SPIN_AFTER, SPIN_LINE_MIN_MS, SPIN_STAGES, spinStage, type LifeBeat } from "../pew/homeLife";
+import {
+  homePewMood,
+  homePewSize,
+  nextLifeBeat,
+  SPIN_AFTER,
+  SPIN_LINE_MIN_MS,
+  SPIN_STAGES,
+  spinStage,
+  type LifeBeat,
+} from "../pew/homeLife";
 import { PopFx } from "./LaunchFx";
 import { haptics } from "./haptics";
 import { sounds } from "./sounds";
@@ -64,17 +79,39 @@ export interface HomeDashboardProps {
 }
 
 /** What home says when it has no cards to show (or can't reach the computer). */
-export function homeMessage(p: { fatal?: string; online: boolean; agents?: number; empty: boolean; hasCards: boolean }): { title: string; line?: string } | undefined {
+export function homeMessage(p: {
+  fatal?: string;
+  online: boolean;
+  agents?: number;
+  empty: boolean;
+  hasCards: boolean;
+}): { title: string; line?: string } | undefined {
   if (p.fatal) return { title: "Can't connect", line: p.fatal };
-  if (!p.online) return { title: "Can't reach your computer", line: p.hasCards ? undefined : "It connects again by itself." };
-  if (p.agents === 0) return { title: "No agents turned on", line: "Run pew2 setup on your computer." };
+  if (!p.online)
+    return {
+      title: "Can't reach your computer",
+      line: p.hasCards ? undefined : "It connects again by itself.",
+    };
+  if (p.agents === 0)
+    return { title: "No agents turned on", line: "Run pew2 setup on your computer." };
   if (p.empty) return { title: "No sessions yet", line: "Start one from the menu." };
   return undefined;
 }
 
 const FIRST_BEAT: LifeBeat = { mood: "idle", ms: 7000 };
 
-function HomeDashboardView({ home, online, fatal, agents, color, settled, top, bottom, onOpen, onPressPew }: HomeDashboardProps) {
+function HomeDashboardView({
+  home,
+  online,
+  fatal,
+  agents,
+  color,
+  settled,
+  top,
+  bottom,
+  onOpen,
+  onPressPew,
+}: HomeDashboardProps) {
   const working = home.cards.some((card) => card.state === "working");
   const real: PewMood = fatal ? "oops" : homeMood(online, working);
   const appActive = useAppActive();
@@ -184,10 +221,14 @@ function HomeDashboardView({ home, online, fatal, agents, color, settled, top, b
   const pewBox = useRef<View>(null);
   const [viewH, setViewH] = useState(0);
   const [contentH, setContentH] = useState(0);
-  const [scene, setScene] = useState<{ w: number; h: number; cx: number; cy: number; kenR: number } | undefined>(undefined);
+  const [scene, setScene] = useState<
+    { w: number; h: number; cx: number; cy: number; kenR: number } | undefined
+  >(undefined);
   const { width } = useWindowDimensions();
   const measure = useCallback(() => {
-    pewBox.current?.measureInWindow((x, y, w, h) => setScene({ w: width, h: height, cx: x + w / 2, cy: y + h * 0.55, kenR: w * 0.36 }));
+    pewBox.current?.measureInWindow((x, y, w, h) =>
+      setScene({ w: width, h: height, cx: x + w / 2, cy: y + h * 0.55, kenR: w * 0.36 }),
+    );
   }, [width, height]);
   const measureRef = useRef(measure);
   measureRef.current = measure;
@@ -202,10 +243,17 @@ function HomeDashboardView({ home, online, fatal, agents, color, settled, top, b
     if (settled && introAt === undefined) setIntroAt(Date.now());
   }, [settled, introAt]);
   const cards = settled && introAt !== undefined ? home.cards : [];
-  const message = settled ? homeMessage({ fatal, online, agents, empty: home.empty, hasCards: cards.length > 0 }) : undefined;
+  const message = settled
+    ? homeMessage({ fatal, online, agents, empty: home.empty, hasCards: cards.length > 0 })
+    : undefined;
   // The toy's line, when home has nothing more important to say.
   // Not with reduced motion: there's no spin then, so no invitation to one.
-  const toyLine = !message && settled && real === "idle" && !reduceMotion ? (after ? SPIN_AFTER.line : SPIN_STAGES[shownStage]!.line) : undefined;
+  const toyLine =
+    !message && settled && real === "idle" && !reduceMotion
+      ? after
+        ? SPIN_AFTER.line
+        : SPIN_STAGES[shownStage]!.line
+      : undefined;
   // The layout is decided by what home WILL show, before the cards fade in:
   // with sessions (often known at once, from what this phone last saw) Pew
   // takes his place above their reserved space from the first frame; without
@@ -231,14 +279,25 @@ function HomeDashboardView({ home, online, fatal, agents, color, settled, top, b
   // And never before his colour is known: a first launch (right after
   // pairing) has no agent yet, and Pew used to appear grey and asleep, then
   // repaint in the agent's colour and wake when the list landed.
-  const decided = settled || ((home.cards.length > 0 || (recalled && remembered !== undefined)) && color !== undefined);
+  const decided =
+    settled ||
+    ((home.cards.length > 0 || (recalled && remembered !== undefined)) && color !== undefined);
   const centred = willShow === 0;
   const rows = Math.ceil(willShow / 2);
   const sectionHeight = rows > 0 ? LABEL_SPACE + rows * CARD_HEIGHT + (rows - 1) * ROW_GAP : 0;
   // Sized for what home WILL show (the session count, known before the cards
   // are revealed), never re-sized when they arrive: a Pew re-sized in its
   // first moments was rebuilt mid-entrance and stayed blank.
-  const pew = homePewSize({ height, top, bottom: bottom + theme.space(4), cards: home.cards.length, cardHeight: CARD_HEIGHT, rowGap: ROW_GAP, label: LABEL_SPACE, chrome: CHROME });
+  const pew = homePewSize({
+    height,
+    top,
+    bottom: bottom + theme.space(4),
+    cards: home.cards.length,
+    cardHeight: CARD_HEIGHT,
+    rowGap: ROW_GAP,
+    label: LABEL_SPACE,
+    chrome: CHROME,
+  });
   return (
     <ScrollView
       // Only once the sessions overflow: otherwise there's nothing to scroll,
@@ -247,42 +306,60 @@ function HomeDashboardView({ home, online, fatal, agents, color, settled, top, b
       onLayout={(e) => setViewH(e.nativeEvent.layout.height)}
       onContentSizeChange={(_w, h) => setContentH(h)}
       style={styles.root}
-      contentContainerStyle={[styles.content, { paddingTop: top, paddingBottom: bottom + theme.space(4) }, centred && styles.centred]}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: top, paddingBottom: bottom + theme.space(4) },
+        centred && styles.centred,
+      ]}
       showsVerticalScrollIndicator={false}
     >
       <View style={[styles.hero, !centred && styles.heroFill]}>
         {decided ? (
-        <Dissolve kind="in">
-          <View ref={pewBox} onLayout={measure} collapsable={false}>
-            <Pew
-              size={pew}
-              mood={mood}
-              color={color}
-              interactive
-              onPress={onPressPew}
-              onHold={onHold}
-              toy={reduceMotion ? undefined : toy}
-              // A near miss still grabs him, not the page.
-              reach={Math.round(pew * 0.25)}
-              accessibilityLabel={onPressPew ? "Pew. Tap to switch agent, or spin him" : undefined}
-            />
-          </View>
-        </Dissolve>
+          <Dissolve kind="in">
+            <View ref={pewBox} onLayout={measure} collapsable={false}>
+              <Pew
+                size={pew}
+                mood={mood}
+                color={color}
+                interactive
+                onPress={onPressPew}
+                onHold={onHold}
+                toy={reduceMotion ? undefined : toy}
+                // A near miss still grabs him, not the page.
+                reach={Math.round(pew * 0.25)}
+                accessibilityLabel={
+                  onPressPew ? "Pew. Tap to switch agent, or spin him" : undefined
+                }
+              />
+            </View>
+          </Dissolve>
         ) : (
           // Holds Pew's box, so the space is the same before and after.
           <View style={{ width: pew, height: pew }} />
         )}
         {toyLine && (
           // Tucked up under his body: his box has room below it for the shadow.
-          <Dissolve kind="swap" dissolveKey={toyLine} style={[styles.message, { marginTop: -Math.round(pew * 0.12) }]}>
-            <Led tone={shownStage >= 3 || after ? "agent" : "dim"} color={shownStage >= 3 || after ? color : undefined}>
+          <Dissolve
+            kind="swap"
+            dissolveKey={toyLine}
+            style={[styles.message, { marginTop: -Math.round(pew * 0.12) }]}
+          >
+            <Led
+              tone={shownStage >= 3 || after ? "agent" : "dim"}
+              color={shownStage >= 3 || after ? color : undefined}
+            >
               {toyLine}
             </Led>
           </Dissolve>
         )}
         {message && (
           <Dissolve kind="swap" dissolveKey={message.title} style={styles.message}>
-            <Text style={text.headline} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
+            <Text
+              style={text.headline}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.5}
+            >
               {message.title}
             </Text>
             {message.line && (
@@ -296,7 +373,13 @@ function HomeDashboardView({ home, online, fatal, agents, color, settled, top, b
 
       {/* The burst: his dots across the whole screen, over everything. */}
       {popKey > 0 && scene && color ? (
-        <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={popDone}>
+        <Modal
+          transparent
+          visible
+          animationType="none"
+          statusBarTranslucent
+          onRequestClose={popDone}
+        >
           <PopFx key={popKey} scene={scene} color={color} onDone={popDone} />
         </Modal>
       ) : null}
@@ -306,16 +389,21 @@ function HomeDashboardView({ home, online, fatal, agents, color, settled, top, b
       {!centred && (
         <View style={[styles.section, { minHeight: sectionHeight }]}>
           {cards.length > 0 && (
-          <>
-          <Dissolve kind="row" startAt={(introAt ?? 0) + LABEL_AFTER_MS} lateSettled={false}>
-            <Led tone="dim">Recent sessions</Led>
-          </Dissolve>
-          <View style={styles.grid}>
-            {cards.map((card, i) => (
-              <Card key={card.id} card={card} startAt={(introAt ?? 0) + LABEL_AFTER_MS + (i + 1) * CARD_STAGGER_MS} onOpen={onOpen} />
-            ))}
-          </View>
-          </>
+            <>
+              <Dissolve kind="row" startAt={(introAt ?? 0) + LABEL_AFTER_MS} lateSettled={false}>
+                <Led tone="dim">Recent sessions</Led>
+              </Dissolve>
+              <View style={styles.grid}>
+                {cards.map((card, i) => (
+                  <Card
+                    key={card.id}
+                    card={card}
+                    startAt={(introAt ?? 0) + LABEL_AFTER_MS + (i + 1) * CARD_STAGGER_MS}
+                    onOpen={onOpen}
+                  />
+                ))}
+              </View>
+            </>
           )}
         </View>
       )}
@@ -325,11 +413,25 @@ function HomeDashboardView({ home, online, fatal, agents, color, settled, top, b
 
 export const HomeDashboard = memo(HomeDashboardView);
 
-function Card({ card, startAt, onOpen }: { card: DashboardCard; startAt: number; onOpen: (id: string) => void }) {
+function Card({
+  card,
+  startAt,
+  onOpen,
+}: {
+  card: DashboardCard;
+  startAt: number;
+  onOpen: (id: string) => void;
+}) {
   const ink = pewInk(card.color);
   const needs = card.state === "waiting";
   const where = card.project ?? card.agent ?? "";
-  const when = needs ? "Needs you" : card.state === "working" ? "Working" : card.at ? lastActiveLabel(card.at) : "Earlier";
+  const when = needs
+    ? "Needs you"
+    : card.state === "working"
+      ? "Working"
+      : card.at
+        ? lastActiveLabel(card.at)
+        : "Earlier";
   return (
     <Dissolve kind="row" startAt={startAt} lateSettled={false} style={styles.cell}>
       <PressScale

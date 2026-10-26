@@ -36,7 +36,10 @@ function Packet({ width, offset }: { width: SharedValue<number>; offset: number 
   }, [t]);
   const style = useAnimatedStyle(() => {
     const p = (t.value + offset) % 1;
-    return { transform: [{ translateX: p * Math.max(0, width.value - PACKET) }], opacity: Math.sin(p * Math.PI) };
+    return {
+      transform: [{ translateX: p * Math.max(0, width.value - PACKET) }],
+      opacity: Math.sin(p * Math.PI),
+    };
   });
   return <Animated.View style={[styles.packet, style]} />;
 }
@@ -58,7 +61,15 @@ export function Handshake({ phase, size = PEW, color }: Props) {
   return (
     <View style={styles.row}>
       <View style={[styles.end, { width: size }]}>
-        <Pew size={size} mood={paired ? "celebrate" : phase === "pairing" ? "talking" : "idle"} color={color} interactive onPress={() => haptics.poke()} accessibilityLabel="This phone" style={styles.pew} />
+        <Pew
+          size={size}
+          mood={paired ? "celebrate" : phase === "pairing" ? "talking" : "idle"}
+          color={color}
+          interactive
+          onPress={() => haptics.poke()}
+          accessibilityLabel="This phone"
+          style={styles.pew}
+        />
         <Led tone="dim">Phone</Led>
       </View>
 
@@ -73,7 +84,11 @@ export function Handshake({ phase, size = PEW, color }: Props) {
         {paired ? (
           <View style={styles.lineSolid} />
         ) : (
-          <DashedRule dotted weight={2} color={failed ? withAlpha(theme.color.danger, 0.5) : theme.stage.dash} />
+          <DashedRule
+            dotted
+            weight={2}
+            color={failed ? withAlpha(theme.color.danger, 0.5) : theme.stage.dash}
+          />
         )}
         {phase === "pairing" && !reduce ? (
           <>

@@ -29,7 +29,8 @@ export interface MessageScope {
 
 // `message` is `any` exactly as it was in useDaemon.ts: a decrypted frame.
 export function reduceMessage(prev: State, message: any, scope: MessageScope): State {
-  const { sessionRef, pendingCapabilities, claimsScreen, adoptedRequestId, completedTurn, now } = scope;
+  const { sessionRef, pendingCapabilities, claimsScreen, adoptedRequestId, completedTurn, now } =
+    scope;
   switch (message.t) {
     case "providers":
       return {
@@ -189,7 +190,9 @@ export function reduceMessage(prev: State, message: any, scope: MessageScope): S
       return {
         ...prev,
         // A bounded transient notification queue, not transcript state.
-        completedTurns: completedTurn ? [...(prev.completedTurns ?? []), completedTurn].slice(-128) : prev.completedTurns,
+        completedTurns: completedTurn
+          ? [...(prev.completedTurns ?? []), completedTurn].slice(-128)
+          : prev.completedTurns,
         busy: mine ? false : prev.busy,
         // A turn cannot end while its agent is waiting to be let past a
         // tool, so an approval still standing here died with the turn:
@@ -227,9 +230,7 @@ export function reduceMessage(prev: State, message: any, scope: MessageScope): S
         configOptions,
         // Mirror into history so reopening restores the same selection.
         sessions: prev.sessions.map((session) =>
-          session.id === message.sessionId
-            ? { ...session, configOptions }
-            : session,
+          session.id === message.sessionId ? { ...session, configOptions } : session,
         ),
       };
     }
@@ -258,7 +259,9 @@ export function reduceMessage(prev: State, message: any, scope: MessageScope): S
       if (usage) {
         // Kept on the conversation's row whether or not it's on screen,
         // so reopening it shows the reading straight away.
-        const sessions = base.sessions.map((row) => (row.id === message.sessionId ? { ...row, usage } : row));
+        const sessions = base.sessions.map((row) =>
+          row.id === message.sessionId ? { ...row, usage } : row,
+        );
         if (message.sessionId !== sessionRef.current) return { ...base, sessions };
         return { ...base, usage, sessions };
       }
@@ -312,7 +315,12 @@ export function reduceMessage(prev: State, message: any, scope: MessageScope): S
           : session,
       );
 
-      return { ...base, turns: capped, sessions, busy: chunk.role === "ken" || chunk.role === "note" ? base.busy : chunk.role !== "system" };
+      return {
+        ...base,
+        turns: capped,
+        sessions,
+        busy: chunk.role === "ken" || chunk.role === "note" ? base.busy : chunk.role !== "system",
+      };
     }
 
     case "error": {
@@ -329,9 +337,7 @@ export function reduceMessage(prev: State, message: any, scope: MessageScope): S
       // conversations are the one thing an old daemon cannot list.
       // Falling back to the history already held is the honest state.
       if (message.code === "unknown_message") {
-        return prev.loadingProject === undefined
-          ? prev
-          : { ...prev, loadingProject: undefined };
+        return prev.loadingProject === undefined ? prev : { ...prev, loadingProject: undefined };
       }
 
       if (prev.restoreTarget && (prev.loadingSession || message.code === "resume_failed")) {

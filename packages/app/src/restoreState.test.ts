@@ -1,7 +1,16 @@
 import { expect, test } from "bun:test";
 import { matchesRestore, restorePresentation, restoreReveal, restoreTarget } from "./restoreState";
 import type { Session } from "./useDaemon";
-const session: Session = { id: "agent:gg:stored", providerId: "gg", agentSessionId: "stored", title: "Original title", cwd: "/project", startedAt: 1, turns: [], configOptions: [] };
+const session: Session = {
+  id: "agent:gg:stored",
+  providerId: "gg",
+  agentSessionId: "stored",
+  title: "Original title",
+  cwd: "/project",
+  startedAt: 1,
+  turns: [],
+  configOptions: [],
+};
 const target = restoreTarget(session);
 test("restore acknowledgement names the selected target before a live id exists", () => {
   expect(restorePresentation(target, true, undefined, 0, "online")).toBe("loading");

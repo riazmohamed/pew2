@@ -84,7 +84,10 @@ export class ErrorBoundary extends Component<Props, State> {
   private reset = () => {
     if (this.state.recovering) return;
     this.setState({ recovering: true });
-    this.timer = setTimeout(() => this.setState({ error: undefined, recovering: false, details: false }), RECOVER_MS);
+    this.timer = setTimeout(
+      () => this.setState({ error: undefined, recovering: false, details: false }),
+      RECOVER_MS,
+    );
   };
 
   render() {
@@ -113,7 +116,12 @@ export class ErrorBoundary extends Component<Props, State> {
       <View style={styles.screen}>
         <Guard fallback={<View style={styles.pewSpace} />}>
           <View style={styles.pewWrap}>
-            <Pew size={112} mood={recovering ? "happy" : "oops"} accessibilityLabel={recovering ? "Pew, recovering" : "Pew, hurt"} style={styles.pew} />
+            <Pew
+              size={112}
+              mood={recovering ? "happy" : "oops"}
+              accessibilityLabel={recovering ? "Pew, recovering" : "Pew, hurt"}
+              style={styles.pew}
+            />
             {!recovering && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>!</Text>

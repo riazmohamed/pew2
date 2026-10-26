@@ -18,10 +18,15 @@ export function useSmoothText(text: string, identity: string, live: boolean) {
       changed = true;
       if (alive) setScreenReader(value);
     });
-    void AccessibilityInfo.isScreenReaderEnabled().then((value) => {
-      if (alive && !changed) setScreenReader(value);
-    }).catch(() => {});
-    return () => { alive = false; subscription.remove(); };
+    void AccessibilityInfo.isScreenReaderEnabled()
+      .then((value) => {
+        if (alive && !changed) setScreenReader(value);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      subscription.remove();
+    };
   }, []);
   useEffect(() => {
     let alive = true;
@@ -30,10 +35,15 @@ export function useSmoothText(text: string, identity: string, live: boolean) {
       changed = true;
       if (alive) setReduced(value);
     });
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      if (alive && !changed) setReduced(value);
-    }).catch(() => {});
-    return () => { alive = false; subscription.remove(); };
+    void AccessibilityInfo.isReduceMotionEnabled()
+      .then((value) => {
+        if (alive && !changed) setReduced(value);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      subscription.remove();
+    };
   }, []);
   const enabled = live && active && !reduced && !screenReader;
   const engine = useRef(resetReveal(identity, text, 0));
@@ -48,19 +58,30 @@ export function useSmoothText(text: string, identity: string, live: boolean) {
       const value = engine.current;
       const shown = value.target.slice(0, value.committed);
       const animating = enabled && !revealSettled(value, Date.now());
-      setPaint((prev) => prev.identity === identity && prev.target === text && prev.text === shown && prev.animating === animating
-        ? prev : { identity, target: text, text: shown, animating });
+      setPaint((prev) =>
+        prev.identity === identity &&
+        prev.target === text &&
+        prev.text === shown &&
+        prev.animating === animating
+          ? prev
+          : { identity, target: text, text: shown, animating },
+      );
     }
     function tick() {
       if (!alive) return;
       engine.current = tickReveal(engine.current, Date.now());
       publish();
       if (engine.current.committed < text.length) frame = requestAnimationFrame(tick);
-      else settle = setTimeout(publish, Math.max(0, SETTLE_MS - (Date.now() - engine.current.growthAt)));
+      else
+        settle = setTimeout(
+          publish,
+          Math.max(0, SETTLE_MS - (Date.now() - engine.current.growthAt)),
+        );
     }
     publish();
     if (enabled && engine.current.committed < text.length) frame = requestAnimationFrame(tick);
-    else if (enabled) settle = setTimeout(publish, Math.max(0, SETTLE_MS - (Date.now() - engine.current.growthAt)));
+    else if (enabled)
+      settle = setTimeout(publish, Math.max(0, SETTLE_MS - (Date.now() - engine.current.growthAt)));
     return () => {
       alive = false;
       if (frame !== undefined) cancelAnimationFrame(frame);
@@ -69,6 +90,7 @@ export function useSmoothText(text: string, identity: string, live: boolean) {
   }, [text, identity, enabled]);
   // No stale prefix during cell recycling, completion, replay or accessibility
   // preference changes, even before effects have had a chance to run.
-  if (!enabled || paint.identity !== identity || !text.startsWith(paint.target)) return { text, animating: false };
+  if (!enabled || paint.identity !== identity || !text.startsWith(paint.target))
+    return { text, animating: false };
   return { text: paint.text, animating: paint.animating };
 }

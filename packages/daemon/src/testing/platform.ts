@@ -96,13 +96,21 @@ export async function countProcessesMatching(
 const execFileAsync = promisify(execFile);
 async function readProcessTable(): Promise<string> {
   const { stdout } = WINDOWS
-    ? await execFileAsync("powershell", [
-        "-NoProfile", "-NonInteractive", "-Command",
-        "$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_Process | " +
-        "ForEach-Object { $_.CommandLine -replace '[\\r\\n]', ' ' }",
-      ], { encoding: "utf8", timeout: 20_000, maxBuffer: 8 * 1024 * 1024 })
+    ? await execFileAsync(
+        "powershell",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_Process | " +
+            "ForEach-Object { $_.CommandLine -replace '[\\r\\n]', ' ' }",
+        ],
+        { encoding: "utf8", timeout: 20_000, maxBuffer: 8 * 1024 * 1024 },
+      )
     : await execFileAsync("ps", ["-A", "-o", "command="], {
-        encoding: "utf8", timeout: 20_000, maxBuffer: 8 * 1024 * 1024,
+        encoding: "utf8",
+        timeout: 20_000,
+        maxBuffer: 8 * 1024 * 1024,
       });
   return stdout;
 }

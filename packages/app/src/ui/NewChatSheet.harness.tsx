@@ -131,7 +131,12 @@ export default function NewChatSheetHarness() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.color.bg, padding: theme.space(6), gap: theme.space(3) },
+  screen: {
+    flex: 1,
+    backgroundColor: theme.color.bg,
+    padding: theme.space(6),
+    gap: theme.space(3),
+  },
   heading: { color: theme.color.text, fontSize: theme.font.title, fontWeight: "600" },
   body: { color: theme.color.textDim, fontSize: theme.font.body },
   button: {

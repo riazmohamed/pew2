@@ -92,9 +92,7 @@ describe("summarise", () => {
   });
 
   it("skips fenced code and finds the sentence after it", () => {
-    expect(summarise("```ts\nconst a = 1;\n```\nAdded a constant.")).toBe(
-      "Added a constant.",
-    );
+    expect(summarise("```ts\nconst a = 1;\n```\nAdded a constant.")).toBe("Added a constant.");
   });
 
   it("strips list markers and inline emphasis", () => {

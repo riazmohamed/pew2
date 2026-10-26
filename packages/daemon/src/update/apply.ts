@@ -351,7 +351,11 @@ export async function applyUpdate(options: ApplyOptions = {}): Promise<ApplyResu
   }
   const expected = parseChecksum(new TextDecoder().decode(checksumBody));
   if (!expected) {
-    return { ok: false, reason: "checksum-missing", detail: "The published checksum is unreadable." };
+    return {
+      ok: false,
+      reason: "checksum-missing",
+      detail: "The published checksum is unreadable.",
+    };
   }
 
   const bytes = await download(fetchImpl, binaryUrl, userAgent, timeoutMs);

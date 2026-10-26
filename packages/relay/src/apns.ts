@@ -59,9 +59,7 @@ export async function signJwt(
     ["sign"],
   );
   const head = base64url(JSON.stringify({ alg: "ES256", kid: config.keyId }));
-  const claims = base64url(
-    JSON.stringify({ iss: config.teamId, iat: Math.floor(nowMs / 1000) }),
-  );
+  const claims = base64url(JSON.stringify({ iss: config.teamId, iat: Math.floor(nowMs / 1000) }));
   const input = `${head}.${claims}`;
   // WebCrypto's ECDSA output is raw r||s — exactly what JWS ES256 wants.
   const sig = await crypto.subtle.sign(

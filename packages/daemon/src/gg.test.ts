@@ -64,7 +64,9 @@ function plantControlledSession(daemon: Daemon, sessionId: string) {
 }
 
 const userMessages = (sent: any[]) =>
-  sent.filter((m) => m.t === "session.event" && m.payload?.kind === "user_message").map((m) => m.payload);
+  sent
+    .filter((m) => m.t === "session.event" && m.payload?.kind === "user_message")
+    .map((m) => m.payload);
 const lastQueue = (sent: any[]) => sent.findLast((m) => m.t === "session.queue");
 
 test("a prompt mid-turn is queued, then everything queued goes as ONE next turn", async () => {
@@ -281,13 +283,21 @@ test("goals: list, create, open with a kickoff turn, act, delete", async () => {
   await send({ t: "goals", requestId: "r1" });
   expect(sent.find((m) => m.t === "goals" && m.requestId === "r1")).toMatchObject({ goals: [] });
 
-  await send({ t: "goal.create", requestId: "r2", name: "Ship it", goal: "Ship pew2", context: ["/tmp"] });
+  await send({
+    t: "goal.create",
+    requestId: "r2",
+    name: "Ship it",
+    goal: "Ship pew2",
+    context: ["/tmp"],
+  });
   const created = sent.find((m) => m.t === "goal.result" && m.requestId === "r2");
   expect(created).toMatchObject({ ok: true, goal: { name: "Ship it", status: "briefing" } });
   const path = created.goal.path as string;
   // Published, so the app may open a session there.
   expect(await daemon.knownProject("ggcoder", path)).toBe(path);
-  expect(sent.some((m) => m.t === "goals" && m.requestId === undefined && m.goals.length === 1)).toBe(true);
+  expect(
+    sent.some((m) => m.t === "goals" && m.requestId === undefined && m.goals.length === 1),
+  ).toBe(true);
 
   await send({ t: "session.start", requestId: "open", providerId: "ggcoder", cwd: path });
   const started = sent.find((m) => m.t === "session.started" && m.requestId === "open");
@@ -305,11 +315,20 @@ test("goals: list, create, open with a kickoff turn, act, delete", async () => {
   await send({ t: "goals", requestId: "r3" });
   expect(sent.find((m) => m.requestId === "r3").goals[0]).toMatchObject({ sessionId: id });
 
-  await send({ t: "goal.action", requestId: "r4", goalId: created.goal.id, action: "critterModel", model: "fast" });
+  await send({
+    t: "goal.action",
+    requestId: "r4",
+    goalId: created.goal.id,
+    action: "critterModel",
+    model: "fast",
+  });
   expect(sent.find((m) => m.requestId === "r4")).toMatchObject({ ok: true });
 
   await send({ t: "goal.action", requestId: "r5", goalId: created.goal.id, action: "pause" });
-  expect(sent.find((m) => m.requestId === "r5")).toMatchObject({ ok: true, goal: { status: "paused" } });
+  expect(sent.find((m) => m.requestId === "r5")).toMatchObject({
+    ok: true,
+    goal: { status: "paused" },
+  });
 
   await send({ t: "goal.action", requestId: "r6", goalId: created.goal.id, action: "resume" });
   expect(sent.find((m) => m.requestId === "r6")).toMatchObject({ ok: true });
@@ -364,7 +383,10 @@ test("a capability refresh replacing the parked GG Coder does not kill a goals r
   expect(answer.error ?? answer.message).toBeUndefined();
   expect(answer.goals).toEqual([]);
   // Retired once the request was done with it, not leaked.
-  await until(() => parked.child.exitCode !== null || parked.child.signalCode !== null, "old spare exit");
+  await until(
+    () => parked.child.exitCode !== null || parked.child.signalCode !== null,
+    "old spare exit",
+  );
 });
 
 test("an older GG Coder answers goals with an error, not a crash", async () => {
@@ -443,15 +465,27 @@ test("plan review: state is live + caught up, a decision is a logged turn, accep
   daemon.markLive(id);
   await daemon.prompt(id, "plan it");
   // Notifications are dispatched beside the prompt's answer, not before it.
-  const state = await until(() => sent.findLast((m) => m.t === "plan.state" && m.pending), "pending plan");
+  const state = await until(
+    () => sent.findLast((m) => m.t === "plan.state" && m.pending),
+    "pending plan",
+  );
   expect(state).toMatchObject({ sessionId: id, planMode: true, pending: { generation: 1 } });
   expect(daemon.catchUp({ [id]: 0 })[0]?.plan).toEqual(state);
 
   await send({ t: "plan.decide", sessionId: id, generation: 1, action: "accept" });
-  await until(() => sent.find((m) => m.t === "session.idle" && said(sent, id).includes("decided")), "decided");
-  const kinds = sent.filter((m) => m.t === "session.event").map((m) => m.payload?.kind).filter(Boolean);
+  await until(
+    () => sent.find((m) => m.t === "session.idle" && said(sent, id).includes("decided")),
+    "decided",
+  );
+  const kinds = sent
+    .filter((m) => m.t === "session.event")
+    .map((m) => m.payload?.kind)
+    .filter(Boolean);
   expect(kinds).toContain("plan_decision");
-  expect(sent.find((m) => m.payload?.kind === "plan_accepted")?.payload).toEqual({ kind: "plan_accepted", planTotal: 3 });
+  expect(sent.find((m) => m.payload?.kind === "plan_accepted")?.payload).toEqual({
+    kind: "plan_accepted",
+    planTotal: 3,
+  });
   expect(daemon.agentSessionId(id)).toEndWith("_impl");
   expect(daemon.catchUp({ [id]: 0 })[0]?.plan?.pending).toBeNull();
   expect(userMessages(sent).map((m) => m.text)).toEqual(["plan it"]);
@@ -462,25 +496,41 @@ test("autopilot: set round-trips as state, verdicts are logged, checklist answer
   const id = await daemon.startSession("ggcoder", root);
   daemon.markLive(id);
   await send({ t: "autopilot.set", sessionId: id, enabled: true });
-  await until(() => sent.findLast((m) => m.t === "autopilot.state")?.enabled === true, "autopilot state");
+  await until(
+    () => sent.findLast((m) => m.t === "autopilot.state")?.enabled === true,
+    "autopilot state",
+  );
   expect(sent.findLast((m) => m.t === "autopilot.state")).toEqual({
-    t: "autopilot.state", sessionId: id, enabled: true, reviewing: false,
+    t: "autopilot.state",
+    sessionId: id,
+    enabled: true,
+    reviewing: false,
   });
   expect(daemon.catchUp({ [id]: 0 })[0]?.autopilot?.enabled).toBe(true);
 
   await daemon.prompt(id, "ken");
   await until(() => sent.find((m) => m.t === "checklist" && m.changed), "checklist nudge");
-  await until(() => sent.some((m) => m.payload?.kind === "autopilot" && m.payload.phase === "human"), "ken verdict");
+  await until(
+    () => sent.some((m) => m.payload?.kind === "autopilot" && m.payload.phase === "human"),
+    "ken verdict",
+  );
   const verdicts = sent.filter((m) => m.payload?.kind === "autopilot").map((m) => m.payload);
   expect(verdicts).toEqual([
     { kind: "autopilot", phase: "review_start", round: 1 },
     { kind: "autopilot", phase: "human", reason: "pick a db" },
   ]);
-  expect(sent.find((m) => m.t === "checklist" && m.changed)).toEqual({ t: "checklist", sessionId: id, changed: true });
+  expect(sent.find((m) => m.t === "checklist" && m.changed)).toEqual({
+    t: "checklist",
+    sessionId: id,
+    changed: true,
+  });
 
   await send({ t: "checklist", requestId: "c1", sessionId: id });
   const answer = sent.find((m) => m.t === "checklist" && m.requestId === "c1");
-  expect(answer).toMatchObject({ staleAfterDays: 30, items: [{ id: "tests", status: "passed", runPrompt: "check tests" }] });
+  expect(answer).toMatchObject({
+    staleAfterDays: 30,
+    items: [{ id: "tests", status: "passed", runPrompt: "check tests" }],
+  });
   const caps = await daemon.capabilitiesFor("ggcoder");
   expect(caps.extensions).toMatchObject({ planReview: true, autopilot: true, checklist: true });
 });
@@ -491,7 +541,10 @@ test("extensions seen on any connection fill a capabilities answer that lost the
   (daemon as any).probeProvider = async () => caps;
   expect((await daemon.capabilitiesFor("ggcoder")).extensions).toBeUndefined();
   (daemon as any).noteExtensions("ggcoder", { ggCapabilities: { autopilot: 1, checklist: 1 } });
-  expect((await daemon.capabilitiesFor("ggcoder")).extensions).toEqual({ autopilot: true, checklist: true });
+  expect((await daemon.capabilitiesFor("ggcoder")).extensions).toEqual({
+    autopilot: true,
+    checklist: true,
+  });
   // The probe's own answer still wins when it has one.
   (daemon as any).probeProvider = async () => ({ ...caps, extensions: { goals: true } });
   expect((await daemon.capabilitiesFor("ggcoder")).extensions).toEqual({ goals: true });
@@ -500,7 +553,10 @@ test("extensions seen on any connection fill a capabilities answer that lost the
 test("gg-goals: goal sessions split from ggcoder, goal cwd required, no autopilot", async () => {
   const { daemon, sent, send, root } = await ggDaemon();
   setEnv("GG_AGENT_DIR", root);
-  (daemon as any).providers = [ggProvider, { ...ggProvider, manifest: { ...ggProvider.manifest, id: "gg-goals", name: "GG Goals" } }];
+  (daemon as any).providers = [
+    ggProvider,
+    { ...ggProvider, manifest: { ...ggProvider.manifest, id: "gg-goals", name: "GG Goals" } },
+  ];
   const gg = await daemon.capabilitiesFor("ggcoder");
   expect(gg.sessions.map((s) => s.sessionId)).toEqual(["plain_1"]);
   const goals = await daemon.capabilitiesFor("gg-goals");
@@ -518,8 +574,13 @@ test("gg-goals: goal sessions split from ggcoder, goal cwd required, no autopilo
   await send({ t: "goal.create", requestId: "c", name: "Ship it", goal: "Ship", context: [] });
   const path = sent.find((m) => m.t === "goal.result" && m.requestId === "c").goal.path as string;
   await send({ t: "session.start", requestId: "o", providerId: "gg-goals", cwd: path });
-  const started = await until(() => sent.find((m) => m.t === "session.started" && m.requestId === "o"), "start");
+  const started = await until(
+    () => sent.find((m) => m.t === "session.started" && m.requestId === "o"),
+    "start",
+  );
   await send({ t: "autopilot.set", sessionId: started.sessionId, enabled: true });
-  expect(sent.some((m) => m.t === "autopilot.state" && m.sessionId === started.sessionId)).toBe(false);
+  expect(sent.some((m) => m.t === "autopilot.state" && m.sessionId === started.sessionId)).toBe(
+    false,
+  );
   setEnv("GG_AGENT_DIR", undefined);
 });

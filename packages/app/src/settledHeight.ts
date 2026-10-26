@@ -33,10 +33,7 @@ export const SETTLE_MS = 32;
  * otherwise restart the timer and eventually re-report a height React already
  * has.
  */
-export function heightAction(
-  current: number,
-  measured: number,
-): "ignore" | "report-now" | "defer" {
+export function heightAction(current: number, measured: number): "ignore" | "report-now" | "defer" {
   if (measured === current) return "ignore";
   // The first real measurement, before anything has been reported. Deferring it
   // would leave the thread using its analytic fallback for two extra frames at

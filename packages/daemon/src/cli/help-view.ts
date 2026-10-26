@@ -40,7 +40,10 @@ export const HELP_GROUPS: Group[] = [
       { command: "pew2 serve", note: "Run the daemon in this terminal" },
       { command: "pew2 doctor [--json]", note: "What is wrong, and the command that fixes it" },
       { command: "pew2 chat [--here]", note: "Open a window that types live with the phone" },
-      { command: "pew2 awake [on|off|status]", note: "Keep this machine from idle-sleeping while in use" },
+      {
+        command: "pew2 awake [on|off|status]",
+        note: "Keep this machine from idle-sleeping while in use",
+      },
     ],
   },
   {
@@ -84,9 +87,11 @@ export function helpView(options: RenderOptions = {}): string[] {
   const all = HELP_GROUPS.flatMap((group) => group.entries);
   const column = Math.max(...all.map((entry) => entry.command.length)) + 3;
   // Command in bold, its note dim, both on the same column so the notes line up.
-  const row = (command: string, note: string) => `  ${s.bold(padEnd(command, column))}${s.hex(PALETTE.faint, note)}`;
+  const row = (command: string, note: string) =>
+    `  ${s.bold(padEnd(command, column))}${s.hex(PALETTE.faint, note)}`;
   // A flag sits under its command, indented, with its own note on the same column.
-  const flagRow = (flag: string, note: string) => `  ${s.hex(PALETTE.faint, padEnd(`    ${flag}`, column))}${s.hex(PALETTE.faint, note)}`;
+  const flagRow = (flag: string, note: string) =>
+    `  ${s.hex(PALETTE.faint, padEnd(`    ${flag}`, column))}${s.hex(PALETTE.faint, note)}`;
 
   const out = [...r.intro("pew2", "your coding agents, on your phone")];
   for (const group of HELP_GROUPS) {

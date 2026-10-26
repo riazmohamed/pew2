@@ -1,5 +1,15 @@
 import { expect, test } from "bun:test";
-import { devStep, gate, INSTALL_COMMAND, nextStep, PAIR_COMMAND, parseProgress, previousStep, SETUP_COMMAND, STEPS } from "./onboarding";
+import {
+  devStep,
+  gate,
+  INSTALL_COMMAND,
+  nextStep,
+  PAIR_COMMAND,
+  parseProgress,
+  previousStep,
+  SETUP_COMMAND,
+  STEPS,
+} from "./onboarding";
 
 test("order is welcome → alerts → install → pair → voice → done", () => {
   expect([...STEPS]).toEqual(["welcome", "alerts", "install", "pair", "voice", "done"]);

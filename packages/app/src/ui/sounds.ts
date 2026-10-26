@@ -14,7 +14,13 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 import { Asset } from "expo-asset";
 import { canPlayCues, playCue, prepareCues, stopCue } from "../../modules/pew-audio-route";
-import { SOFT_SOUNDS, chargeOffsetSeconds, shouldPlay, softYields, type SoundName } from "../soundsPolicy";
+import {
+  SOFT_SOUNDS,
+  chargeOffsetSeconds,
+  shouldPlay,
+  softYields,
+  type SoundName,
+} from "../soundsPolicy";
 
 // Metro resolves asset `require`s at bundle time; an `import` of a .wav has no
 // type here, so these stay requires.
@@ -47,8 +53,8 @@ const SOURCES: Record<SoundName, number> = {
   "call-dial": require("../../assets/sounds/call-dial.wav"),
   "call-connect": require("../../assets/sounds/call-connect.wav"),
   "call-end": require("../../assets/sounds/call-end.wav"),
-  "tick": require("../../assets/sounds/tick.wav"),
-  "select": require("../../assets/sounds/select.wav"),
+  tick: require("../../assets/sounds/tick.wav"),
+  select: require("../../assets/sounds/select.wav"),
   "detent-0": require("../../assets/sounds/detent-0.wav"),
   "detent-1": require("../../assets/sounds/detent-1.wav"),
   "detent-2": require("../../assets/sounds/detent-2.wav"),
@@ -62,10 +68,10 @@ const SOURCES: Record<SoundName, number> = {
   "poke-1": require("../../assets/sounds/poke-1.wav"),
   "poke-2": require("../../assets/sounds/poke-2.wav"),
   "poke-3": require("../../assets/sounds/poke-3.wav"),
-  "confirm": require("../../assets/sounds/confirm.wav"),
-  "warn": require("../../assets/sounds/warn.wav"),
-  "error": require("../../assets/sounds/error.wav"),
-  "choose": require("../../assets/sounds/choose.wav"),
+  confirm: require("../../assets/sounds/confirm.wav"),
+  warn: require("../../assets/sounds/warn.wav"),
+  error: require("../../assets/sounds/error.wav"),
+  choose: require("../../assets/sounds/choose.wav"),
   "agent-claude-code": require("../../assets/sounds/agent-claude-code.wav"),
   "agent-codex": require("../../assets/sounds/agent-codex.wav"),
   "agent-gemini-cli": require("../../assets/sounds/agent-gemini-cli.wav"),
@@ -79,12 +85,12 @@ const SOURCES: Record<SoundName, number> = {
   "agent-qwen-code": require("../../assets/sounds/agent-qwen-code.wav"),
   "agent-echo": require("../../assets/sounds/agent-echo.wav"),
   "agent-gg-goals": require("../../assets/sounds/agent-gg-goals.wav"),
-  "banner": require("../../assets/sounds/banner.wav"),
+  banner: require("../../assets/sounds/banner.wav"),
   "key-0": require("../../assets/sounds/key-0.wav"),
   "key-1": require("../../assets/sounds/key-1.wav"),
   "key-2": require("../../assets/sounds/key-2.wav"),
   "key-3": require("../../assets/sounds/key-3.wav"),
-  "pairing": require("../../assets/sounds/pairing.wav"),
+  pairing: require("../../assets/sounds/pairing.wav"),
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -166,7 +172,10 @@ export const sounds = {
 
   /** Play from the start, or from `at` seconds in. */
   play(name: SoundName, at = 0): void {
-    const log = process.env.EXPO_PUBLIC_DEV_SOUND_LOG === "1" ? (why: string) => console.log(`[sound] ${name} ${why}`) : undefined;
+    const log =
+      process.env.EXPO_PUBLIC_DEV_SOUND_LOG === "1"
+        ? (why: string) => console.log(`[sound] ${name} ${why}`)
+        : undefined;
     if (listening) return void log?.("skipped (listening)");
     const now = Date.now();
     if (!shouldPlay(now, lastPlayed.get(name))) return void log?.("skipped (repeat)");

@@ -131,8 +131,10 @@ export function widgetRows(input: WidgetInput): WidgetRow[] {
       const project = session.folder || lastSegment(session.cwd);
       if (project) row.project = project;
       if (provider?.name) row.agent = provider.name;
-      if (provider?.color && /^#[0-9a-f]{6}$/i.test(provider.color)) row.color = provider.color.toLowerCase();
-      if (session.startedAt && Number.isFinite(session.startedAt) && session.startedAt > 0) row.at = session.startedAt;
+      if (provider?.color && /^#[0-9a-f]{6}$/i.test(provider.color))
+        row.color = provider.color.toLowerCase();
+      if (session.startedAt && Number.isFinite(session.startedAt) && session.startedAt > 0)
+        row.at = session.startedAt;
       return row;
     });
 }

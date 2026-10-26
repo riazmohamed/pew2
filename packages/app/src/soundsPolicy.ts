@@ -92,7 +92,8 @@ export function levelPitch(index: number, count: number): number {
  */
 export function levelSound(from: number, to: number, count: number): SoundName | undefined {
   if (to === from || count < 2) return undefined;
-  if (to > from) return to >= count - 1 ? "level-max" : (`level-up-${levelPitch(to, count)}` as SoundName);
+  if (to > from)
+    return to >= count - 1 ? "level-max" : (`level-up-${levelPitch(to, count)}` as SoundName);
   return `level-down-${levelPitch(from, count)}` as SoundName;
 }
 
@@ -177,7 +178,8 @@ export const DETENT_PITCHES = 5;
 
 /** A detent at position `at` (a page, a dial stop): the pitch climbs with it. No position: the middle. */
 export function detentSound(at?: number): SoundName {
-  const i = at === undefined ? 2 : ((Math.round(at) % DETENT_PITCHES) + DETENT_PITCHES) % DETENT_PITCHES;
+  const i =
+    at === undefined ? 2 : ((Math.round(at) % DETENT_PITCHES) + DETENT_PITCHES) % DETENT_PITCHES;
   return `detent-${i}` as SoundName;
 }
 
@@ -221,14 +223,25 @@ export const LOUDNESS_TIERS = { touch: -38, cue: -30, alert: -26, launch: 0 } as
 
 export function loudnessTier(name: SoundName): keyof typeof LOUDNESS_TIERS {
   if (name === "charge" || name === "burst" || name === "drain") return "launch";
-  if (name === "attention" || name === "call-connect" || name === "pairing" || name === "reveal" || name === "spin-pop") return "alert";
-  if (SOFT_SOUNDS.has(name) || name.startsWith("level-up") || name.startsWith("level-down")) return "touch";
+  if (
+    name === "attention" ||
+    name === "call-connect" ||
+    name === "pairing" ||
+    name === "reveal" ||
+    name === "spin-pop"
+  )
+    return "alert";
+  if (SOFT_SOUNDS.has(name) || name.startsWith("level-up") || name.startsWith("level-down"))
+    return "touch";
   return "cue";
 }
 
 /** Played at launch, so the first touch of each kind isn't late. */
 export const TOUCH_SOUNDS: readonly SoundName[] = SOUND_NAMES.filter(
-  (name) => SOFT_SOUNDS.has(name) || name.startsWith("poke-") || ["confirm", "warn", "error", "choose", "send", "done", "attention"].includes(name),
+  (name) =>
+    SOFT_SOUNDS.has(name) ||
+    name.startsWith("poke-") ||
+    ["confirm", "warn", "error", "choose", "send", "done", "attention"].includes(name),
 );
 
 // ── Agents: one signature each ─────────────────────────────────────────────

@@ -198,6 +198,11 @@ export function agentStoppedMessage(
   const reason = [...stderrTail]
     .reverse()
     .map((line) => line.trim())
-    .find((line) => line && !/^at\s|^\^+$|^node:internal|^Node\.js v|^\{|^\}|requireStack|code: '/.test(line) && /[a-z]{3}/i.test(line));
+    .find(
+      (line) =>
+        line &&
+        !/^at\s|^\^+$|^node:internal|^Node\.js v|^\{|^\}|requireStack|code: '/.test(line) &&
+        /[a-z]{3}/i.test(line),
+    );
   return truncate(`${name} stopped while working (${how})${reason ? `: ${reason}` : "."}`);
 }

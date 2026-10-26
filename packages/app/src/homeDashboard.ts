@@ -50,7 +50,10 @@ export function homeDashboard(input: WidgetInput): HomeDashboard {
     return line ? { ...row, line } : row;
   });
   // Needs you first, then newest; ties keep the list order (sort is stable).
-  cards.sort((a, b) => Number(b.state === "waiting") - Number(a.state === "waiting") || (b.at ?? 0) - (a.at ?? 0));
+  cards.sort(
+    (a, b) =>
+      Number(b.state === "waiting") - Number(a.state === "waiting") || (b.at ?? 0) - (a.at ?? 0),
+  );
   return { cards: cards.slice(0, HOME_CARDS), empty: rows.length === 0 };
 }
 

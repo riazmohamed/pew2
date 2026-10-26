@@ -46,9 +46,7 @@ function knownProjectsPath(env: NodeJS.ProcessEnv): string {
  * convenience for recognising a path, and failing to read it must not stop a
  * session starting.
  */
-export async function readKnownProjects(
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<string[]> {
+export async function readKnownProjects(env: NodeJS.ProcessEnv = process.env): Promise<string[]> {
   try {
     const parsed = JSON.parse(await readFile(knownProjectsPath(env), "utf8"));
     if (!Array.isArray(parsed)) return [];

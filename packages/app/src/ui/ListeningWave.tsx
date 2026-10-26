@@ -12,7 +12,12 @@
 import { useCallback } from "react";
 import { StyleSheet } from "react-native";
 import { Canvas, Picture, Skia, type SkPicture } from "@shopify/react-native-skia";
-import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
+import {
+  useFrameCallback,
+  useSharedValue,
+  type FrameInfo,
+  type SharedValue,
+} from "react-native-reanimated";
 import { beginFrame, blankPicture, endFrame } from "./skiaFrame";
 
 /** Columns across, dots per column, and their spacing, in points. */
@@ -29,7 +34,9 @@ export const WAVE_HEIGHT = (ROWS - 1) * STEP + DOT * 4;
 /** One paint and one colour buffer per UI runtime, reused every frame (see skiaFrame.ts on churn). */
 function waveTools(): { paint: ReturnType<typeof Skia.Paint>; col: Float32Array } {
   "worklet";
-  const g = globalThis as unknown as { __waveTools?: { paint: ReturnType<typeof Skia.Paint>; col: Float32Array } };
+  const g = globalThis as unknown as {
+    __waveTools?: { paint: ReturnType<typeof Skia.Paint>; col: Float32Array };
+  };
   if (!g.__waveTools) {
     const paint = Skia.Paint();
     paint.setAntiAlias(true);
@@ -70,7 +77,12 @@ export function ListeningWave({ speaking, level, color, off }: Props) {
       // (lifted, so speech fills the columns), a lively stand-in while the
       // server says they are talking, and a low ripple once they stop.
       const raw = level ? level.value : -1;
-      const want = raw >= 0 && speakingNow ? Math.min(1, 0.18 + raw * 3.2) : speakingNow ? 0.55 + 0.25 * Math.sin(t.value * 9) : 0.12;
+      const want =
+        raw >= 0 && speakingNow
+          ? Math.min(1, 0.18 + raw * 3.2)
+          : speakingNow
+            ? 0.55 + 0.25 * Math.sin(t.value * 9)
+            : 0.12;
       // Fast up, slower down: a voice's attack and decay.
       const k = want > energy.value ? Math.min(1, dt * 18) : Math.min(1, dt * 6);
       energy.value += (want - energy.value) * k;
@@ -90,16 +102,23 @@ export function ListeningWave({ speaking, level, color, off }: Props) {
         // Soft edges: the outer columns fade into the background (a smooth
         // ramp over EDGE_COLS at each side), so the wave has no square ends.
         const edge = Math.min(c, COLS - 1 - c);
-        const fade = edge >= EDGE_COLS ? 1 : Math.sin(((edge + 1) / (EDGE_COLS + 1)) * (Math.PI / 2)) ** 2;
+        const fade =
+          edge >= EDGE_COLS ? 1 : Math.sin(((edge + 1) / (EDGE_COLS + 1)) * (Math.PI / 2)) ** 2;
         for (let r = 0; r < ROWS; r++) {
           const fromMid = Math.abs(r - mid);
           const on = Math.max(0, Math.min(1, h - fromMid));
           const y = DOT * 2 + r * STEP;
-          col[0] = dim[0]; col[1] = dim[1]; col[2] = dim[2]; col[3] = 0.55 * (1 - on) * fade;
+          col[0] = dim[0];
+          col[1] = dim[1];
+          col[2] = dim[2];
+          col[3] = 0.55 * (1 - on) * fade;
           paint.setColor(col);
           canvas.drawCircle(x, y, DOT, paint);
           if (on > 0.02) {
-            col[0] = lit[0]; col[1] = lit[1]; col[2] = lit[2]; col[3] = on * fade;
+            col[0] = lit[0];
+            col[1] = lit[1];
+            col[2] = lit[2];
+            col[3] = on * fade;
             paint.setColor(col);
             canvas.drawCircle(x, y, DOT + 0.5 * on, paint);
           }

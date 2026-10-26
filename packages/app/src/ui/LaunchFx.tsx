@@ -10,10 +10,32 @@
  */
 import { useCallback, useMemo } from "react";
 import { StyleSheet } from "react-native";
-import { Canvas, Picture, Skia, BlurStyle, type SkCanvas, type SkPicture } from "@shopify/react-native-skia";
+import {
+  Canvas,
+  Picture,
+  Skia,
+  BlurStyle,
+  type SkCanvas,
+  type SkPicture,
+} from "@shopify/react-native-skia";
 import { beginFrame, blankPicture, endFrame } from "./skiaFrame";
-import { runOnJS, useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
-import { POP_S, paintCalling, paintLaunch, paintPop, type FxPainter, type FxPalette, type FxRGB, type FxScene } from "../launchFx";
+import {
+  runOnJS,
+  useFrameCallback,
+  useSharedValue,
+  type FrameInfo,
+  type SharedValue,
+} from "react-native-reanimated";
+import {
+  POP_S,
+  paintCalling,
+  paintLaunch,
+  paintPop,
+  type FxPainter,
+  type FxPalette,
+  type FxRGB,
+  type FxScene,
+} from "../launchFx";
 import { pewPalette } from "../pew/palette";
 import { theme } from "../theme";
 
@@ -58,7 +80,10 @@ function fxTools(): FxTools {
 }
 
 /** The `FxPainter` both effects draw through; `s` is only used by `cover`. */
-export function skiaFx(canvas: SkCanvas, s: { w: number; h: number; cx: number; cy: number }): FxPainter {
+export function skiaFx(
+  canvas: SkCanvas,
+  s: { w: number; h: number; cx: number; cy: number },
+): FxPainter {
   "worklet";
   const { fill, halo, stroke, col, blurs } = fxTools();
   const color = (c: FxRGB, a: number) => {
@@ -120,7 +145,17 @@ export function skiaFx(canvas: SkCanvas, s: { w: number; h: number; cx: number; 
   };
 }
 
-function Ticker({ scene, palette, values, picture }: { scene: FxScene; palette: FxPalette; values: LaunchFxValues; picture: SharedValue<SkPicture> }) {
+function Ticker({
+  scene,
+  palette,
+  values,
+  picture,
+}: {
+  scene: FxScene;
+  palette: FxPalette;
+  values: LaunchFxValues;
+  picture: SharedValue<SkPicture>;
+}) {
   const sinceDraw = useSharedValue(1);
   const { clock, charge, burst, reveal, fade } = values;
   const tick = useCallback(
@@ -133,7 +168,18 @@ function Ticker({ scene, palette, values, picture }: { scene: FxScene; palette: 
       if (sinceDraw.value < 1 / 61) return;
       sinceDraw.value = 0;
       const canvas = beginFrame(scene.w, scene.h);
-      paintLaunch(scene, { t: clock.value, charge: charge.value, burst: burst.value, reveal: reveal.value, fade: fade.value }, palette, skiaFx(canvas, scene));
+      paintLaunch(
+        scene,
+        {
+          t: clock.value,
+          charge: charge.value,
+          burst: burst.value,
+          reveal: reveal.value,
+          fade: fade.value,
+        },
+        palette,
+        skiaFx(canvas, scene),
+      );
       picture.value = endFrame();
     },
     [scene, palette, clock, charge, burst, reveal, fade, sinceDraw, picture],
@@ -143,10 +189,23 @@ function Ticker({ scene, palette, values, picture }: { scene: FxScene; palette: 
 }
 
 /** Full-screen, touch-through. Mount it only while the launch step is up. */
-export function LaunchFx({ scene, color, values }: { scene: FxScene; color: string; values: LaunchFxValues }) {
+export function LaunchFx({
+  scene,
+  color,
+  values,
+}: {
+  scene: FxScene;
+  color: string;
+  values: LaunchFxValues;
+}) {
   const palette = useMemo<FxPalette>(() => {
     const pal = pewPalette(color);
-    return { bg: hexRgb(theme.color.bg), base: pal.base, light: pal.light, off: hexRgb(theme.stage.dash) };
+    return {
+      bg: hexRgb(theme.color.bg),
+      base: pal.base,
+      light: pal.light,
+      off: hexRgb(theme.stage.dash),
+    };
   }, [color]);
   const picture = useSharedValue<SkPicture>(blankPicture());
   return (
@@ -167,7 +226,12 @@ export function LaunchFx({ scene, color, values }: { scene: FxScene; color: stri
 export function CallingFx({ scene, color, on }: { scene: FxScene; color: string; on: boolean }) {
   const palette = useMemo<FxPalette>(() => {
     const pal = pewPalette(color);
-    return { bg: hexRgb(theme.color.bg), base: pal.base, light: pal.light, off: hexRgb(theme.stage.dash) };
+    return {
+      bg: hexRgb(theme.color.bg),
+      base: pal.base,
+      light: pal.light,
+      off: hexRgb(theme.stage.dash),
+    };
   }, [color]);
   const picture = useSharedValue<SkPicture>(blankPicture());
   const clock = useSharedValue(0);
@@ -185,7 +249,8 @@ export function CallingFx({ scene, color, on }: { scene: FxScene; color: string;
       if (sinceDraw.value < 1 / 61) return;
       sinceDraw.value = 0;
       const canvas = beginFrame(scene.w, scene.h);
-      if (strength.value > 0.002) paintCalling(scene, clock.value, strength.value, palette, skiaFx(canvas, scene));
+      if (strength.value > 0.002)
+        paintCalling(scene, clock.value, strength.value, palette, skiaFx(canvas, scene));
       picture.value = endFrame();
     },
     [scene, palette, clock, strength, target, sinceDraw, picture],
@@ -203,10 +268,23 @@ export function CallingFx({ scene, color, on }: { scene: FxScene; color: string;
  * Mount it for one burst (a new `key` replays it); `onDone` fires when the
  * last dot has gone. Touch-through.
  */
-export function PopFx({ scene, color, onDone }: { scene: FxScene; color: string; onDone: () => void }) {
+export function PopFx({
+  scene,
+  color,
+  onDone,
+}: {
+  scene: FxScene;
+  color: string;
+  onDone: () => void;
+}) {
   const palette = useMemo<FxPalette>(() => {
     const pal = pewPalette(color);
-    return { bg: hexRgb(theme.color.bg), base: pal.base, light: pal.light, off: hexRgb(theme.stage.dash) };
+    return {
+      bg: hexRgb(theme.color.bg),
+      base: pal.base,
+      light: pal.light,
+      off: hexRgb(theme.stage.dash),
+    };
   }, [color]);
   const picture = useSharedValue<SkPicture>(blankPicture());
   const b = useSharedValue(0);

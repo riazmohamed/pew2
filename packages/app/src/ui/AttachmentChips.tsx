@@ -51,72 +51,77 @@ function AttachmentChipsView({ attachments, onRemove }: AttachmentChipsProps) {
   const viewingUri = viewing ? pictureUri(viewing) : undefined;
   return (
     <>
-    {viewing && viewingUri && (
-      <ImageViewer
-        image={{ src: viewingUri, mimeType: viewing.mimeType, alt: viewing.name, ...(viewing.localUri && { origin: "device" as const }) }}
-        resolvedSrc={viewingUri}
-        visible
-        onClose={() => setViewing(undefined)}
-      />
-    )}
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.row}
-      keyboardShouldPersistTaps="handled"
-    >
-      {attachments.map((file) => (
-        <View key={file.id} style={styles.chip}>
-          {pictureUri(file) ? (
-            // Tapped, the picture opens full size: the way to read a screenshot
-            // of the computer before deciding whether to send it.
-            <Pressable
-              accessibilityRole="imagebutton"
-              accessibilityLabel={`View ${file.name}`}
-              hitSlop={touchSlop(theme.space(1))}
-              onPress={() => setViewing(file)}
-            >
-              <Image
-                source={{ uri: pictureUri(file) }}
-                style={styles.thumb}
-                accessible={false}
-                // A chip is a small square crop of a photo that is usually neither.
-                contentFit="cover"
-                transition={0}
-              />
-            </Pressable>
-          ) : (
-            <View style={styles.glyph}>
-              <Ionicons name={glyphFor(file.mimeType)} size={16} color={theme.color.glyph} />
-            </View>
-          )}
+      {viewing && viewingUri && (
+        <ImageViewer
+          image={{
+            src: viewingUri,
+            mimeType: viewing.mimeType,
+            alt: viewing.name,
+            ...(viewing.localUri && { origin: "device" as const }),
+          }}
+          resolvedSrc={viewingUri}
+          visible
+          onClose={() => setViewing(undefined)}
+        />
+      )}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.row}
+        keyboardShouldPersistTaps="handled"
+      >
+        {attachments.map((file) => (
+          <View key={file.id} style={styles.chip}>
+            {pictureUri(file) ? (
+              // Tapped, the picture opens full size: the way to read a screenshot
+              // of the computer before deciding whether to send it.
+              <Pressable
+                accessibilityRole="imagebutton"
+                accessibilityLabel={`View ${file.name}`}
+                hitSlop={touchSlop(theme.space(1))}
+                onPress={() => setViewing(file)}
+              >
+                <Image
+                  source={{ uri: pictureUri(file) }}
+                  style={styles.thumb}
+                  accessible={false}
+                  // A chip is a small square crop of a photo that is usually neither.
+                  contentFit="cover"
+                  transition={0}
+                />
+              </Pressable>
+            ) : (
+              <View style={styles.glyph}>
+                <Ionicons name={glyphFor(file.mimeType)} size={16} color={theme.color.glyph} />
+              </View>
+            )}
 
-          <View style={styles.labels}>
-            {/* `middle` keeps the extension visible, which is most of what a
+            <View style={styles.labels}>
+              {/* `middle` keeps the extension visible, which is most of what a
                 long generated filename actually tells you. */}
-            <Text style={styles.name} numberOfLines={1} ellipsizeMode="middle">
-              {file.name}
-            </Text>
-            <Text style={styles.size}>{formatSize(file.size)}</Text>
-          </View>
+              <Text style={styles.name} numberOfLines={1} ellipsizeMode="middle">
+                {file.name}
+              </Text>
+              <Text style={styles.size}>{formatSize(file.size)}</Text>
+            </View>
 
-          {onRemove && (
-            <Pressable
-              style={({ pressed }) => [styles.remove, pressed && styles.removePressed]}
-              hitSlop={touchSlop(theme.space(2))}
-              accessibilityRole="button"
-              accessibilityLabel={`Remove ${file.name}`}
-              onPress={() => {
-                haptics.tap();
-                onRemove(file.id);
-              }}
-            >
-              <Ionicons name="close" size={13} color={theme.color.textDim} />
-            </Pressable>
-          )}
-        </View>
-      ))}
-    </ScrollView>
+            {onRemove && (
+              <Pressable
+                style={({ pressed }) => [styles.remove, pressed && styles.removePressed]}
+                hitSlop={touchSlop(theme.space(2))}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${file.name}`}
+                onPress={() => {
+                  haptics.tap();
+                  onRemove(file.id);
+                }}
+              >
+                <Ionicons name="close" size={13} color={theme.color.textDim} />
+              </Pressable>
+            )}
+          </View>
+        ))}
+      </ScrollView>
     </>
   );
 }

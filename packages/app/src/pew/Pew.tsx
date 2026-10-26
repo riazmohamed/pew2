@@ -19,8 +19,27 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { BlurStyle, Canvas, Picture, Skia, type SkCanvas, type SkPicture } from "@shopify/react-native-skia";
-import Animated, { Easing, cancelAnimation, runOnJS, runOnUI, useAnimatedStyle, useFrameCallback, useSharedValue, withSpring, withTiming, type FrameInfo, type SharedValue } from "react-native-reanimated";
+import {
+  BlurStyle,
+  Canvas,
+  Picture,
+  Skia,
+  type SkCanvas,
+  type SkPicture,
+} from "@shopify/react-native-skia";
+import Animated, {
+  Easing,
+  cancelAnimation,
+  runOnJS,
+  runOnUI,
+  useAnimatedStyle,
+  useFrameCallback,
+  useSharedValue,
+  withSpring,
+  withTiming,
+  type FrameInfo,
+  type SharedValue,
+} from "react-native-reanimated";
 import { sounds } from "../ui/sounds";
 import { HOLD_CHARGE_MS, holdPulseGap, holdPulseKind } from "./homeLife";
 import { haptics } from "../ui/haptics";
@@ -147,7 +166,14 @@ function pewTools(): PewTools {
   stroke.setAntiAlias(true);
   stroke.setStyle(1); // Stroke
   stroke.setStrokeCap(1); // Round
-  g.__pewTools = { fill, halo, stroke, col: new Float32Array(4), blurs: {}, shape: Skia.Path.Make() };
+  g.__pewTools = {
+    fill,
+    halo,
+    stroke,
+    col: new Float32Array(4),
+    blurs: {},
+    shape: Skia.Path.Make(),
+  };
   return g.__pewTools;
 }
 
@@ -279,11 +305,28 @@ const PALETTE_KEYS = ["base", "light", "dark", "glow", "eye", "off"] as const;
  * that is already gone. The callback is stable for the same reason — a new
  * function every render would re-register it every render.
  */
-function PewTicker({ S, seed, body, mood, palette, shown, picture, clock, sinceDraw, hold, feeds, fed, feedX, feedY, toy }: TickerProps) {
+function PewTicker({
+  S,
+  seed,
+  body,
+  mood,
+  palette,
+  shown,
+  picture,
+  clock,
+  sinceDraw,
+  hold,
+  feeds,
+  fed,
+  feedX,
+  feedY,
+  toy,
+}: TickerProps) {
   const tick = useCallback(
     (info: FrameInfo) => {
       "worklet";
-      if (body.value === null || body.value.S !== S || body.value.seed !== seed) body.value = makePewBody(S, seed < 0 ? undefined : seed);
+      if (body.value === null || body.value.S !== S || body.value.seed !== seed)
+        body.value = makePewBody(S, seed < 0 ? undefined : seed);
       const B = body.value;
       const dt = Math.min(1 / 30, Math.max(0.001, (info.timeSincePreviousFrame ?? 16) / 1000));
       clock.value += dt;
@@ -331,8 +374,13 @@ function PewTicker({ S, seed, body, mood, palette, shown, picture, clock, sinceD
         for (const key of PALETTE_KEYS) {
           const a = pal[key];
           const b = target[key];
-          const c: RGB = [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
-          if (Math.abs(c[0] - b[0]) + Math.abs(c[1] - b[1]) + Math.abs(c[2] - b[2]) > 1.5) done = false;
+          const c: RGB = [
+            a[0] + (b[0] - a[0]) * k,
+            a[1] + (b[1] - a[1]) * k,
+            a[2] + (b[2] - a[2]) * k,
+          ];
+          if (Math.abs(c[0] - b[0]) + Math.abs(c[1] - b[1]) + Math.abs(c[2] - b[2]) > 1.5)
+            done = false;
           next[key] = c;
         }
         pal = done ? target : next;
@@ -340,19 +388,54 @@ function PewTicker({ S, seed, body, mood, palette, shown, picture, clock, sinceD
       shown.value = pal;
       picture.value = recordFrame(B, clock.value, mood.value, pal);
     },
-    [S, seed, body, mood, palette, shown, picture, clock, sinceDraw, hold, feeds, fed, feedX, feedY, toy],
+    [
+      S,
+      seed,
+      body,
+      mood,
+      palette,
+      shown,
+      picture,
+      clock,
+      sinceDraw,
+      hold,
+      feeds,
+      fed,
+      feedX,
+      feedY,
+      toy,
+    ],
   );
   useFrameCallback(tick, true);
   return null;
 }
 
-function PewView({ size, mood = "idle", color, interactive: interactiveProp = false, onPress, onHold, paused = false, accessibilityLabel, sleepKey, sleepStyle, holdWhile, feeds, feedFrom, toy, reach = 0, style }: PewProps) {
+function PewView({
+  size,
+  mood = "idle",
+  color,
+  interactive: interactiveProp = false,
+  onPress,
+  onHold,
+  paused = false,
+  accessibilityLabel,
+  sleepKey,
+  sleepStyle,
+  holdWhile,
+  feeds,
+  feedFrom,
+  toy,
+  reach = 0,
+  style,
+}: PewProps) {
   const hashed = sleepKey === undefined ? -1 : pewSleepSeed(sleepKey);
   // The style is the seed's remainder by the style count: swap just that part.
   const seed =
     sleepStyle === undefined
       ? hashed
-      : Math.max(0, hashed) - (Math.max(0, hashed) % PEW_SLEEP_STYLES) + (((sleepStyle % PEW_SLEEP_STYLES) + PEW_SLEEP_STYLES) % PEW_SLEEP_STYLES);
+      : Math.max(0, hashed) -
+        (Math.max(0, hashed) % PEW_SLEEP_STYLES) +
+        (((sleepStyle % PEW_SLEEP_STYLES) + PEW_SLEEP_STYLES) % PEW_SLEEP_STYLES);
   // First: the squish style below reads it (a worklet closing over a `const`
   // declared later threw on the UI thread and left Pew blank).
   const S = Math.max(10, Math.round(size));
@@ -394,13 +477,20 @@ function PewView({ size, mood = "idle", color, interactive: interactiveProp = fa
     squish.value = withSpring(0, { damping: 6, stiffness: 260, mass: 0.6 });
     holdRef.current?.("end");
   }, [squish, stopPulses]);
-  useEffect(() => () => {
-    if (holdTimer.current) sounds.stop("charge", 60);
-    stopPulses();
-  }, [stopPulses]);
+  useEffect(
+    () => () => {
+      if (holdTimer.current) sounds.stop("charge", 60);
+      stopPulses();
+    },
+    [stopPulses],
+  );
   // Wider and lower while charging; the spring back overshoots into a bounce.
   const squishStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleX: 1 + squish.value * 0.08 }, { scaleY: 1 - squish.value * 0.12 }, { translateY: squish.value * S * 0.05 }],
+    transform: [
+      { scaleX: 1 + squish.value * 0.08 },
+      { scaleY: 1 - squish.value * 0.12 },
+      { translateY: squish.value * S * 0.05 },
+    ],
   }));
   const pressRef = useRef(onPress);
   pressRef.current = onPress;
@@ -412,7 +502,10 @@ function PewView({ size, mood = "idle", color, interactive: interactiveProp = fa
   const burstRef = useRef(toy?.onBurst);
   burstRef.current = toy?.onBurst;
   const toyBurst = useCallback(() => burstRef.current?.(), []);
-  const toyTicker = useMemo(() => (toy ? { spin: toy.spin, gone: toy.gone, burst: toyBurst } : undefined), [toy, toyBurst]);
+  const toyTicker = useMemo(
+    () => (toy ? { spin: toy.spin, gone: toy.gone, burst: toyBurst } : undefined),
+    [toy, toyBurst],
+  );
   // Gone while his dots are flying; back with a pop as `gone` drops.
   const goneStyle = useAnimatedStyle(() => {
     const g = toy ? toy.gone.value : 0;
@@ -501,11 +594,13 @@ function PewView({ size, mood = "idle", color, interactive: interactiveProp = fa
         if (!holdingSV.value) touchPew(body.value, e.x, e.y, false);
         releasePew(body.value);
       });
-    const tap = Gesture.Tap().hitSlop(reach).onEnd((e) => {
-      "worklet";
-      if (body.value) pokePew(body.value, e.x, e.y);
-      runOnJS(tapped)();
-    });
+    const tap = Gesture.Tap()
+      .hitSlop(reach)
+      .onEnd((e) => {
+        "worklet";
+        if (body.value) pokePew(body.value, e.x, e.y);
+        runOnJS(tapped)();
+      });
     if (!holdable) return Gesture.Exclusive(pan, tap);
     // Pan and hold race (moving past 4pt spins; resting 350ms holds); the tap
     // waits for the hold to fail, so a hold never also taps.
@@ -553,14 +648,37 @@ function PewView({ size, mood = "idle", color, interactive: interactiveProp = fa
       importantForAccessibility={accessibilityLabel === undefined ? "no-hide-descendants" : "yes"}
     >
       {live ? (
-        <PewTicker S={S} seed={seed} body={body} mood={moodSV} palette={paletteSV} shown={shownPal} picture={picture} clock={clock} sinceDraw={sinceDraw} hold={holdWhile} feeds={feeds} fed={fed} feedX={feedFrom?.x ?? S * 0.18} feedY={feedFrom?.y ?? S * 0.5} toy={toyTicker} />
+        <PewTicker
+          S={S}
+          seed={seed}
+          body={body}
+          mood={moodSV}
+          palette={paletteSV}
+          shown={shownPal}
+          picture={picture}
+          clock={clock}
+          sinceDraw={sinceDraw}
+          hold={holdWhile}
+          feeds={feeds}
+          fed={fed}
+          feedX={feedFrom?.x ?? S * 0.18}
+          feedY={feedFrom?.y ?? S * 0.5}
+          toy={toyTicker}
+        />
       ) : null}
       {/* The canvas never takes touches (pointerEvents none), so a detector
           attached to it saw nothing: a real view holds the gesture instead. */}
       {gesture ? (
         <GestureDetector gesture={gesture}>
-          <Animated.View collapsable={false} style={[StyleSheet.absoluteFill, holdable && squishStyle]}>
-            {toy ? <Animated.View style={[StyleSheet.absoluteFill, goneStyle]}>{canvas}</Animated.View> : canvas}
+          <Animated.View
+            collapsable={false}
+            style={[StyleSheet.absoluteFill, holdable && squishStyle]}
+          >
+            {toy ? (
+              <Animated.View style={[StyleSheet.absoluteFill, goneStyle]}>{canvas}</Animated.View>
+            ) : (
+              canvas
+            )}
           </Animated.View>
         </GestureDetector>
       ) : (

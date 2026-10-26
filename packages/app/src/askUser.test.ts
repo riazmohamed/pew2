@@ -17,21 +17,39 @@ const choice: AskQuestion = {
   kind: "choice",
   options: [{ label: "Postgres", value: "pg", recommended: true }, { label: "SQLite" }],
 };
-const multi: AskQuestion = { id: "checks", question: "Run?", kind: "multi", options: [{ label: "Tests" }, { label: "Lint" }] };
+const multi: AskQuestion = {
+  id: "checks",
+  question: "Run?",
+  kind: "multi",
+  options: [{ label: "Tests" }, { label: "Lint" }],
+};
 const text: AskQuestion = { id: "name", question: "Name?", kind: "text" };
 const confirm: AskQuestion = { id: "go", question: "Go?", kind: "confirm", allowOther: false };
 
 test("reads a live ask_user payload and rejects junk", () => {
-  expect(readAskEvent({ kind: "ask_user", requestId: "r1", questions: [choice] })).toEqual({ requestId: "r1", questions: [choice] });
-  expect(readAskEvent({ kind: "user_message", requestId: "r1", questions: [choice] })).toBeUndefined();
+  expect(readAskEvent({ kind: "ask_user", requestId: "r1", questions: [choice] })).toEqual({
+    requestId: "r1",
+    questions: [choice],
+  });
+  expect(
+    readAskEvent({ kind: "user_message", requestId: "r1", questions: [choice] }),
+  ).toBeUndefined();
   expect(readAskEvent({ kind: "ask_user", requestId: "r1", questions: [] })).toBeUndefined();
-  expect(readAskEvent({ kind: "ask_user", requestId: "r1", questions: [{ ...choice, options: "[CIRCULAR]" }] })).toBeUndefined();
+  expect(
+    readAskEvent({
+      kind: "ask_user",
+      requestId: "r1",
+      questions: [{ ...choice, options: "[CIRCULAR]" }],
+    }),
+  ).toBeUndefined();
 });
 
 test("Replay.asks: absent stays absent, [] is none", () => {
   expect(readAskList(undefined)).toBeUndefined();
   expect(readAskList([])).toEqual([]);
-  expect(readAskList([{ requestId: "r", questions: [text] }, { nope: 1 }])).toEqual([{ requestId: "r", questions: [text] }]);
+  expect(readAskList([{ requestId: "r", questions: [text] }, { nope: 1 }])).toEqual([
+    { requestId: "r", questions: [text] },
+  ]);
 });
 
 test("confirm without options is yes/no; recommended is never preselected", () => {
@@ -61,11 +79,17 @@ test("free text replaces a single pick and joins a multi", () => {
   draft = pickOption(draft, choice, "SQLite");
   expect(buildAskResult([choice], draft)).toEqual({ action: "answer", answers: { db: "SQLite" } });
   const m = typeOther(pickOption(EMPTY_DRAFT, multi, "Tests"), multi, "Build");
-  expect(buildAskResult([multi], m)).toEqual({ action: "answer", answers: { checks: ["Tests", "Build"] } });
+  expect(buildAskResult([multi], m)).toEqual({
+    action: "answer",
+    answers: { checks: ["Tests", "Build"] },
+  });
 });
 
 test("typed text is ignored when the question opts out", () => {
   const draft = typeOther(EMPTY_DRAFT, confirm, "maybe");
   expect(buildAskResult([confirm], draft)).toBeUndefined();
-  expect(buildAskResult([confirm], pickOption(draft, confirm, "yes"))).toEqual({ action: "answer", answers: { go: "yes" } });
+  expect(buildAskResult([confirm], pickOption(draft, confirm, "yes"))).toEqual({
+    action: "answer",
+    answers: { go: "yes" },
+  });
 });

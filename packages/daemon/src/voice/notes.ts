@@ -8,7 +8,9 @@ import { lastAgentLines } from "./replies.js";
 /** How a session is named to Pew: its folder, and the agent when known. */
 export function sessionName(source: { folder?: string; agentName?: string }): string {
   const folder = source.folder ?? "a session";
-  return source.agentName && source.agentName !== folder ? `${folder} (${source.agentName})` : folder;
+  return source.agentName && source.agentName !== folder
+    ? `${folder} (${source.agentName})`
+    : folder;
 }
 
 /**
@@ -26,7 +28,8 @@ export function turnNote(
   if (working) return { text: `${name} started working.`, about };
   const said = lastAgentLines(source.events, 8).join(" ").slice(0, 1200);
   const reply = said ? ` Its reply: ${said}` : " It said nothing.";
-  if (waitingOnUser) return { text: `${name} finished its turn and is waiting on them.${reply}`, about };
+  if (waitingOnUser)
+    return { text: `${name} finished its turn and is waiting on them.${reply}`, about };
   return {
     about,
     text: `${name} finished its turn.${reply} Tell them at the next pause, in a sentence or two: the outcome, not the details.`,

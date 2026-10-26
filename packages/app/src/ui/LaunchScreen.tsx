@@ -129,7 +129,12 @@ export function LaunchScreen({ onConnect }: Props) {
         {awake ? (
           <Dissolve delay={240} enabled={!reduce}>
             {/* connect() plays the haptic. pew2's own coral: no agent yet. */}
-            <StageButton color={PEW_CORAL} feel="none" label="Connect your computer" onPress={connect} />
+            <StageButton
+              color={PEW_CORAL}
+              feel="none"
+              label="Connect your computer"
+              onPress={connect}
+            />
           </Dissolve>
         ) : (
           <View style={styles.buttonSpace} />
@@ -147,14 +152,34 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: theme.gutter,
   },
-  centre: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: theme.gutter },
+  centre: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: theme.gutter,
+  },
   // The globe fills ~60% of its box; pull the copy up under it.
   pew: { marginBottom: -theme.space(10) },
   copy: { alignSelf: "stretch", alignItems: "center", gap: theme.space(2) },
-  title: { color: theme.color.text, fontFamily: theme.display.regular, fontSize: 32, letterSpacing: 0.5 },
-  body: { color: theme.color.textDim, fontSize: 15, lineHeight: theme.line.body, textAlign: "center" },
+  title: {
+    color: theme.color.text,
+    fontFamily: theme.display.regular,
+    fontSize: 32,
+    letterSpacing: 0.5,
+  },
+  body: {
+    color: theme.color.textDim,
+    fontSize: 15,
+    lineHeight: theme.line.body,
+    textAlign: "center",
+  },
   actions: { paddingHorizontal: theme.gutter },
-  button: { paddingVertical: theme.space(4), alignItems: "center", justifyContent: "center", minHeight: 56 },
+  button: {
+    paddingVertical: theme.space(4),
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 56,
+  },
   buttonSpace: { minHeight: 56 },
   buttonPressed: { backgroundColor: theme.glass.fillPressed },
   buttonText: { color: theme.color.text, fontSize: theme.font.title, fontWeight: "600" },

@@ -72,8 +72,6 @@ module.exports = ({ config }) => {
     ...expo,
     ...android,
     ...(owner ? { owner } : {}),
-    ...(projectId
-      ? { extra: { ...expo.extra, eas: { ...expo.extra?.eas, projectId } } }
-      : {}),
+    ...(projectId ? { extra: { ...expo.extra, eas: { ...expo.extra?.eas, projectId } } } : {}),
   };
 };

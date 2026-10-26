@@ -159,7 +159,10 @@ test("reopening a conversation restores the model it was last held at", async ()
         name: "Model",
         type: "select",
         currentValue: "opus-5",
-        options: [{ value: "opus-5", name: "Opus" }, { value: "sonnet", name: "Sonnet" }],
+        options: [
+          { value: "opus-5", name: "Opus" },
+          { value: "sonnet", name: "Sonnet" },
+        ],
       },
     ],
     setConfigOption: async (configId: string, value: string | boolean) => {
@@ -196,9 +199,7 @@ test("a conversation never configured here keeps the agent's own settings", asyn
 
   session.handle = {
     sessionId: "agent-2",
-    configOptions: [
-      { id: "__acp_model", name: "Model", type: "select", currentValue: "opus-5" },
-    ],
+    configOptions: [{ id: "__acp_model", name: "Model", type: "select", currentValue: "opus-5" }],
     setConfigOption: async (configId: string) => {
       applied.push(configId);
       return [];
@@ -655,7 +656,11 @@ test("a prompt over the attachment limits is refused before anything is echoed",
 
   await expect(
     daemon.prompt("s1", "look", [
-      { name: "huge.bin", mimeType: "application/octet-stream", data: "A".repeat(12 * 1024 * 1024) },
+      {
+        name: "huge.bin",
+        mimeType: "application/octet-stream",
+        data: "A".repeat(12 * 1024 * 1024),
+      },
     ]),
   ).rejects.toThrow(/limit/);
 
@@ -705,7 +710,11 @@ function plantIdleSession(
 ) {
   let closed = false;
   const session = {
-    handle: { close: () => { closed = true; } } as unknown as AcpSessionHandle,
+    handle: {
+      close: () => {
+        closed = true;
+      },
+    } as unknown as AcpSessionHandle,
     log: new SessionLog(sessionId),
     providerId: "test",
     cwd: "/tmp",
@@ -1071,11 +1080,17 @@ test("an empty daemon is quiet", () => {
 test("provider.enable turns an agent off, re-announces, and keeps it in the catalog", async () => {
   const home = await mkdtemp(join(tmpdir(), "pew2-enable-"));
   const sent: unknown[] = [];
-  const daemon = new Daemon({ id: "test", name: "test" }, false, { ...process.env, PEW2_HOME: home });
+  const daemon = new Daemon({ id: "test", name: "test" }, false, {
+    ...process.env,
+    PEW2_HOME: home,
+  });
   daemon.attach((message) => sent.push(message));
   await daemon.refreshProviders();
-  const last = () => sent.filter((m): m is wire.ProviderAnnounce => (m as { t?: string }).t === "providers").at(-1);
-  const someone = last()?.catalog?.find((entry) => entry.id !== "gg-goals" && entry.id !== "ggcoder");
+  const last = () =>
+    sent.filter((m): m is wire.ProviderAnnounce => (m as { t?: string }).t === "providers").at(-1);
+  const someone = last()?.catalog?.find(
+    (entry) => entry.id !== "gg-goals" && entry.id !== "ggcoder",
+  );
   expect(someone).toBeDefined();
   if (!someone) return;
   await daemon.setProviderEnabled(someone.id, false);

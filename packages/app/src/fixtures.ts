@@ -20,8 +20,7 @@ import type { Session, Turn } from "./useDaemon";
 declare const __DEV__: boolean;
 
 /** Enabled by default in development so the UI can be reviewed with content. */
-export const USE_FIXTURES =
-  __DEV__ && process.env.EXPO_PUBLIC_PEW2_FIXTURES !== "0";
+export const USE_FIXTURES = __DEV__ && process.env.EXPO_PUBLIC_PEW2_FIXTURES !== "0";
 
 /** Every fixture id starts with this so they can be told from real sessions. */
 export const FIXTURE_PREFIX = "fixture-";
@@ -121,10 +120,7 @@ export function sampleSessions(now: number = Date.now()): Session[] {
       configOptions: [],
       turns: turns("fixture-interrupted", [
         ["user", "Upgrade every dependency to latest"],
-        [
-          "thought",
-          "Checking which upgrades are breaking before touching the lockfile.",
-        ],
+        ["thought", "Checking which upgrades are breaking before touching the lockfile."],
         [
           "agent",
           "Starting with the safe patch and minor bumps, then I'll list the majors separately for you to decide on.",

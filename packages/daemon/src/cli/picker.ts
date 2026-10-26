@@ -56,18 +56,13 @@ export function initialState(items: PickerItem[], disabled: Set<string> = new Se
   // Usable agents first, in the order they came in. The list is a thing to act
   // on, and interleaving agents that cannot be picked means arrowing past rows
   // that do nothing to reach the ones that do.
-  const ordered = [
-    ...items.filter((i) => i.selectable),
-    ...items.filter((i) => !i.selectable),
-  ];
+  const ordered = [...items.filter((i) => i.selectable), ...items.filter((i) => !i.selectable)];
 
   return {
     items: ordered,
     // Index 0 is a usable row whenever there is one, given the sort above.
     cursor: 0,
-    chosen: new Set(
-      ordered.filter((i) => i.selectable && !disabled.has(i.id)).map((i) => i.id),
-    ),
+    chosen: new Set(ordered.filter((i) => i.selectable && !disabled.has(i.id)).map((i) => i.id)),
   };
 }
 
@@ -120,7 +115,10 @@ export function reduce(state: PickerState, key: string): PickerState {
     case "\n":
       return { ...state, done: "accepted" };
     case "a":
-      return { ...state, chosen: new Set(state.items.filter((i) => i.selectable).map((i) => i.id)) };
+      return {
+        ...state,
+        chosen: new Set(state.items.filter((i) => i.selectable).map((i) => i.id)),
+      };
     case "n":
       return { ...state, chosen: new Set() };
     // `q`, not a bare escape. An arrow key *is* an escape sequence, and a
@@ -194,7 +192,10 @@ export function summary(state: PickerState, options: RenderOptions = {}): string
   if (count === 0) {
     // Allowed, but said plainly: a phone with no agents is not obviously an
     // intentional state, and the way back should be on screen.
-    return r.outro(`${s.bold("No agents chosen.")} ${s.hex(PALETTE.faint, "Run pew2 setup again to pick some.")}`, "warn");
+    return r.outro(
+      `${s.bold("No agents chosen.")} ${s.hex(PALETTE.faint, "Run pew2 setup again to pick some.")}`,
+      "warn",
+    );
   }
   return r.outro(s.bold(`${plural(count, "agent")} on your phone.`), "ok");
 }

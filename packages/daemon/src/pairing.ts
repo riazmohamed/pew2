@@ -265,7 +265,11 @@ export function lanAddresses(): string[] {
 
       // Prefer the interface most likely to be the one the phone shares: real
       // Wi-Fi/Ethernet over the virtual bridges Docker and VMs leave behind.
-      const rank = /^(en|eth|wl)/.test(name) ? 0 : /^(bridge|docker|veth|utun|tun|tap)/.test(name) ? 2 : 1;
+      const rank = /^(en|eth|wl)/.test(name)
+        ? 0
+        : /^(bridge|docker|veth|utun|tun|tap)/.test(name)
+          ? 2
+          : 1;
       found.push({ address: entry.address, rank });
     }
   }
@@ -403,7 +407,9 @@ export function resumeKeyPath(env: NodeJS.ProcessEnv = process.env): string {
  * never logged; not derived from the pairing, which every paired phone holds.
  * Undefined if it can't be read or written: the relay then admits as before.
  */
-export async function loadResumeKey(env: NodeJS.ProcessEnv = process.env): Promise<string | undefined> {
+export async function loadResumeKey(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string | undefined> {
   const path = resumeKeyPath(env);
   try {
     const existing = (await readFile(path, "utf8")).trim();

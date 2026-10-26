@@ -22,8 +22,13 @@ export function openWindows(
   desk: DeskAnnouncement | undefined,
   agentSessionId: string | undefined,
 ): { native: boolean; chat: boolean } {
-  const mine = agentSessionId ? (desk?.windows ?? []).filter((w) => w.agentSessionId === agentSessionId) : [];
-  return { native: mine.some((w) => w.kind === "native"), chat: mine.some((w) => w.kind === "chat") };
+  const mine = agentSessionId
+    ? (desk?.windows ?? []).filter((w) => w.agentSessionId === agentSessionId)
+    : [];
+  return {
+    native: mine.some((w) => w.kind === "native"),
+    chat: mine.some((w) => w.kind === "chat"),
+  };
 }
 
 /**
@@ -41,19 +46,26 @@ export function deskActions(
 ): DeskAction[] {
   const targets = deskTargets(desk, providerId);
   const open = openWindows(desk, agentSessionId);
-  if (!open.native && !open.chat) return targets.map((target) => ({ kind: "open" as const, target }));
+  if (!open.native && !open.chat)
+    return targets.map((target) => ({ kind: "open" as const, target }));
   const other = targets.find((target) => !(target === "native" ? open.native : open.chat));
   return [{ kind: "close" }, ...(other ? [{ kind: "open" as const, target: other }] : [])];
 }
 
 /** The close button's label: says what goes. */
-export function closeLabel(open: { native: boolean; chat: boolean }, agentName = "OG Coder"): string {
+export function closeLabel(
+  open: { native: boolean; chat: boolean },
+  agentName = "OG Coder",
+): string {
   if (open.native && open.chat) return "Close on computer";
   return open.native ? `Close ${agentName}` : "Close pew2 chat";
 }
 
 /** Where a tap can open this conversation, in the order the chooser lists them. */
-export function deskTargets(desk: DeskAnnouncement | undefined, providerId: string | undefined): DeskTarget[] {
+export function deskTargets(
+  desk: DeskAnnouncement | undefined,
+  providerId: string | undefined,
+): DeskTarget[] {
   if (!desk?.available) return [];
   // An older daemon announces no `native`: only `pew2 chat`, as it always was.
   if (providerId && desk.native?.includes(providerId)) return ["native", "chat"];

@@ -11,12 +11,27 @@
  * a moment, and the keyboard should drop.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 // Share expo-image's original source cache with the transcript.
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { theme } from "../theme";
 import { Led } from "./stage/Led";
 import { StageButton } from "./stage/StageButton";
@@ -130,14 +145,23 @@ export function ImageViewer({
           // Sides as well as top: held sideways one long edge is the notch,
           // and this is the only way out of a viewer whose backdrop is
           // otherwise a photograph.
-          style={[styles.topBar, { paddingLeft: theme.gutter + insets.left, paddingRight: theme.gutter + insets.right }]}
+          style={[
+            styles.topBar,
+            { paddingLeft: theme.gutter + insets.left, paddingRight: theme.gutter + insets.right },
+          ]}
           title={fileName(image)}
           ellipsize="middle"
           leading={<HeaderButton glyph="close" label="Close image" onPress={onClose} />}
         />
 
-        <ViewerImage key={resolvedSrc} uri={resolvedSrc} alt={image.alt || "Image from the agent"} />
-        <Led tone="dim" style={styles.hint}>Tap to zoom</Led>
+        <ViewerImage
+          key={resolvedSrc}
+          uri={resolvedSrc}
+          alt={image.alt || "Image from the agent"}
+        />
+        <Led tone="dim" style={styles.hint}>
+          Tap to zoom
+        </Led>
 
         <View
           style={[
@@ -151,10 +175,7 @@ export function ImageViewer({
         >
           {!!feedback && (
             <Text
-              style={[
-                styles.feedback,
-                feedback.tone === "bad" && { color: theme.color.danger },
-              ]}
+              style={[styles.feedback, feedback.tone === "bad" && { color: theme.color.danger }]}
             >
               {feedback.text}
             </Text>
@@ -176,7 +197,11 @@ export function ImageViewer({
                 busy === "save" ? (
                   <ActivityIndicator color={agent} size="small" />
                 ) : (
-                  <Ionicons name="download-outline" size={16} color={busy ? theme.color.textDim : agent} />
+                  <Ionicons
+                    name="download-outline"
+                    size={16}
+                    color={busy ? theme.color.textDim : agent}
+                  />
                 )
               }
               onPress={() => void run("save")}
@@ -193,7 +218,11 @@ export function ImageViewer({
                 busy === "share" ? (
                   <ActivityIndicator color={theme.color.text} size="small" />
                 ) : (
-                  <Ionicons name="share-outline" size={16} color={busy ? theme.color.textDim : theme.color.text} />
+                  <Ionicons
+                    name="share-outline"
+                    size={16}
+                    color={busy ? theme.color.textDim : theme.color.text}
+                  />
                 )
               }
               onPress={() => void run("share")}
@@ -224,8 +253,8 @@ function ViewerImage({ uri, alt }: { uri: string; alt: string }) {
     haptics.select();
     const scale = zoomed ? 1 : 3;
     scroll.current?.scrollResponderZoomTo({
-      x: size.width * (1 - 1 / scale) / 2,
-      y: size.height * (1 - 1 / scale) / 2,
+      x: (size.width * (1 - 1 / scale)) / 2,
+      y: (size.height * (1 - 1 / scale)) / 2,
       width: size.width / scale,
       height: size.height / scale,
       // UIScrollView's own zoom curve: the native spring, and it holds still
@@ -261,10 +290,13 @@ function ViewerImage({ uri, alt }: { uri: string; alt: string }) {
     );
   }
   return (
-    <View style={styles.image} onLayout={({ nativeEvent: { layout } }) => {
-      setSize({ width: layout.width, height: layout.height });
-      setZoomed(false);
-    }}>
+    <View
+      style={styles.image}
+      onLayout={({ nativeEvent: { layout } }) => {
+        setSize({ width: layout.width, height: layout.height });
+        setZoomed(false);
+      }}
+    >
       {size.width > 0 && size.height > 0 && (
         <ScrollView
           key={`${size.width}:${size.height}`}
@@ -277,7 +309,7 @@ function ViewerImage({ uri, alt }: { uri: string; alt: string }) {
           showsHorizontalScrollIndicator={false}
           showsVerticalScrollIndicator={false}
           contentInsetAdjustmentBehavior="never"
-          onScroll={event => setZoomed(event.nativeEvent.zoomScale > 1)}
+          onScroll={(event) => setZoomed(event.nativeEvent.zoomScale > 1)}
           scrollEventThrottle={16}
         >
           <Pressable

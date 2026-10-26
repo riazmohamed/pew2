@@ -134,12 +134,10 @@ const OUTDATED =
  * the same thing to the user and must not fall through to "did not start",
  * which would be a lie about an agent that plainly did.
  */
-const STALLED =
-  /did not respond to the acp handshake|never opened a session|timed out|timeout/i;
+const STALLED = /did not respond to the acp handshake|never opened a session|timed out|timeout/i;
 
 /** It answered with an exit rather than a handshake. */
-const CRASHED =
-  /failed to start|connection closed|exited|not found on path|eacces|spawn \w+/i;
+const CRASHED = /failed to start|connection closed|exited|not found on path|eacces|spawn \w+/i;
 
 /** Wrapper text that says nothing on its own, so it must not be shown as a reason. */
 const EMPTY_REASON =
@@ -337,7 +335,13 @@ export function agentSections(agents: AgentState[], options: RenderOptions = {})
     out.push(...r.step("Turned off", "your choice — not checked"));
     out.push(
       r.line(
-        `${s.hex(PALETTE.faint, off.map((agent) => agent.name).sort((a, b) => a.localeCompare(b)).join(", "))}`,
+        `${s.hex(
+          PALETTE.faint,
+          off
+            .map((agent) => agent.name)
+            .sort((a, b) => a.localeCompare(b))
+            .join(", "),
+        )}`,
       ),
     );
     out.push(
@@ -433,7 +437,9 @@ export function agentSections(agents: AgentState[], options: RenderOptions = {})
  */
 function signinHint(agent: AgentState): string {
   const detail = agent.verify?.detail;
-  return detail ? detail.split("\n")[0]!.trim() : "finish this agent's own setup, then run pew2 setup again";
+  return detail
+    ? detail.split("\n")[0]!.trim()
+    : "finish this agent's own setup, then run pew2 setup again";
 }
 
 /**

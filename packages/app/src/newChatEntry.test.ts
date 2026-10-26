@@ -14,7 +14,9 @@ describe("projectPillAction", () => {
     expect(projectPillAction({ loadingSession: false, goals: false })).toBe("choose");
   });
   test("inside a conversation it shows the details", () => {
-    expect(projectPillAction({ sessionId: "s1", loadingSession: false, goals: false })).toBe("details");
+    expect(projectPillAction({ sessionId: "s1", loadingSession: false, goals: false })).toBe(
+      "details",
+    );
   });
   test("a conversation still reopening is not a new one", () => {
     expect(projectPillAction({ loadingSession: true, goals: false })).toBe("details");

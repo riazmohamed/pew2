@@ -189,7 +189,10 @@ export class RelayClient {
       // taken the room (`yielded`).
       const headers: Record<string, string> =
         this.options.resumeKey && !this.yielded ? { "x-pew2-resume": this.options.resumeKey } : {};
-      socket = (this.options.createSocket ?? ((url, extra) => new WebSocket(url, { headers: extra } as never)))(this.endpoint, headers);
+      socket = (
+        this.options.createSocket ??
+        ((url, extra) => new WebSocket(url, { headers: extra } as never))
+      )(this.endpoint, headers);
     } catch (error) {
       // A malformed URL throws synchronously. Treat it as any other failure so
       // a typo'd relay does not kill the daemon.
@@ -392,7 +395,9 @@ export class RelayClient {
       // Why, in the log: a relay refusal (a live daemon already there, a full
       // room) and a dropped network look identical otherwise, and they have
       // different fixes.
-      const why = [event?.code, event?.reason].filter((part) => part !== undefined && part !== "").join(" ");
+      const why = [event?.code, event?.reason]
+        .filter((part) => part !== undefined && part !== "")
+        .join(" ");
       this.lastClose = why || undefined;
       // Only tear down state that still belongs to *this* socket. `rekey`
       // closes the old one and immediately opens a new one, and `onclose`

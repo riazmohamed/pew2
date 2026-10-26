@@ -30,7 +30,6 @@ import {
   type PendingPlan,
 } from "../ggReview";
 
-
 // ── Plan review ─────────────────────────────────────────────
 
 /** The plan as a document: its first heading, and its numbered steps (none when it has no list). */
@@ -52,7 +51,11 @@ function PlanReviewSheetView({
   plan?: PendingPlan;
   /** The daemon refuses `plan.decide` mid-turn, so every decision waits for idle. */
   busy: boolean;
-  onDecide: (generation: number, action: "accept" | "feedback" | "reject", feedback?: string) => void;
+  onDecide: (
+    generation: number,
+    action: "accept" | "feedback" | "reject",
+    feedback?: string,
+  ) => void;
 }) {
   const held = useRef(plan);
   if (plan) held.current = plan;
@@ -84,17 +87,26 @@ function PlanReviewSheetView({
       dismissLabel="Decide later"
       onClose={() => setDeferred(plan?.generation)}
     >
-      <StageScroll style={styles.scroll} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <StageScroll
+        style={styles.scroll}
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+      >
         {doc.steps.length > 0 ? (
           <>
-            <Text style={styles.sub} numberOfLines={1}>{`${doc.steps.length} step${doc.steps.length === 1 ? "" : "s"}`}</Text>
+            <Text
+              style={styles.sub}
+              numberOfLines={1}
+            >{`${doc.steps.length} step${doc.steps.length === 1 ? "" : "s"}`}</Text>
             <View>
               {doc.steps.map((step, i) => (
                 <Dissolve key={`${i}:${step}`} kind="row" delay={i * 50}>
                   {i > 0 ? <DashedRule /> : null}
                   <View style={styles.step}>
                     <Led style={styles.stepNum}>{String(i + 1).padStart(2, "0")}</Led>
-                    <Text style={styles.stepText} numberOfLines={2}>{step}</Text>
+                    <Text style={styles.stepText} numberOfLines={2}>
+                      {step}
+                    </Text>
                   </View>
                 </Dissolve>
               ))}
@@ -118,7 +130,12 @@ function PlanReviewSheetView({
         ) : null}
         {busy ? <Text style={styles.hint}>Agent is working. Decide when it finishes.</Text> : null}
         {/* decide() plays its own haptic (sent / warned), so the buttons stay quiet. */}
-        <StageButton label="Accept and build" disabled={busy} feel="none" onPress={() => decide("accept")} />
+        <StageButton
+          label="Accept and build"
+          disabled={busy}
+          feel="none"
+          onPress={() => decide("accept")}
+        />
         <View style={styles.row}>
           <StageButton
             compact
@@ -132,7 +149,15 @@ function PlanReviewSheetView({
               else setWriting(true);
             }}
           />
-          <StageButton compact kind="danger" style={styles.half} disabled={busy} feel="none" label="Reject" onPress={() => decide("reject")} />
+          <StageButton
+            compact
+            kind="danger"
+            style={styles.half}
+            disabled={busy}
+            feel="none"
+            label="Reject"
+            onPress={() => decide("reject")}
+          />
         </View>
       </StageScroll>
     </Sheet>
@@ -181,14 +206,25 @@ function GgControlStripView({
             onToggleAutopilot();
           }}
         >
-          <Pew size={22} style={styles.pew} color={KEN_COLOR} mood={autopilot?.reviewing ? "thinking" : on ? "idle" : "sleepy"} paused={!on} />
+          <Pew
+            size={22}
+            style={styles.pew}
+            color={KEN_COLOR}
+            mood={autopilot?.reviewing ? "thinking" : on ? "idle" : "sleepy"}
+            paused={!on}
+          />
           <Text style={[styles.chipText, on && styles.chipTextOn]}>
             {autopilot?.reviewing ? "Ken is reviewing…" : on ? "Autopilot on" : "Autopilot"}
           </Text>
         </Pressable>
       ) : null}
       {showChecklist ? (
-        <PressScale accessibilityLabel="Checklist" feel="tap" style={styles.ledChip} onPress={onOpenChecklist}>
+        <PressScale
+          accessibilityLabel="Checklist"
+          feel="tap"
+          style={styles.ledChip}
+          onPress={onOpenChecklist}
+        >
           <Pixel kind="unread" />
           <Led>Checklist</Led>
         </PressScale>
@@ -227,7 +263,17 @@ function StateGlyph({ band }: { band: Band }) {
   return <View style={[styles.glyph, styles.glyphDue]} />;
 }
 
-function ChecklistRow({ item, band, busy, onRun }: { item: ChecklistItem; band: Band; busy: boolean; onRun: (prompt: string) => void }) {
+function ChecklistRow({
+  item,
+  band,
+  busy,
+  onRun,
+}: {
+  item: ChecklistItem;
+  band: Band;
+  busy: boolean;
+  onRun: (prompt: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const prompt = checklistRunPrompt(item);
   return (
@@ -243,7 +289,9 @@ function ChecklistRow({ item, band, busy, onRun }: { item: ChecklistItem; band: 
           style={styles.itemMain}
         >
           <StateGlyph band={band} />
-          <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
+          <Text style={styles.itemTitle} numberOfLines={1}>
+            {item.title}
+          </Text>
         </Pressable>
         {prompt ? (
           <Pressable
@@ -252,7 +300,11 @@ function ChecklistRow({ item, band, busy, onRun }: { item: ChecklistItem; band: 
             accessibilityState={{ disabled: busy }}
             disabled={busy}
             hitSlop={8}
-            style={({ pressed }) => [styles.runButton, busy && styles.dim, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.runButton,
+              busy && styles.dim,
+              pressed && styles.pressed,
+            ]}
             onPress={() => {
               haptics.sent();
               onRun(prompt);
@@ -265,13 +317,19 @@ function ChecklistRow({ item, band, busy, onRun }: { item: ChecklistItem; band: 
       {open ? (
         <Dissolve kind="row" dissolveKey={item.id}>
           <View style={styles.detail}>
-            {item.changedSinceCheck ? <Text style={styles.hint}>Code changed since this check</Text> : null}
+            {item.changedSinceCheck ? (
+              <Text style={styles.hint}>Code changed since this check</Text>
+            ) : null}
             <Text style={styles.dimText}>{item.summary ?? item.description}</Text>
             {item.findings.map((f) => (
-              <Text key={`f:${f}`} style={styles.dimText}>• {f}</Text>
+              <Text key={`f:${f}`} style={styles.dimText}>
+                • {f}
+              </Text>
             ))}
             {item.evidence.map((e) => (
-              <Text key={`e:${e}`} style={styles.hint}>{e}</Text>
+              <Text key={`e:${e}`} style={styles.hint}>
+                {e}
+              </Text>
             ))}
             {prompt && busy ? <Text style={styles.hint}>Agent is working</Text> : null}
           </View>
@@ -299,12 +357,20 @@ function ChecklistSheetView({
 }) {
   // Same in-band order as the desktop (status, then title), regrouped by state.
   const sorted = items ? groupChecklist(items).flatMap((g) => g.items) : [];
-  const bands = BANDS.map((band) => ({ band, items: sorted.filter((i) => BAND_OF[i.status] === band) })).filter((b) => b.items.length > 0);
+  const bands = BANDS.map((band) => ({
+    band,
+    items: sorted.filter((i) => BAND_OF[i.status] === band),
+  })).filter((b) => b.items.length > 0);
   const passing = sorted.filter((i) => i.status === "passed").length;
   const counted = sorted.filter((i) => i.status !== "not-applicable").length;
   let row = 0;
   return (
-    <Sheet visible={visible} label="Checklist" title={items ? `${passing} of ${counted} passing` : "Checklist"} onClose={onClose}>
+    <Sheet
+      visible={visible}
+      label="Checklist"
+      title={items ? `${passing} of ${counted} passing` : "Checklist"}
+      onClose={onClose}
+    >
       <StageScroll style={styles.scroll} contentContainerStyle={styles.body}>
         {error ? <Text style={styles.dimText}>{error}</Text> : null}
         {!items && !error ? <Text style={styles.dimText}>Loading…</Text> : null}
@@ -334,7 +400,12 @@ const styles = StyleSheet.create({
   body: { gap: theme.space(3), paddingBottom: theme.space(2) },
   planCard: { padding: theme.space(4), borderRadius: theme.radius.md },
   sub: { color: theme.color.textDim, fontSize: theme.font.small },
-  step: { flexDirection: "row", alignItems: "flex-start", gap: theme.space(3), paddingVertical: theme.space(3) },
+  step: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: theme.space(3),
+    paddingVertical: theme.space(3),
+  },
   stepNum: { width: theme.space(6), paddingTop: 2 },
   stepText: { flex: 1, color: theme.color.text, fontSize: theme.font.body },
   ledChip: {
@@ -347,7 +418,15 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space(1.5),
   },
   glyph: { width: 20, height: 20, borderRadius: 5, alignItems: "center", justifyContent: "center" },
-  glyphDue: { borderWidth: 1.5, borderStyle: "dashed", borderColor: theme.color.attention, width: 16, height: 16, margin: 2, borderRadius: 3 },
+  glyphDue: {
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: theme.color.attention,
+    width: 16,
+    height: 16,
+    margin: 2,
+    borderRadius: 3,
+  },
   row: { flexDirection: "row", gap: theme.space(2) },
   input: {
     minHeight: 80,
@@ -362,7 +441,13 @@ const styles = StyleSheet.create({
   half: { flex: 1 },
   dim: { opacity: 0.5 },
   pressed: { opacity: 0.7 },
-  strip: { flexDirection: "row", flexWrap: "wrap", gap: theme.space(2), paddingHorizontal: theme.gutter, paddingBottom: theme.space(2) },
+  strip: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.space(2),
+    paddingHorizontal: theme.gutter,
+    paddingBottom: theme.space(2),
+  },
   chip: {
     flexDirection: "row",
     alignItems: "center",
@@ -378,12 +463,37 @@ const styles = StyleSheet.create({
   chipText: { color: theme.color.textDim, fontSize: theme.font.small },
   chipTextOn: { color: theme.color.accent, fontWeight: "600" },
   group: { gap: theme.space(1.5) },
-  groupTitle: { color: theme.color.textDim, fontSize: theme.font.small, fontWeight: "600", paddingHorizontal: theme.space(1) },
-  itemTop: { flexDirection: "row", alignItems: "center", gap: theme.space(3), minHeight: theme.size.touch },
-  itemMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: theme.space(3), paddingVertical: theme.space(2.5) },
+  groupTitle: {
+    color: theme.color.textDim,
+    fontSize: theme.font.small,
+    fontWeight: "600",
+    paddingHorizontal: theme.space(1),
+  },
+  itemTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(3),
+    minHeight: theme.size.touch,
+  },
+  itemMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(3),
+    paddingVertical: theme.space(2.5),
+  },
   itemTitle: { color: theme.color.text, fontSize: theme.font.body },
-  detail: { gap: theme.space(1.5), paddingLeft: 20 + theme.space(3), paddingBottom: theme.space(3) },
+  detail: {
+    gap: theme.space(1.5),
+    paddingLeft: 20 + theme.space(3),
+    paddingBottom: theme.space(3),
+  },
   dimText: { color: theme.color.textDim, fontSize: theme.font.small },
   hint: { color: theme.color.textFaint, fontSize: theme.font.tiny },
-  runButton: { ...dashedOutline, borderRadius: theme.radius.pill, paddingHorizontal: theme.space(3), paddingVertical: theme.space(1) },
+  runButton: {
+    ...dashedOutline,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: theme.space(3),
+    paddingVertical: theme.space(1),
+  },
 });

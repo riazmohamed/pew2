@@ -114,11 +114,22 @@ export function doctorView(report: DoctorReport, options: RenderOptions = {}): s
   out.push(...r.step("Checked", plural(facts.length, "thing")));
   for (const check of facts) {
     const mark = check.ok ? s.hex(PALETTE.success, g.tick) : s.hex(PALETTE.warning, g.warn);
-    out.push(r.line(`${mark} ${check.label}${check.note ? s.hex(PALETTE.faint, `  ${check.note}`) : ""}`));
+    out.push(
+      r.line(`${mark} ${check.label}${check.note ? s.hex(PALETTE.faint, `  ${check.note}`) : ""}`),
+    );
   }
 
   if (errors.length > 0) {
-    out.push(...problemRows("Stopping you", plural(errors.length, "problem"), errors, PALETTE.danger, g.cross, options));
+    out.push(
+      ...problemRows(
+        "Stopping you",
+        plural(errors.length, "problem"),
+        errors,
+        PALETTE.danger,
+        g.cross,
+        options,
+      ),
+    );
   }
 
   if (warnings.length > 0) {

@@ -5,7 +5,14 @@ import type { WidgetInput } from "./widgetSnapshot";
 const providers = [{ id: "claude", name: "Claude Code", color: "#D97757" }];
 
 function session(id: string, extra: Partial<WidgetInput["sessions"][number]> = {}) {
-  return { id, providerId: "claude", title: `Chat ${id}`, folder: "pew2", startedAt: 1000, ...extra };
+  return {
+    id,
+    providerId: "claude",
+    title: `Chat ${id}`,
+    folder: "pew2",
+    startedAt: 1000,
+    ...extra,
+  };
 }
 
 describe("homeDashboard", () => {
@@ -21,7 +28,10 @@ describe("homeDashboard", () => {
       asks: { ask: [{ questions: [{ question: "Which  branch?" }] }] },
       providers,
     });
-    expect(home.cards.slice(0, 2).map((card) => [card.id, card.line])).toEqual([["perm", "Run npm test"], ["ask", "Which branch?"]]);
+    expect(home.cards.slice(0, 2).map((card) => [card.id, card.line])).toEqual([
+      ["perm", "Run npm test"],
+      ["ask", "Which branch?"],
+    ]);
     expect(home.cards.slice(2).map((card) => card.id)).toEqual(["new", "busy", "old"]);
     expect(home.cards.length).toBeLessThanOrEqual(6);
     expect(home.cards.find((card) => card.id === "busy")?.state).toBe("working");
@@ -30,14 +40,19 @@ describe("homeDashboard", () => {
   });
 
   it("keeps it short", () => {
-    const sessions = Array.from({ length: HOME_CARDS + 5 }, (_, i) => session(`s${i}`, { startedAt: 1000 - i }));
+    const sessions = Array.from({ length: HOME_CARDS + 5 }, (_, i) =>
+      session(`s${i}`, { startedAt: 1000 - i }),
+    );
     const home = homeDashboard({ sessions, asks: {}, providers });
     expect(home.cards).toHaveLength(HOME_CARDS);
     expect(home.cards[0]?.id).toBe("s0");
   });
 
   it("nothing yet is the empty state", () => {
-    expect(homeDashboard({ sessions: [], asks: {}, providers })).toEqual({ cards: [], empty: true });
+    expect(homeDashboard({ sessions: [], asks: {}, providers })).toEqual({
+      cards: [],
+      empty: true,
+    });
   });
 });
 

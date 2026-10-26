@@ -27,14 +27,26 @@ test("native is announced only on macOS with iTerm, for installed agents that ha
   expect(nativeProviders(providers, { platform: "darwin", hasITerm: true })).toEqual(["ggcoder"]);
   expect(nativeProviders(providers, { platform: "darwin", hasITerm: false })).toEqual([]);
   expect(nativeProviders(providers, { platform: "linux", hasITerm: true })).toEqual([]);
-  expect(nativeProviders([{ id: "ggcoder", commandMissing: true }], { platform: "darwin", hasITerm: true })).toEqual([]);
+  expect(
+    nativeProviders([{ id: "ggcoder", commandMissing: true }], {
+      platform: "darwin",
+      hasITerm: true,
+    }),
+  ).toEqual([]);
 });
 
 test("the window runs the agent resumed in the project, quoted", () => {
-  expect(nativeCommand("ogcoder", "ggcoder", "abc-123", "/p/my app")).toBe("cd '/p/my app' && exec ogcoder --resume abc-123");
-  const script = nativeOpenScript(nativeCommand("ogcoder", "ggcoder", "abc", "/p/it's"), "OG Coder · it's");
+  expect(nativeCommand("ogcoder", "ggcoder", "abc-123", "/p/my app")).toBe(
+    "cd '/p/my app' && exec ogcoder --resume abc-123",
+  );
+  const script = nativeOpenScript(
+    nativeCommand("ogcoder", "ggcoder", "abc", "/p/it's"),
+    "OG Coder · it's",
+  );
   // Shell-quoted inside zsh -lc, then AppleScript-escaped.
-  expect(script).toContain(`create window with default profile command "/bin/zsh -lc 'cd '\\\\''/p/it'\\\\''\\\\'\\\\'''\\\\''s'\\\\'' && exec ogcoder --resume abc'"`);
+  expect(script).toContain(
+    `create window with default profile command "/bin/zsh -lc 'cd '\\\\''/p/it'\\\\''\\\\'\\\\'''\\\\''s'\\\\'' && exec ogcoder --resume abc'"`,
+  );
   expect(script).toContain("return id of newSession");
 });
 
@@ -95,7 +107,12 @@ test("alive: window gone, agent exited (shell only), agent running, unknown", as
   expect(await nativeAlive(deps("gone"), "S")).toBe(false);
   expect(await nativeAlive(deps("/dev/ttys004", ["-zsh"]), "S")).toBe(false);
   expect(await nativeAlive(deps("/dev/ttys004", ["/bin/zsh", "node"]), "S")).toBe(true);
-  expect(await nativeAlive({ ...deps(""), osa: async () => ({ code: 1, stdout: "", stderr: "x", timedOut: false }) }, "S")).toBe(true);
+  expect(
+    await nativeAlive(
+      { ...deps(""), osa: async () => ({ code: 1, stdout: "", stderr: "x", timedOut: false }) },
+      "S",
+    ),
+  ).toBe(true);
 });
 
 test("drafts that only grow send just the new tail; any other edit clears and retypes", () => {
@@ -136,7 +153,9 @@ test("OG Coder's own commands run in its input, then the draft comes back", asyn
   expect(await typer.command("/model claude-sonnet-5-5")).toBe(true);
   expect(scripts[1]).toContain('"/model claude-sonnet-5-5" newline NO');
   expect(scripts[1]).toContain("character id 13");
-  expect(scripts[1]!.indexOf("character id 13")).toBeLessThan(scripts[1]!.lastIndexOf('"h" newline NO'));
+  expect(scripts[1]!.indexOf("character id 13")).toBeLessThan(
+    scripts[1]!.lastIndexOf('"h" newline NO'),
+  );
   expect(await typer.shiftTab(2)).toBe(true);
   expect(scripts[2]!.match(/\[Z/g)).toHaveLength(2);
 });
@@ -153,38 +172,83 @@ test("OG Coder's screen is read: input, placeholder, paste block, status line", 
     " Paddle_ken │ ⎇ sprint-2 │ 76 changed ",
     " ▏░░░░░░░ 1% │ Sonnet │ Plan off │ Thinking high ",
   ].join("\n");
-  expect(parseOgCoderScreen(real)).toEqual({ input: "hello from the Mac", model: "Sonnet", plan: false, thinking: "high", status: "idle" });
+  expect(parseOgCoderScreen(real)).toEqual({
+    input: "hello from the Mac",
+    model: "Sonnet",
+    plan: false,
+    thinking: "high",
+    status: "idle",
+  });
   const empty = real.replace("hello from the Mac", "  Type your message or / to run a command");
   expect(parseOgCoderScreen(empty).input).toBe("");
   const pasted = real.replace("hello from the Mac", "[Pasted text #7 +1 lines]");
   expect(parseOgCoderScreen(pasted).input).toBeUndefined();
-  const wrapped = real.replace(" > hello from the Mac", " > a long line that wraps\n   onto the next line");
+  const wrapped = real.replace(
+    " > hello from the Mac",
+    " > a long line that wraps\n   onto the next line",
+  );
   expect(parseOgCoderScreen(wrapped).input).toBe("a long line that wraps onto the next line");
-  expect(parseOgCoderScreen(real.replace("Plan off │ Thinking high", "Plan on │ Thinking off"))).toMatchObject({ plan: true, thinking: "off" });
+  expect(
+    parseOgCoderScreen(real.replace("Plan off │ Thinking high", "Plan on │ Thinking off")),
+  ).toMatchObject({ plan: true, thinking: "off" });
   expect(parseOgCoderScreen("no window here")).toEqual({});
 });
 
 test("the status line moves the pills, matched by OG Coder's short names", () => {
   const options = [
-    { id: "model", category: "model", currentValue: "claude-opus-5-5", options: [{ value: "claude-opus-5-5", name: "Claude Opus 5.5" }, { value: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" }, { value: "gpt-6-astra", name: "GPT-6 Astra" }] },
-    { id: "thinking", category: "thought_level", currentValue: "high", options: ["off", "low", "high", "max"].map((value) => ({ value })) },
-    { id: "mode", category: "mode", currentValue: "default", options: [{ value: "default" }, { value: "plan" }] },
+    {
+      id: "model",
+      category: "model",
+      currentValue: "claude-opus-5-5",
+      options: [
+        { value: "claude-opus-5-5", name: "Claude Opus 5.5" },
+        { value: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" },
+        { value: "gpt-6-astra", name: "GPT-6 Astra" },
+      ],
+    },
+    {
+      id: "thinking",
+      category: "thought_level",
+      currentValue: "high",
+      options: ["off", "low", "high", "max"].map((value) => ({ value })),
+    },
+    {
+      id: "mode",
+      category: "mode",
+      currentValue: "default",
+      options: [{ value: "default" }, { value: "plan" }],
+    },
   ];
   const moved = applyDeskScreen(options, { model: "Sonnet", thinking: "max", plan: true });
   expect(moved.changed).toBe(true);
   expect(moved.options.map((o) => o.currentValue)).toEqual(["claude-sonnet-5-5", "max", "plan"]);
-  expect(applyDeskScreen(options, { model: "GPT-6 Astra" }).options[0]!.currentValue).toBe("gpt-6-astra");
-  expect(applyDeskScreen(options, { model: "Opus", thinking: "high", plan: false }).changed).toBe(false);
+  expect(applyDeskScreen(options, { model: "GPT-6 Astra" }).options[0]!.currentValue).toBe(
+    "gpt-6-astra",
+  );
+  expect(applyDeskScreen(options, { model: "Opus", thinking: "high", plan: false }).changed).toBe(
+    false,
+  );
   // An unknown label leaves the pill alone rather than guessing.
   expect(applyDeskScreen(options, { model: "Mystery" }).changed).toBe(false);
 });
 
 test("the status row above the input says whether OG Coder is working", () => {
   const screen = (row: string) =>
-    [" earlier", row, "▄".repeat(60), " >   Type your message or / to run a command ", "▀".repeat(60), " ▏░ 8% │ Opus │ Plan off │ Thinking high "].join("\n");
-  expect(parseOgCoderScreen(screen(" ✻ Conjured a response in 4s · ↓ 160 tokens ")).status).toBe("idle");
+    [
+      " earlier",
+      row,
+      "▄".repeat(60),
+      " >   Type your message or / to run a command ",
+      "▀".repeat(60),
+      " ▏░ 8% │ Opus │ Plan off │ Thinking high ",
+    ].join("\n");
+  expect(parseOgCoderScreen(screen(" ✻ Conjured a response in 4s · ↓ 160 tokens ")).status).toBe(
+    "idle",
+  );
   expect(parseOgCoderScreen(screen(" ⠿ Ready to go.. ")).status).toBe("idle");
-  expect(parseOgCoderScreen(screen("⚠ API provider stream interrupted — retries exhausted.")).status).toBe("idle");
+  expect(
+    parseOgCoderScreen(screen("⚠ API provider stream interrupted — retries exhausted.")).status,
+  ).toBe("idle");
   expect(parseOgCoderScreen(screen(" ⠹ Working… (12s · ↓ 300 tokens)")).status).toBe("busy");
   expect(parseOgCoderScreen(screen(" ● Working…")).status).toBe("busy");
   // Anything else (a panel, a queued message) is not evidence either way.
@@ -214,7 +278,8 @@ test("a window whose app quits at once says so plainly, and the command goes in 
   });
   expect(opened).toEqual({
     ok: false,
-    message: "OG Coder closed as soon as it opened. Check it starts from a new iTerm window on your Mac.",
+    message:
+      "OG Coder closed as soon as it opened. Check it starts from a new iTerm window on your Mac.",
   });
   expect(scripts[0]).toContain("exec /Users/me/Library/pnpm/ogcoder --resume abc");
 });

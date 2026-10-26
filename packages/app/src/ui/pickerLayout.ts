@@ -39,22 +39,20 @@ export function fitPickerToViewport({
   maximumHeight,
 }: PickerLayoutInput): PickerLayout {
   const minimumLeft = insets.left + margin;
-  const availableWidth = Math.max(
-    0,
-    viewportWidth - insets.left - insets.right - margin * 2,
-  );
+  const availableWidth = Math.max(0, viewportWidth - insets.left - insets.right - margin * 2);
   const width = Math.min(preferredWidth, availableWidth);
-  const maximumLeft = Math.max(
-    minimumLeft,
-    viewportWidth - insets.right - margin - width,
-  );
+  const maximumLeft = Math.max(minimumLeft, viewportWidth - insets.right - margin - width);
   const desiredLeft =
     typeof anchorX === "number" && Number.isFinite(anchorX) ? anchorX : minimumLeft;
   const left = Math.min(Math.max(desiredLeft, minimumLeft), maximumLeft);
   if (menuBottom !== undefined && Number.isFinite(menuBottom)) {
-    const lowerEdge = Math.max(insets.top + margin, Math.min(menuBottom, viewportHeight - insets.bottom - margin));
+    const lowerEdge = Math.max(
+      insets.top + margin,
+      Math.min(menuBottom, viewportHeight - insets.bottom - margin),
+    );
     return {
-      left, width,
+      left,
+      width,
       maxHeight: Math.max(0, Math.min(maximumHeight, lowerEdge - insets.top - margin)),
       bottom: viewportHeight - lowerEdge,
       origin: desiredLeft > maximumLeft ? "bottom right" : "bottom left",

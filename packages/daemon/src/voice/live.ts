@@ -39,7 +39,10 @@ export interface LiveSettings {
  * the daemon's environment wins over voice.json's `openaiApiKey`, the file
  * pew2's old `pew2 voice key` wrote.
  */
-export async function readLiveSettings(configDir: string, env: NodeJS.ProcessEnv = process.env): Promise<LiveSettings | undefined> {
+export async function readLiveSettings(
+  configDir: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<LiveSettings | undefined> {
   let stored: Record<string, unknown> = {};
   try {
     const parsed: unknown = JSON.parse(await readFile(join(configDir, "voice.json"), "utf8"));
@@ -47,11 +50,16 @@ export async function readLiveSettings(configDir: string, env: NodeJS.ProcessEnv
   } catch {
     // Missing or unreadable: no key from the file.
   }
-  const text = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : undefined);
+  const text = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : undefined;
   if (stored.engine === "realtime") return undefined;
   const apiKey = text(env.OPENAI_API_KEY) ?? text(stored.openaiApiKey);
   if (!apiKey) return undefined;
-  return { apiKey, voice: text(stored.voice) ?? DEFAULT_LIVE_VOICE, backendModel: text(stored.backendModel) ?? DEFAULT_BACKEND_MODEL };
+  return {
+    apiKey,
+    voice: text(stored.voice) ?? DEFAULT_LIVE_VOICE,
+    backendModel: text(stored.backendModel) ?? DEFAULT_BACKEND_MODEL,
+  };
 }
 
 /** pew2's config dir from the voice auth file's path. */
@@ -76,7 +84,8 @@ function authHeaders(apiKey: string): Record<string, string> {
 /** What a failed session create means for the person holding the phone. */
 export function describeStatus(status: number): string {
   if (status === 401) return "OpenAI didn't accept the API key on your computer.";
-  if (status === 403 || status === 404) return "The OpenAI key on your computer doesn't have GPT-Live access.";
+  if (status === 403 || status === 404)
+    return "The OpenAI key on your computer doesn't have GPT-Live access.";
   if (status === 429) return "OpenAI is rate limiting the key, or its credit is used up.";
   if (status >= 500) return "OpenAI had a problem starting the call. Try again in a moment.";
   return `OpenAI refused the call (HTTP ${status}).`;
@@ -137,7 +146,12 @@ The full rules Pew follows, the tools' detail and the briefing:
  * the briefing part as context. `tools` are the realtime tool definitions,
  * which are already in the Responses function shape.
  */
-export function liveSessionConfig(settings: LiveSettings, full: string, briefing: string, tools: readonly unknown[]): Record<string, unknown> {
+export function liveSessionConfig(
+  settings: LiveSettings,
+  full: string,
+  briefing: string,
+  tools: readonly unknown[],
+): Record<string, unknown> {
   return {
     model: LIVE_MODEL,
     instructions: `${LIVE_INSTRUCTIONS}\n\nBriefing (for you to know, not to read out):\n${briefing}`,
@@ -156,7 +170,8 @@ export function liveSessionConfig(settings: LiveSettings, full: string, briefing
   };
 }
 
-export type CreateResult = { ok: true; liveSessionId: string; sdp: string } | { ok: false; error: string };
+export type CreateResult =
+  { ok: true; liveSessionId: string; sdp: string } | { ok: false; error: string };
 
 export async function createLiveSession(options: {
   apiKey: string;
@@ -170,21 +185,31 @@ export async function createLiveSession(options: {
     response = await doFetch(`${OPENAI_BASE}/live/sessions`, {
       method: "POST",
       headers: { ...authHeaders(options.apiKey), "Content-Type": "application/json" },
-      body: JSON.stringify({ session: options.session, transport: { type: "webrtc", sdp: options.sdp } }),
+      body: JSON.stringify({
+        session: options.session,
+        transport: { type: "webrtc", sdp: options.sdp },
+      }),
       signal: AbortSignal.timeout(20_000),
     });
   } catch {
-    return { ok: false, error: "Your computer couldn't reach OpenAI. Check its internet connection." };
+    return {
+      ok: false,
+      error: "Your computer couldn't reach OpenAI. Check its internet connection.",
+    };
   }
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    console.error(`[voice] live session create failed: HTTP ${response.status} ${body.slice(0, 500).replace(/sk-[A-Za-z0-9_*.-]+/g, "sk-[redacted]")}`);
+    console.error(
+      `[voice] live session create failed: HTTP ${response.status} ${body.slice(0, 500).replace(/sk-[A-Za-z0-9_*.-]+/g, "sk-[redacted]")}`,
+    );
     return { ok: false, error: describeStatus(response.status) };
   }
-  const body = (await response.json().catch(() => undefined)) as { session?: { id?: unknown }; transport?: { sdp?: unknown } } | undefined;
+  const body = (await response.json().catch(() => undefined)) as
+    { session?: { id?: unknown }; transport?: { sdp?: unknown } } | undefined;
   const id = body?.session?.id;
   const sdp = body?.transport?.sdp;
-  if (typeof id !== "string" || typeof sdp !== "string") return { ok: false, error: "OpenAI answered the call in a shape pew2 doesn't recognise." };
+  if (typeof id !== "string" || typeof sdp !== "string")
+    return { ok: false, error: "OpenAI answered the call in a shape pew2 doesn't recognise." };
   return { ok: true, liveSessionId: id, sdp };
 }
 
@@ -205,11 +230,16 @@ export const defaultCreateSocket: CreateSocket = (url, headers) =>
   // Bun's WebSocket takes headers in a second-argument option the DOM type doesn't know.
   new WebSocket(url, { headers } as unknown as string[]) as unknown as SocketLike;
 
-export type RunTool = (toolCallId: string, name: string, args: string) => Promise<{ output: string; hangUp?: boolean }>;
+export type RunTool = (
+  toolCallId: string,
+  name: string,
+  args: string,
+) => Promise<{ output: string; hangUp?: boolean }>;
 
 /** An append is capped at 500 tokens. */
 const APPEND_MAX_CHARS = 1800;
-const clamp = (text: string) => (text.length <= APPEND_MAX_CHARS ? text : `${text.slice(0, APPEND_MAX_CHARS - 1)}…`);
+const clamp = (text: string) =>
+  text.length <= APPEND_MAX_CHARS ? text : `${text.slice(0, APPEND_MAX_CHARS - 1)}…`;
 
 interface FunctionCall {
   call_id: string;
@@ -251,7 +281,10 @@ export class LiveCall {
   attach(apiKey: string, createSocket: CreateSocket = defaultCreateSocket): void {
     let socket: SocketLike;
     try {
-      socket = createSocket(`wss://api.openai.com/v1/live/sessions/${encodeURIComponent(this.liveSessionId)}/attach`, authHeaders(apiKey));
+      socket = createSocket(
+        `wss://api.openai.com/v1/live/sessions/${encodeURIComponent(this.liveSessionId)}/attach`,
+        authHeaders(apiKey),
+      );
     } catch {
       this.log("sideband failed to open");
       return;
@@ -268,7 +301,8 @@ export class LiveCall {
       } catch {
         return;
       }
-      if (parsed && typeof parsed === "object") void this.onEvent(parsed as Record<string, unknown>);
+      if (parsed && typeof parsed === "object")
+        void this.onEvent(parsed as Record<string, unknown>);
     };
     socket.onerror = () => {};
     socket.onclose = () => this.finish();
@@ -290,11 +324,20 @@ export class LiveCall {
   /** Text from the call screen: their own words, or (context) what they did there. */
   typed(text: string, context: boolean): void {
     if (context) this.append("session.thinking.append", `On the call screen: ${text}`);
-    else this.append("session.instructions.append", `They typed this on their phone instead of saying it. Take it as their words and act on it: "${text}"`);
+    else
+      this.append(
+        "session.instructions.append",
+        `They typed this on their phone instead of saying it. Take it as their words and act on it: "${text}"`,
+      );
   }
 
   private append(type: string, content: string): void {
-    this.send({ type, event_id: this.eventId("ctx"), delegation_id: null, content: clamp(content) });
+    this.send({
+      type,
+      event_id: this.eventId("ctx"),
+      delegation_id: null,
+      content: clamp(content),
+    });
   }
 
   private eventId(prefix: string): string {
@@ -315,13 +358,22 @@ export class LiveCall {
   private async onEvent(event: Record<string, unknown>): Promise<void> {
     switch (event.type) {
       case "response.event": {
-        const inner = event.event as { type?: unknown; item?: { type?: unknown; call_id?: unknown; name?: unknown; arguments?: unknown } } | undefined;
+        const inner = event.event as
+          | {
+              type?: unknown;
+              item?: { type?: unknown; call_id?: unknown; name?: unknown; arguments?: unknown };
+            }
+          | undefined;
         const key = typeof event.delegation_id === "string" ? event.delegation_id : "";
         if (inner?.type === "response.output_item.done" && inner.item?.type === "function_call") {
           const { call_id, name } = inner.item;
           if (typeof call_id !== "string" || typeof name !== "string") return;
           const list = this.pending.get(key) ?? [];
-          list.push({ call_id, name, arguments: typeof inner.item.arguments === "string" ? inner.item.arguments : "{}" });
+          list.push({
+            call_id,
+            name,
+            arguments: typeof inner.item.arguments === "string" ? inner.item.arguments : "{}",
+          });
           this.pending.set(key, list);
           clearTimeout(this.pendingTimers.get(key));
           const timer = setTimeout(() => void this.runPending(key), LiveCall.PENDING_FALLBACK_MS);
@@ -362,11 +414,22 @@ export class LiveCall {
       try {
         result = await this.options.runTool(call.call_id, call.name, call.arguments || "{}");
       } catch (error) {
-        result = { output: JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }) };
+        result = {
+          output: JSON.stringify({
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        };
       }
-      this.log(`tool ${call.name} ${call.arguments.slice(0, 160)} -> ${result.output.slice(0, 160)}`);
+      this.log(
+        `tool ${call.name} ${call.arguments.slice(0, 160)} -> ${result.output.slice(0, 160)}`,
+      );
       hangUp ||= result.hangUp === true;
-      this.send({ type: "response.item.create", event_id: this.eventId("tool"), item: { type: "function_call_output", call_id: call.call_id, output: result.output } });
+      this.send({
+        type: "response.item.create",
+        event_id: this.eventId("tool"),
+        item: { type: "function_call_output", call_id: call.call_id, output: result.output },
+      });
     }
     this.send({ type: "response.create", event_id: this.eventId("continue") });
     if (hangUp && !this.hangupTimer) {

@@ -3,7 +3,12 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AgentSession } from "./connect";
-import { assetDirFor, hydrateGgCoderMessageCounts, loadGgCoderDisplayHistory, messageDisplayUpdates } from "./ggcoder-history";
+import {
+  assetDirFor,
+  hydrateGgCoderMessageCounts,
+  loadGgCoderDisplayHistory,
+  messageDisplayUpdates,
+} from "./ggcoder-history";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -45,7 +50,12 @@ test("counts the unopened GG Coder lineage exactly as ACP replay renders it", as
       message: { role: "assistant", content: "Not on the active branch" },
     },
     { type: "message", id: "u2", parentId: "a2", message: { role: "user", content: "Thanks" } },
-    { type: "message", id: "a3", parentId: "u2", message: { role: "assistant", content: "Any time" } },
+    {
+      type: "message",
+      id: "a3",
+      parentId: "u2",
+      message: { role: "assistant", content: "Any time" },
+    },
   ];
   await writeFile(
     path.join(directory, `2026-07-31T12-00-00-000Z_${sessionId.slice(0, 8)}.jsonl`),
@@ -70,14 +80,18 @@ test("loads a compacted GG Coder chain locally without the child summary or over
   const conversationId = parentId;
   const parentMessages = [
     { type: "message", id: "u1", parentId: null, message: { role: "user", content: "First" } },
-    { type: "message", id: "a1", parentId: "u1", message: { role: "assistant", content: "Answer" } },
+    {
+      type: "message",
+      id: "a1",
+      parentId: "u1",
+      message: { role: "assistant", content: "Answer" },
+    },
   ];
   await writeFile(
     path.join(directory, `parent_${parentId.slice(0, 8)}.jsonl`),
-    [
-      { type: "session", id: parentId, conversationId, cwd, leafId: "a1" },
-      ...parentMessages,
-    ].map((entry) => JSON.stringify(entry)).join("\n"),
+    [{ type: "session", id: parentId, conversationId, cwd, leafId: "a1" }, ...parentMessages]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n"),
   );
   await writeFile(
     path.join(directory, `child_${childId.slice(0, 8)}.jsonl`),
@@ -96,11 +110,33 @@ test("loads a compacted GG Coder chain locally without the child summary or over
         parentId: null,
         message: { role: "user", content: "[Previous conversation summary]\nOld context" },
       },
-      { type: "message", id: "u1-copy", parentId: "summary", message: { role: "user", content: "First" } },
-      { type: "message", id: "a1-copy", parentId: "u1-copy", message: { role: "assistant", content: "Answer" } },
-      { type: "message", id: "u2", parentId: "a1-copy", message: { role: "user", content: "Second" } },
-      { type: "message", id: "a2", parentId: "u2", message: { role: "assistant", content: "Done" } },
-    ].map((entry) => JSON.stringify(entry)).join("\n"),
+      {
+        type: "message",
+        id: "u1-copy",
+        parentId: "summary",
+        message: { role: "user", content: "First" },
+      },
+      {
+        type: "message",
+        id: "a1-copy",
+        parentId: "u1-copy",
+        message: { role: "assistant", content: "Answer" },
+      },
+      {
+        type: "message",
+        id: "u2",
+        parentId: "a1-copy",
+        message: { role: "user", content: "Second" },
+      },
+      {
+        type: "message",
+        id: "a2",
+        parentId: "u2",
+        message: { role: "assistant", content: "Done" },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n"),
   );
 
   const updates = await loadGgCoderDisplayHistory(childId, cwd, root);
@@ -143,7 +179,11 @@ test("replays Ken's persisted Autopilot verdicts where they were written", async
   const directory = path.join(root, "Users_test_ken-project");
   await mkdir(directory, { recursive: true });
   const id = "cccccccc-1234-1234-1234-123456789abc";
-  const marker = (phase: string, afterMessageCount: number, extra: Record<string, string> = {}) => ({
+  const marker = (
+    phase: string,
+    afterMessageCount: number,
+    extra: Record<string, string> = {},
+  ) => ({
     type: "custom",
     kind: "autopilot_marker",
     parentId: null,
@@ -155,19 +195,36 @@ test("replays Ken's persisted Autopilot verdicts where they were written", async
     [
       { type: "session", id, cwd, leafId: "a2" },
       { type: "message", id: "u1", parentId: null, message: { role: "user", content: "Build it" } },
-      { type: "message", id: "a1", parentId: "u1", message: { role: "assistant", content: "Built" } },
+      {
+        type: "message",
+        id: "a1",
+        parentId: "u1",
+        message: { role: "assistant", content: "Built" },
+      },
       marker("prompted", 2, { body: "Add a test" }),
       // Same payload re-persisted by an old path: kept once.
       marker("prompted", 2, { body: "Add a test" }),
-      { type: "message", id: "u2", parentId: "a1", message: { role: "user", content: "[injected]", provenance: hidden } },
-      { type: "message", id: "a2", parentId: "u2", message: { role: "assistant", content: "Tested" } },
+      {
+        type: "message",
+        id: "u2",
+        parentId: "a1",
+        message: { role: "user", content: "[injected]", provenance: hidden },
+      },
+      {
+        type: "message",
+        id: "a2",
+        parentId: "u2",
+        message: { role: "assistant", content: "Tested" },
+      },
       // Anchor past what was on disk when written: clamped to 4.
       marker("done", 9),
       // A desktop-only phase name maps onto the wire's.
       marker("plan_approved", 4, { reason: "solid" }),
       // Unknown phases are ignored.
       marker("mystery", 1),
-    ].map((entry) => JSON.stringify(entry)).join("\n"),
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n"),
   );
 
   const updates = await loadGgCoderDisplayHistory(id, cwd, root);

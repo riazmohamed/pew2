@@ -22,15 +22,7 @@
  * printed next to an unreachable relay is worse than no status line, because it
  * sends the user to debug their phone instead of their relay.
  */
-import {
-  PALETTE,
-  glyphs,
-  styler,
-  truncate,
-  width,
-  type Glyphs,
-  type Style,
-} from "./ui.js";
+import { PALETTE, glyphs, styler, truncate, width, type Glyphs, type Style } from "./ui.js";
 import { rail } from "./rail.js";
 
 export type Reach = "anywhere" | "local" | "unreachable";

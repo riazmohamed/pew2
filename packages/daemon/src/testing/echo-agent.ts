@@ -154,7 +154,10 @@ const app = agent({ name: "pew2-echo" })
       sessionId: string;
       prompt: { type: string; text?: string }[];
     };
-    const text = prompt.map((p) => p.text ?? "").join(" ").trim();
+    const text = prompt
+      .map((p) => p.text ?? "")
+      .join(" ")
+      .trim();
     // A cancel that ended the last turn must not end this one before it starts.
     cancelled.delete(sessionId);
 

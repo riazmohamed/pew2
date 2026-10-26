@@ -73,8 +73,10 @@ test("a real rejection passes through unchanged rather than becoming a timeout",
   // ENOENT for a missing binary already has an actionable message. Replacing it
   // with "did not respond" would send the user looking for the wrong problem.
   await expect(
-    withTimeout(Promise.reject(new Error("'goose' was not found on PATH")), 60_000, () =>
-      new Error("did not respond"),
+    withTimeout(
+      Promise.reject(new Error("'goose' was not found on PATH")),
+      60_000,
+      () => new Error("did not respond"),
     ),
   ).rejects.toThrow("was not found on PATH");
 });
@@ -162,7 +164,9 @@ posixTest("a spawned agent is its own process group, and close() ends the group"
     // Its own group leader: the group id equals the pid, so `kill(-pid)` reaches
     // this agent and its descendants and nothing else on the machine.
     const group = Number(
-      execFileSync("ps", ["-o", "pgid=", "-p", String(pid)]).toString().trim(),
+      execFileSync("ps", ["-o", "pgid=", "-p", String(pid)])
+        .toString()
+        .trim(),
     );
     expect(group).toBe(pid);
 

@@ -114,10 +114,7 @@ export async function setup(options: SetupOptions = {}): Promise<SetupResult> {
     // missing produces a failure that says nothing `doctor` has not already said
     // more precisely.
     const runnable = providers.filter(
-      (p) =>
-        isAvailable(p) &&
-        p.manifest.pew.transport === "acp" &&
-        !disabled.has(p.manifest.id),
+      (p) => isAvailable(p) && p.manifest.pew.transport === "acp" && !disabled.has(p.manifest.id),
     );
     for (const provider of runnable) progress("verify", provider.manifest.id);
     verify = await (options.verifyProviders ?? verifyAll)(runnable);
@@ -192,9 +189,7 @@ export async function setup(options: SetupOptions = {}): Promise<SetupResult> {
       // Carried so the screen can say "off" rather than silently showing an
       // agent as untested — which is what a skipped verification looks like.
       disabled: disabled.has(provider.manifest.id),
-      verify: report
-        ? { status: report.status, detail: report.detail }
-        : undefined,
+      verify: report ? { status: report.status, detail: report.detail } : undefined,
     };
   });
 

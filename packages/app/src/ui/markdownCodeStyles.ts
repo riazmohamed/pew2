@@ -14,4 +14,3 @@ export const fencedCodeTextStyle = {
   flexShrink: 1,
   backgroundColor: "transparent",
 } as const;
-

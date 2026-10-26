@@ -170,7 +170,10 @@ export abstract class DaemonSpares extends DaemonState {
   }
 
   /** Run a call on a borrowed process, keeping it alive until the call settles. */
-  protected async onBorrowed<T>(handle: AcpSessionHandle, call: (handle: AcpSessionHandle) => Promise<T>): Promise<T> {
+  protected async onBorrowed<T>(
+    handle: AcpSessionHandle,
+    call: (handle: AcpSessionHandle) => Promise<T>,
+  ): Promise<T> {
     this.borrowed.set(handle, (this.borrowed.get(handle) ?? 0) + 1);
     try {
       return await call(handle);

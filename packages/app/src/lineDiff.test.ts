@@ -4,7 +4,13 @@ import { hunks, lineDiff } from "./lineDiff";
 const kinds = (old: string, next: string) => lineDiff(old, next).map((l) => `${l.kind}:${l.text}`);
 
 test("an edit in the middle keeps the rest as context", () => {
-  expect(kinds("a\nb\nc\nd\n", "a\nB\nc\nd\n")).toEqual(["same:a", "del:b", "add:B", "same:c", "same:d"]);
+  expect(kinds("a\nb\nc\nd\n", "a\nB\nc\nd\n")).toEqual([
+    "same:a",
+    "del:b",
+    "add:B",
+    "same:c",
+    "same:d",
+  ]);
 });
 
 test("an insertion and a deletion", () => {

@@ -50,7 +50,9 @@ function ApprovalSheetView({ permission, onAnswer, onTalk, call }: ApprovalSheet
   // allow, full-size danger if it is a refusal (a refusal is never lit).
   const picked = call?.voicePick ? options.find((o) => o.optionId === call.voicePick) : undefined;
   const primaryId = picked
-    ? isDenyApprovalOption(picked) ? undefined : picked.optionId
+    ? isDenyApprovalOption(picked)
+      ? undefined
+      : picked.optionId
     : options.find((o) => !isDenyApprovalOption(o))?.optionId;
   return (
     <Sheet
@@ -91,7 +93,13 @@ function ApprovalSheetView({ permission, onAnswer, onTalk, call }: ApprovalSheet
             );
           })}
           {onTalk && shown && (
-            <StageButton compact kind="secondary" feel="tap" label="Talk it through" onPress={() => onTalk(shown.requestId)} />
+            <StageButton
+              compact
+              kind="secondary"
+              feel="tap"
+              label="Talk it through"
+              onPress={() => onTalk(shown.requestId)}
+            />
           )}
         </View>
       </ScrollView>

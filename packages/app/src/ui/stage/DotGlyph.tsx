@@ -87,7 +87,12 @@ function DotGlyphView({ name, size = 18, color, lit }: DotGlyphProps) {
       importantForAccessibility="no-hide-descendants"
       style={[
         { width: size, height: size },
-        on && { shadowColor: ink, shadowOpacity: 0.9, shadowRadius: theme.stage.glow / 2, shadowOffset: { width: 0, height: 0 } },
+        on && {
+          shadowColor: ink,
+          shadowOpacity: 0.9,
+          shadowRadius: theme.stage.glow / 2,
+          shadowOffset: { width: 0, height: 0 },
+        },
       ]}
     >
       {dots.map(([x, y]) => (
@@ -95,7 +100,14 @@ function DotGlyphView({ name, size = 18, color, lit }: DotGlyphProps) {
           key={`${x}-${y}`}
           style={[
             styles.dot,
-            { left: x * step + inset, top: y * step + inset, width: dot, height: dot, borderRadius: dot / 2, backgroundColor: ink },
+            {
+              left: x * step + inset,
+              top: y * step + inset,
+              width: dot,
+              height: dot,
+              borderRadius: dot / 2,
+              backgroundColor: ink,
+            },
           ]}
         />
       ))}

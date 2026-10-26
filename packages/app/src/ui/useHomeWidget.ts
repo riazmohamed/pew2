@@ -31,7 +31,13 @@ export function useHomeWidget(snapshot: WidgetContent): void {
   useEffect(() => {
     if (Platform.OS !== "ios" || sameSnapshot(written.current, snapshot)) return;
     try {
-      if (writeWidgetSnapshot(WIDGET_APP_GROUP, WIDGET_KEY, JSON.stringify({ ...snapshot, at: Date.now() }))) {
+      if (
+        writeWidgetSnapshot(
+          WIDGET_APP_GROUP,
+          WIDGET_KEY,
+          JSON.stringify({ ...snapshot, at: Date.now() }),
+        )
+      ) {
         written.current = snapshot;
       }
     } catch {

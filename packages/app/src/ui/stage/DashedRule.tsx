@@ -19,16 +19,32 @@ interface DashedRuleProps {
   style?: StyleProp<ViewStyle>;
 }
 
-function DashedRuleView({ color = theme.stage.dash, vertical = false, dotted = false, weight = 1, style }: DashedRuleProps) {
+function DashedRuleView({
+  color = theme.stage.dash,
+  vertical = false,
+  dotted = false,
+  weight = 1,
+  style,
+}: DashedRuleProps) {
   return (
     <View
-      style={[vertical ? { width: weight, alignSelf: "stretch", overflow: "hidden" } : { height: weight, alignSelf: "stretch", overflow: "hidden" }, style]}
+      style={[
+        vertical
+          ? { width: weight, alignSelf: "stretch", overflow: "hidden" }
+          : { height: weight, alignSelf: "stretch", overflow: "hidden" },
+        style,
+      ]}
       pointerEvents="none"
     >
       <View
         style={[
           vertical ? { width: weight * 4, flex: 1 } : { height: weight * 4 },
-          { borderWidth: weight, borderStyle: dotted ? "dotted" : "dashed", borderRadius: 1, borderColor: color },
+          {
+            borderWidth: weight,
+            borderStyle: dotted ? "dotted" : "dashed",
+            borderRadius: 1,
+            borderColor: color,
+          },
         ]}
       />
     </View>
@@ -43,4 +59,3 @@ export const dashedOutline = {
   borderStyle: "dashed",
   borderColor: theme.stage.dash,
 } as const;
-

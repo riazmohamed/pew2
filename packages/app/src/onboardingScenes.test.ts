@@ -1,5 +1,14 @@
 import { expect, test } from "bun:test";
-import { ALERT_EVERY_MS, SAMPLE_ALERTS, INSTALL_TYPE, PAIR_TYPE, alertsAt, alertsMood, installAt, voiceAt } from "./onboardingScenes";
+import {
+  ALERT_EVERY_MS,
+  SAMPLE_ALERTS,
+  INSTALL_TYPE,
+  PAIR_TYPE,
+  alertsAt,
+  alertsMood,
+  installAt,
+  voiceAt,
+} from "./onboardingScenes";
 
 test("banners arrive one at a time, newest first, a stack of three at most", () => {
   expect(alertsAt(0).map((a) => a.index)).toEqual([0]);
@@ -10,7 +19,13 @@ test("banners arrive one at a time, newest first, a stack of three at most", () 
 });
 
 test("install: setup answers, then pair types and shows the code, then links", () => {
-  expect(installAt(0)).toMatchObject({ typed: 0, setupDone: false, pairTyped: 0, qr: false, mood: "typing" });
+  expect(installAt(0)).toMatchObject({
+    typed: 0,
+    setupDone: false,
+    pairTyped: 0,
+    qr: false,
+    mood: "typing",
+  });
   expect(installAt(1600)).toMatchObject({ typed: INSTALL_TYPE.length, setupDone: false });
   expect(installAt(2400)).toMatchObject({ setupDone: true, pairTyped: 0 });
   expect(installAt(3700).pairTyped).toBe(PAIR_TYPE.length);
@@ -25,7 +40,10 @@ test("voice: Pew talks, then listens", () => {
 });
 
 test("the sample banners use the real notification wording", () => {
-  expect(SAMPLE_ALERTS[0]).toEqual({ title: "storefront · Claude Code", body: "Added the cart tests. All 42 pass." });
+  expect(SAMPLE_ALERTS[0]).toEqual({
+    title: "storefront · Claude Code",
+    body: "Added the cart tests. All 42 pass.",
+  });
   expect(SAMPLE_ALERTS[1]?.body).toBe("Needs your OK to run: npm run migrate");
   expect(SAMPLE_ALERTS[3]?.body.startsWith("Asks: ")).toBe(true);
 });

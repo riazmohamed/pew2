@@ -193,7 +193,12 @@ function Conversation({ drawerOpen }: { drawerOpen: boolean }) {
             tools: [
               { id: "a", title: "Reading cart/total.ts", kind: "read", status: "completed" },
               { id: "b", title: "Editing cart/total.ts", kind: "edit", status: "completed" },
-              { id: "c", title: "Running the checkout tests", kind: "execute", status: "in_progress" },
+              {
+                id: "c",
+                title: "Running the checkout tests",
+                kind: "execute",
+                status: "in_progress",
+              },
             ],
             speaking: false,
           }}

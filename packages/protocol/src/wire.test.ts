@@ -171,9 +171,9 @@ test("a prompt keeps its attachments and defaults them when absent", () => {
   });
 
   // Older apps send none at all, and the handler reads the field unconditionally.
-  expect(ClientMessage.parse({ t: "session.prompt", sessionId: "s1", text: "hi" })).toMatchObject(
-    { attachments: [] },
-  );
+  expect(ClientMessage.parse({ t: "session.prompt", sessionId: "s1", text: "hi" })).toMatchObject({
+    attachments: [],
+  });
 });
 
 test("a message missing what the daemon will use is refused", () => {
@@ -225,9 +225,11 @@ test("a catch-up carries the approvals the agent is still blocked on", () => {
     ServerMessage.parse({ t: "session.replay", sessionId: "s1", events: [], permissions: [] }),
   ).toMatchObject({ permissions: [] });
   expect(
-    (ServerMessage.parse({ t: "session.replay", sessionId: "s1", events: [] }) as {
-      permissions?: unknown;
-    }).permissions,
+    (
+      ServerMessage.parse({ t: "session.replay", sessionId: "s1", events: [] }) as {
+        permissions?: unknown;
+      }
+    ).permissions,
     // Undefined rather than absent-as-a-key: what the app branches on is the
     // value, and asserting the key's absence would test Zod's output style
     // rather than the distinction this carries.
@@ -266,7 +268,9 @@ test("a push registration is a client message, and needs a real platform", () =>
   ).toBe(false);
 
   // An empty token would be sent to Expo on every finished turn for nothing.
-  expect(ClientMessage.safeParse({ t: "app.push", token: "", platform: "ios" }).success).toBe(false);
+  expect(ClientMessage.safeParse({ t: "app.push", token: "", platform: "ios" }).success).toBe(
+    false,
+  );
 });
 
 test("cursors off a raw hello are taken only when they are usable seq numbers", () => {
@@ -285,11 +289,26 @@ test("cursors off a raw hello are taken only when they are usable seq numbers", 
 
 test("goal rows carry instructions, and workspace browsing can ask for files", async () => {
   const { GoalSummary, WorkspaceEntry, WorkspacesRequest } = await import("./wire.js");
-  const row = { id: "g", name: "n", goal: "x", context: [], path: "/g", createdAt: "t", lastActiveMs: 1, status: "idle" };
+  const row = {
+    id: "g",
+    name: "n",
+    goal: "x",
+    context: [],
+    path: "/g",
+    createdAt: "t",
+    lastActiveMs: 1,
+    status: "idle",
+  };
   expect(GoalSummary.parse({ ...row, instructions: "be brief" }).instructions).toBe("be brief");
   expect(GoalSummary.parse(row).instructions).toBeUndefined();
-  expect(WorkspacesRequest.parse({ t: "workspaces", requestId: "r", path: "/a", files: true }).files).toBe(true);
-  expect(WorkspaceEntry.parse({ path: "/a/b", name: "b", repo: false, kind: "file" }).kind).toBe("file");
+  expect(
+    WorkspacesRequest.parse({ t: "workspaces", requestId: "r", path: "/a", files: true }).files,
+  ).toBe(true);
+  expect(WorkspaceEntry.parse({ path: "/a/b", name: "b", repo: false, kind: "file" }).kind).toBe(
+    "file",
+  );
   expect(WorkspaceEntry.parse({ path: "/a/b", name: "b", repo: false }).kind).toBeUndefined();
-  expect(WorkspaceEntry.safeParse({ path: "/a/b", name: "b", repo: false, kind: "link" }).success).toBe(false);
+  expect(
+    WorkspaceEntry.safeParse({ path: "/a/b", name: "b", repo: false, kind: "link" }).success,
+  ).toBe(false);
 });

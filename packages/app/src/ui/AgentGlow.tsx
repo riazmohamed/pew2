@@ -11,7 +11,13 @@
 import { useEffect } from "react";
 import { Canvas, Circle, RadialGradient, vec } from "@shopify/react-native-skia";
 import { StyleSheet, View } from "react-native";
-import { Easing, interpolateColor, useDerivedValue, useSharedValue, withTiming } from "react-native-reanimated";
+import {
+  Easing,
+  interpolateColor,
+  useDerivedValue,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { withAlpha } from "../motion";
 import { useReducedMotion } from "./useReducedMotion";
 
@@ -47,7 +53,10 @@ export function AgentGlow({ color, size }: AgentGlowProps) {
   });
 
   return (
-    <View pointerEvents="none" style={[styles.box, { width: size, height: size, marginLeft: -r, marginTop: -r }]}>
+    <View
+      pointerEvents="none"
+      style={[styles.box, { width: size, height: size, marginLeft: -r, marginTop: -r }]}
+    >
       <Canvas style={{ width: size, height: size }}>
         <Circle cx={r} cy={r} r={r}>
           <RadialGradient c={vec(r, r)} r={r} colors={colors} positions={[0, 0.45, 1]} />

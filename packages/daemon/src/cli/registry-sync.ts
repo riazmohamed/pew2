@@ -54,9 +54,7 @@ export interface BundledEntry {
  * several of them differently — `gemini` for our `gemini-cli`, `cursor` for our
  * `cursor-agent` — and matching on id alone would list those twice.
  */
-export async function bundledEntries(
-  dir: string = defaultProvidersDir(),
-): Promise<BundledEntry[]> {
+export async function bundledEntries(dir: string = defaultProvidersDir()): Promise<BundledEntry[]> {
   let files: string[];
   try {
     files = (await readdir(dir)).filter((e) => e.endsWith(".json"));

@@ -17,8 +17,16 @@ export const LOCAL_COMMANDS: readonly CommandInfo[] = [
   { name: "model", description: "list or switch the model", hint: "[n|name]" },
   { name: "thinking", description: "list or switch the thinking level", hint: "[n|name]" },
   { name: "mode", description: "list or switch the agent's mode", hint: "[n|name]" },
-  { name: "shot", description: "send a screenshot of this Mac (area: drag a region)", hint: "[area] [message]" },
-  { name: "attach", description: "send an image file (drop it on the window)", hint: "<path> [message]" },
+  {
+    name: "shot",
+    description: "send a screenshot of this Mac (area: drag a region)",
+    hint: "[area] [message]",
+  },
+  {
+    name: "attach",
+    description: "send an image file (drop it on the window)",
+    hint: "<path> [message]",
+  },
   { name: "sessions", description: "list open conversations" },
   { name: "switch", description: "follow one of them", hint: "<n>" },
   { name: "new", description: "start a new conversation" },
@@ -36,7 +44,9 @@ function normalise(name: string): string {
 
 /** The agent's commands out of a session event, or undefined for any other event. */
 export function readAgentCommands(payload: unknown): CommandInfo[] | undefined {
-  const update = (payload as { update?: { sessionUpdate?: unknown; availableCommands?: unknown } } | null)?.update;
+  const update = (
+    payload as { update?: { sessionUpdate?: unknown; availableCommands?: unknown } } | null
+  )?.update;
   if (update?.sessionUpdate !== "available_commands_update") return undefined;
   return agentCommandList(update.availableCommands);
 }
@@ -45,9 +55,19 @@ export function readAgentCommands(payload: unknown): CommandInfo[] | undefined {
 export function agentCommandList(raw: unknown): CommandInfo[] {
   if (!Array.isArray(raw)) return [];
   const out: CommandInfo[] = [];
-  for (const entry of raw as { name?: unknown; description?: unknown; hint?: unknown; input?: { hint?: unknown } }[]) {
+  for (const entry of raw as {
+    name?: unknown;
+    description?: unknown;
+    hint?: unknown;
+    input?: { hint?: unknown };
+  }[]) {
     if (typeof entry?.name !== "string" || !entry.name.trim()) continue;
-    const hint = typeof entry.hint === "string" ? entry.hint : typeof entry.input?.hint === "string" ? entry.input.hint : undefined;
+    const hint =
+      typeof entry.hint === "string"
+        ? entry.hint
+        : typeof entry.input?.hint === "string"
+          ? entry.input.hint
+          : undefined;
     out.push({
       name: normalise(entry.name),
       description: typeof entry.description === "string" ? entry.description : "",
@@ -97,7 +117,9 @@ export function helpLines(agent: readonly CommandInfo[], agentName: string): str
     lines.push(`  ${pad(c)} ${c.description}`);
   }
   if (clashes.length > 0) {
-    lines.push(`  Also offered by ${agentName} but pew2's own wins here: ${clashes.map((n) => `/${n}`).join(", ")}`);
+    lines.push(
+      `  Also offered by ${agentName} but pew2's own wins here: ${clashes.map((n) => `/${n}`).join(", ")}`,
+    );
   }
   return lines;
 }
@@ -163,10 +185,17 @@ const CATEGORY_LABEL: Record<ConfigCategory, string> = {
 };
 
 /** The selector for a category. Falls back to a matching id for agents that skip `category`. */
-export function findOption(options: readonly ConfigOptionLike[], category: ConfigCategory): ConfigOptionLike | undefined {
+export function findOption(
+  options: readonly ConfigOptionLike[],
+  category: ConfigCategory,
+): ConfigOptionLike | undefined {
   return (
     options.find((o) => o.category === category) ??
-    options.find((o) => o.id === category || (category === "thought_level" && /^(thinking|thought|effort|reasoning)/i.test(o.id)))
+    options.find(
+      (o) =>
+        o.id === category ||
+        (category === "thought_level" && /^(thinking|thought|effort|reasoning)/i.test(o.id)),
+    )
   );
 }
 
@@ -178,18 +207,27 @@ export function currentLabel(option: ConfigOptionLike | undefined): string | und
 }
 
 /** Numbered choices with the current one marked. */
-export function listOption(option: ConfigOptionLike | undefined, category: ConfigCategory, agentName: string): string[] {
+export function listOption(
+  option: ConfigOptionLike | undefined,
+  category: ConfigCategory,
+  agentName: string,
+): string[] {
   const label = CATEGORY_LABEL[category];
   if (!option) return [`${agentName} offers no ${label} choice here.`];
   if (option.type === "boolean" || typeof option.currentValue === "boolean") {
-    return [`${option.name}: ${option.currentValue ? "on" : "off"}   (/${commandFor(category)} on|off)`];
+    return [
+      `${option.name}: ${option.currentValue ? "on" : "off"}   (/${commandFor(category)} on|off)`,
+    ];
   }
   const choices = option.options ?? [];
-  if (choices.length === 0) return [`${option.name}: ${String(option.currentValue)} (no other choices offered)`];
+  if (choices.length === 0)
+    return [`${option.name}: ${String(option.currentValue)} (no other choices offered)`];
   const lines = [`${option.name}:`];
   choices.forEach((choice, i) => {
     const current = choice.value === option.currentValue;
-    lines.push(`${current ? "●" : " "} ${i + 1}. ${choice.name}${choice.name !== choice.value ? `  (${choice.value})` : ""}${current ? "  current" : ""}`);
+    lines.push(
+      `${current ? "●" : " "} ${i + 1}. ${choice.name}${choice.name !== choice.value ? `  (${choice.value})` : ""}${current ? "  current" : ""}`,
+    );
   });
   lines.push(`/${commandFor(category)} <n|name> to switch`);
   return lines;
@@ -216,12 +254,19 @@ export function pickOptionValue(
   const choices = option.options ?? [];
   if (/^\d+$/.test(wanted)) {
     const choice = choices[Number(wanted) - 1];
-    return choice ? { value: choice.value, name: choice.name } : { error: `choose 1-${choices.length}` };
+    return choice
+      ? { value: choice.value, name: choice.name }
+      : { error: `choose 1-${choices.length}` };
   }
-  const exact = choices.find((c) => c.value.toLowerCase() === wanted || c.name.toLowerCase() === wanted);
+  const exact = choices.find(
+    (c) => c.value.toLowerCase() === wanted || c.name.toLowerCase() === wanted,
+  );
   if (exact) return { value: exact.value, name: exact.name };
-  const partial = choices.filter((c) => c.value.toLowerCase().includes(wanted) || c.name.toLowerCase().includes(wanted));
+  const partial = choices.filter(
+    (c) => c.value.toLowerCase().includes(wanted) || c.name.toLowerCase().includes(wanted),
+  );
   if (partial.length === 1) return { value: partial[0]!.value, name: partial[0]!.name };
-  if (partial.length > 1) return { error: `'${arg}' matches ${partial.map((c) => c.name).join(", ")}` };
+  if (partial.length > 1)
+    return { error: `'${arg}' matches ${partial.map((c) => c.name).join(", ")}` };
   return { error: `no ${option.name.toLowerCase()} called '${arg}'` };
 }

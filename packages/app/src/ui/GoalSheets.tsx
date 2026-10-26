@@ -52,7 +52,9 @@ export function GoalSheets({
   // "Talk it through" focuses the call on the inbox item this sheet shows.
   const talkSession = daemon.sessionId;
   const talkAbout = (kind: "approval" | "question") =>
-    onTalk && talkSession ? (requestId: string) => onTalk(inboxItemId(talkSession, kind, requestId)) : undefined;
+    onTalk && talkSession
+      ? (requestId: string) => onTalk(inboxItemId(talkSession, kind, requestId))
+      : undefined;
   return (
     <>
       {/* Last of every overlay on purpose. All the sheets share one zIndex, so
@@ -89,12 +91,12 @@ export function GoalSheets({
       />
       {/* Same rule as the approval: a question the agent is blocked on sits
           above whatever else is open. Never raised by a replay batch. */}
-      <AskUserSheet
-        ask={askHere}
-        onAnswer={answerAsk}
-        onTalk={talkAbout("question")}
+      <AskUserSheet ask={askHere} onAnswer={answerAsk} onTalk={talkAbout("question")} />
+      <PlanReviewSheet
+        plan={stripsHere.plan ? (planHere?.pending ?? undefined) : undefined}
+        busy={daemon.busy}
+        onDecide={decidePlan}
       />
-      <PlanReviewSheet plan={stripsHere.plan ? planHere?.pending ?? undefined : undefined} busy={daemon.busy} onDecide={decidePlan} />
       <ChecklistSheet
         visible={checklistOpen}
         items={checklistHere?.items}

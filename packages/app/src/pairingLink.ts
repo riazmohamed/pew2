@@ -83,7 +83,10 @@ export function parsePairing(input: string, deviceId = "phone"): ParseResult {
   // as a comment — either way the connection could only fail later, opaquely.
   const key = new URLSearchParams(url.hash.replace(/^#/, "")).get("k");
   if (!key) {
-    return { ok: false, error: "That link has no encryption key. Update pew2 and run `pew2 pair`." };
+    return {
+      ok: false,
+      error: "That link has no encryption key. Update pew2 and run `pew2 pair`.",
+    };
   }
   const keyHex = hexFromBase64Url(key);
   if (!keyHex) {

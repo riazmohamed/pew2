@@ -69,13 +69,19 @@ export function matchProjects(said: string, cwds: readonly string[]): string[] {
 }
 
 /** The agent a spoken name means ("claude", "codex", "Claude Code"), when exactly one fits. */
-export function matchAgent<T extends { providerId: string; agentName: string }>(said: string, agents: readonly T[]): T | undefined {
+export function matchAgent<T extends { providerId: string; agentName: string }>(
+  said: string,
+  agents: readonly T[],
+): T | undefined {
   const want = words(said).replace(/ /g, "");
   if (!want) return undefined;
-  const key = (agent: T) => [agent.providerId, agent.agentName].map((name) => words(name).replace(/ /g, ""));
+  const key = (agent: T) =>
+    [agent.providerId, agent.agentName].map((name) => words(name).replace(/ /g, ""));
   const exact = agents.filter((agent) => key(agent).includes(want));
   if (exact.length === 1) return exact[0];
-  const partial = agents.filter((agent) => key(agent).some((name) => name.includes(want) || want.includes(name)));
+  const partial = agents.filter((agent) =>
+    key(agent).some((name) => name.includes(want) || want.includes(name)),
+  );
   return partial.length === 1 ? partial[0] : undefined;
 }
 
@@ -110,18 +116,23 @@ export function pickChat(
     pool = pool.filter((chat) => chat.providerId === agent.providerId);
   }
   if (args.project) {
-    const cwds = matchProjects(args.project, pool.map((chat) => chat.cwd));
+    const cwds = matchProjects(
+      args.project,
+      pool.map((chat) => chat.cwd),
+    );
     if (cwds.length === 0) return { kind: "none", say: `I can't find a chat in ${args.project}.` };
     if (cwds.length > 1) {
       const options = [...new Set(cwds.map(projectName))];
-      if (options.length > 1) return { kind: "ambiguous", say: `Which one: ${options.join(", ")}?`, options };
+      if (options.length > 1)
+        return { kind: "ambiguous", say: `Which one: ${options.join(", ")}?`, options };
     }
     pool = pool.filter((chat) => cwds.includes(chat.cwd));
   }
   if (args.about) {
     const best = Math.max(0, ...pool.map((chat) => titleScore(chat.title, args.about!)));
     if (best > 0) pool = pool.filter((chat) => titleScore(chat.title, args.about!) === best);
-    else if (!args.project) return { kind: "none", say: `I can't find a chat about ${args.about}.` };
+    else if (!args.project)
+      return { kind: "none", say: `I can't find a chat about ${args.about}.` };
   }
   const chat = pool[0];
   return chat ? { kind: "found", chat } : { kind: "none", say: "I can't find that chat." };
@@ -141,7 +152,9 @@ export function pickAgent(
   if (said) return matchAgent(said, agents) ?? { say: `I don't know an agent called ${said}.` };
   const usable = new Set(agents.map((agent) => agent.providerId));
   const last = chats.find((chat) => chat.cwd === cwd && usable.has(chat.providerId));
-  const id = last?.providerId ?? (contextProvider && usable.has(contextProvider) ? contextProvider : undefined);
+  const id =
+    last?.providerId ??
+    (contextProvider && usable.has(contextProvider) ? contextProvider : undefined);
   const agent = agents.find((entry) => entry.providerId === id);
   return agent ?? { say: "Which agent should I start?" };
 }
@@ -187,15 +200,23 @@ export const CHAT_TOOLS = new Set(["open_chat", "start_chat"]);
 
 const out = (value: Record<string, unknown>) => ({ output: JSON.stringify(value) });
 const fail = (say: string, error: string) => out({ ok: false, error, say });
-const str = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : undefined);
+const str = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value.trim() : undefined;
 
 function named(sessionId: string, port: ChatPort, fallback: { cwd: string; agentName: string }) {
   const status = port.statuses(sessionId)[0];
-  return { project: status?.folder ?? projectName(fallback.cwd), agent: status?.agentName ?? fallback.agentName };
+  return {
+    project: status?.folder ?? projectName(fallback.cwd),
+    agent: status?.agentName ?? fallback.agentName,
+  };
 }
 
 /** Run `open_chat` / `start_chat`. Never throws: a failure is something Pew says. */
-export async function runChatTool(name: string, rawArgs: string, port: ChatPort): Promise<{ output: string }> {
+export async function runChatTool(
+  name: string,
+  rawArgs: string,
+  port: ChatPort,
+): Promise<{ output: string }> {
   let args: Record<string, unknown> = {};
   try {
     const parsed = JSON.parse(rawArgs || "{}");
@@ -234,8 +255,12 @@ export async function runChatTool(name: string, rawArgs: string, port: ChatPort)
     if (name === "start_chat") {
       const project = str(args.project);
       if (!project) return fail("Which project?", "project required");
-      const cwds = matchProjects(project, chats.map((chat) => chat.cwd));
-      if (cwds.length === 0) return fail(`I don't know a project called ${project}.`, "unknown project");
+      const cwds = matchProjects(
+        project,
+        chats.map((chat) => chat.cwd),
+      );
+      if (cwds.length === 0)
+        return fail(`I don't know a project called ${project}.`, "unknown project");
       const names = [...new Set(cwds.map(projectName))];
       if (names.length > 1) return fail(`Which one: ${names.join(", ")}?`, "ambiguous");
       const cwd = cwds[0]!;
@@ -246,7 +271,13 @@ export async function runChatTool(name: string, rawArgs: string, port: ChatPort)
       // Not when they asked for a fresh chat or a model for it.
       const text0 = str(args.text);
       if (args.new_chat !== true && !str(args.model) && text0) {
-        const open = port.statuses().filter((status) => status.folder === projectName(cwd) && (!status.agentName || status.agentName === agent.agentName));
+        const open = port
+          .statuses()
+          .filter(
+            (status) =>
+              status.folder === projectName(cwd) &&
+              (!status.agentName || status.agentName === agent.agentName),
+          );
         const target = open.find((status) => !status.working) ?? open[0];
         if (target) {
           const sent = port.tellAgent(target.sessionId, text0);
@@ -267,7 +298,10 @@ export async function runChatTool(name: string, rawArgs: string, port: ChatPort)
       const sessionId = await port.start(agent.providerId, cwd);
       // Before the first message, so that message already runs on it.
       const wantModel = str(args.model);
-      const model = wantModel && port.setModel ? await port.setModel(sessionId, wantModel).catch(() => undefined) : undefined;
+      const model =
+        wantModel && port.setModel
+          ? await port.setModel(sessionId, wantModel).catch(() => undefined)
+          : undefined;
       const text = str(args.text);
       let queued = false;
       if (text) {

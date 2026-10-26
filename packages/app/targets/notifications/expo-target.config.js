@@ -13,6 +13,7 @@ module.exports = (config) => ({
   deploymentTarget: "15.1",
   frameworks: ["UserNotifications", "WidgetKit"],
   entitlements: {
-    "com.apple.security.application-groups": config.ios.entitlements["com.apple.security.application-groups"],
+    "com.apple.security.application-groups":
+      config.ios.entitlements["com.apple.security.application-groups"],
   },
 });

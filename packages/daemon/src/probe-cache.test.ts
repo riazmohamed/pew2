@@ -12,9 +12,7 @@ async function tempEnv() {
 
 const capabilities = {
   configOptions: [],
-  sessions: [
-    { sessionId: "s1", cwd: "/tmp", title: "Cached conversation", messageCount: 3 },
-  ],
+  sessions: [{ sessionId: "s1", cwd: "/tmp", title: "Cached conversation", messageCount: 3 }],
   canResume: true,
 };
 

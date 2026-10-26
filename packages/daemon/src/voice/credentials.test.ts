@@ -30,8 +30,7 @@ async function put(path: string, value: unknown) {
   await writeFile(path, JSON.stringify(value));
 }
 
-const jwt = (claims: object) =>
-  `x.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.y`;
+const jwt = (claims: object) => `x.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.y`;
 
 const noFetch = (() => {
   throw new Error("must not fetch");
@@ -60,13 +59,19 @@ describe("resolveCredential", () => {
     const codex = jwt({ exp: NOW / 1000 + 3600 });
     await put(p.codexAuth, { tokens: { access_token: codex, id_token: jwt({ email: "a@b.c" }) } });
     const result = await resolveCredential(p, { now: NOW, fetchImpl: noFetch });
-    expect(result.ok && result.credential).toEqual({ source: "codex", token: codex, account: "a@b.c" });
+    expect(result.ok && result.credential).toEqual({
+      source: "codex",
+      token: codex,
+      account: "a@b.c",
+    });
   });
 
   test("only expired agent logins: the expired reason", async () => {
     const p = await paths();
     await put(p.ggAuth, { openai: { accessToken: "old", refreshToken: "r", expiresAt: NOW - 1 } });
-    await put(p.codexAuth, { tokens: { access_token: jwt({ exp: NOW / 1000 - 10 }), refresh_token: "r" } });
+    await put(p.codexAuth, {
+      tokens: { access_token: jwt({ exp: NOW / 1000 - 10 }), refresh_token: "r" },
+    });
     expect(await resolveCredential(p, { now: NOW, fetchImpl: noFetch })).toEqual({
       ok: false,
       reason: REASON_EXPIRED,
@@ -76,7 +81,11 @@ describe("resolveCredential", () => {
 
   test("pew2's own token is refreshed and rewritten 0600", async () => {
     const p = await paths();
-    await writeVoiceAuth(p.voiceAuth, { accessToken: "old", refreshToken: "r1", expiresAt: NOW - 1 });
+    await writeVoiceAuth(p.voiceAuth, {
+      accessToken: "old",
+      refreshToken: "r1",
+      expiresAt: NOW - 1,
+    });
     let body = "";
     const fetchImpl = (async (_url: string, init?: RequestInit) => {
       body = init?.body as string;

@@ -19,7 +19,10 @@ const ev = (at: number, payload: unknown): wire.SessionEvent => ({
   payload,
 });
 const chunk = (at: number, text: string) =>
-  ev(at, { sessionId: "a", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } });
+  ev(at, {
+    sessionId: "a",
+    update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
+  });
 const tool = (at: number, toolCallId: string, title: string) =>
   ev(at, { update: { sessionUpdate: "tool_call", toolCallId, title, status: "pending" } });
 const toolUpdate = (at: number, toolCallId: string, status: string) =>
@@ -33,7 +36,11 @@ const source = (sessionId: string, extra: Partial<BoardSource> = {}): BoardSourc
 });
 
 test("streamed text keeps one line that updates in place", () => {
-  const lines = deriveLines([chunk(1, "Looking at "), chunk(2, "the tests.\nRunning"), chunk(3, " them now.")]);
+  const lines = deriveLines([
+    chunk(1, "Looking at "),
+    chunk(2, "the tests.\nRunning"),
+    chunk(3, " them now."),
+  ]);
   expect(lines).toEqual([{ kind: "text", text: "Running them now.", at: 3 }]);
 });
 
@@ -59,8 +66,19 @@ test("tool → result, a failed tool, then a fresh text line", () => {
 
 test("permission and ask lines from the logged payloads", () => {
   const lines = deriveLines([
-    ev(1, { kind: "permission_request", requestId: "p", params: { toolCall: { title: "rm -rf dist" }, options: [] } }),
-    ev(2, { kind: "ask_user", requestId: "q", questions: [{ id: "a", question: "Which db?" }, { id: "b", question: "x" }] }),
+    ev(1, {
+      kind: "permission_request",
+      requestId: "p",
+      params: { toolCall: { title: "rm -rf dist" }, options: [] },
+    }),
+    ev(2, {
+      kind: "ask_user",
+      requestId: "q",
+      questions: [
+        { id: "a", question: "Which db?" },
+        { id: "b", question: "x" },
+      ],
+    }),
   ]);
   expect(lines).toEqual([
     { kind: "perm", text: "rm -rf dist", at: 1 },
@@ -72,7 +90,9 @@ test("lines are single-line, capped, and at most 12; pre-call lines are few", ()
   const long = deriveLines([chunk(1, `a\nb ${"x".repeat(300)}`)]);
   expect(long[0]?.text.length).toBe(140);
   expect(long[0]?.text.endsWith("…")).toBe(true);
-  const events = Array.from({ length: 30 }, (_, i) => tool(i < 10 ? i : 100 + i, `t${i}`, `tool ${i}`));
+  const events = Array.from({ length: 30 }, (_, i) =>
+    tool(i < 10 ? i : 100 + i, `t${i}`, `tool ${i}`),
+  );
   const memory = newMemory(100);
   const [lane] = buildBoard([source("s", { events })], memory, 200);
   expect(lane?.lines).toHaveLength(12);
@@ -84,7 +104,9 @@ test("status and since", () => {
   const memory = newMemory(1_000_000);
   const perms = new Map([["p", {}]]);
   const board = (now: number, sources: BoardSource[]) =>
-    Object.fromEntries(buildBoard(sources, memory, now).map((s) => [s.sessionId, [s.status, s.since]]));
+    Object.fromEntries(
+      buildBoard(sources, memory, now).map((s) => [s.sessionId, [s.status, s.since]]),
+    );
   expect(
     board(1_000_000, [
       source("n", { permissions: perms, working: true }),
@@ -93,15 +115,28 @@ test("status and since", () => {
       source("old", { events: [chunk(1, "x")] }),
       source("recent", { events: [chunk(990_000, "x")] }),
     ]),
-  ).toEqual({ n: ["needs", 1_000_000], a: ["asks", 1_000_000], w: ["working", 1_000_000], old: ["idle", 1], recent: ["done", 990_000] });
+  ).toEqual({
+    n: ["needs", 1_000_000],
+    a: ["asks", 1_000_000],
+    w: ["working", 1_000_000],
+    old: ["idle", 1],
+    recent: ["done", 990_000],
+  });
   // The working one finishes during the call; since is when it did.
   expect(board(1_005_000, [source("w", { working: false })]).w).toEqual(["done", 1_005_000]);
   expect(board(1_009_000, [source("w", { working: false })]).w).toEqual(["done", 1_005_000]);
 });
 
 test("a pending plan asks", () => {
-  const plan = { t: "plan.state", sessionId: "p", planMode: true, pending: { planPath: "x", content: "", generation: 1 } };
-  expect(buildBoard([source("p", { plan: plan as wire.PlanState })], newMemory(0), 1)[0]?.status).toBe("asks");
+  const plan = {
+    t: "plan.state",
+    sessionId: "p",
+    planMode: true,
+    pending: { planPath: "x", content: "", generation: 1 },
+  };
+  expect(
+    buildBoard([source("p", { plan: plan as wire.PlanState })], newMemory(0), 1)[0]?.status,
+  ).toBe("asks");
 });
 
 test("ranking: touched, then waiting, then working, then done; capped at 8", () => {
@@ -126,7 +161,11 @@ test("Pew's marks land on the lane, interleaved by time", () => {
   const memory = newMemory(100);
   mark(memory, "s", 150, { kind: "pew", text: "run the\ntests" });
   mark(memory, "s", 160);
-  const [lane] = buildBoard([source("s", { events: [tool(120, "t", "ls"), toolUpdate(170, "t", "completed")] })], memory, 200);
+  const [lane] = buildBoard(
+    [source("s", { events: [tool(120, "t", "ls"), toolUpdate(170, "t", "completed")] })],
+    memory,
+    200,
+  );
   expect(lane?.touchedAt).toBe(160);
   expect(lane?.lines).toEqual([
     { kind: "tool", text: "ls", at: 120 },

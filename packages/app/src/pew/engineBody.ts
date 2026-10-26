@@ -62,7 +62,17 @@ export interface PewPainter {
   /** A soft additive halo of radius `r`. */
   glow(x: number, y: number, r: number, c: RGB, a: number): void;
   /** A filled ellipse, rotated by `rot` radians, with an optional halo `glowR` in `gc`. */
-  oval(cx: number, cy: number, rx: number, ry: number, rot: number, c: RGB, a: number, glowR: number, gc: RGB): void;
+  oval(
+    cx: number,
+    cy: number,
+    rx: number,
+    ry: number,
+    rot: number,
+    c: RGB,
+    a: number,
+    glowR: number,
+    gc: RGB,
+  ): void;
   /** A round-capped polyline `[x0, y0, x1, y1, …]`, with an optional halo. */
   line(pts: number[], width: number, c: RGB, a: number, glowR: number, gc: RGB): void;
   /** A filled polygon `[x0, y0, …]`. */
@@ -472,7 +482,10 @@ function target(o: Float32Array, i: number, B: PewBody, t: number, st: MoodState
       break;
     case "listening":
       // A ripple running in toward the face's centre: taking sound in.
-      k = 1 + 0.012 * Math.sin(t * 2 + y * 3) + 0.022 * Math.sin(Math.acos(clamp(z, -1, 1)) * 5 + t * 5.5);
+      k =
+        1 +
+        0.012 * Math.sin(t * 2 + y * 3) +
+        0.022 * Math.sin(Math.acos(clamp(z, -1, 1)) * 5 + t * 5.5);
       break;
     case "typing":
       k = 1 + 0.012 * Math.sin(t * 2 + y * 3) - (y < -0.4 && z > 0 ? 0.03 * typeTap(t) : 0);
@@ -491,7 +504,10 @@ function target(o: Float32Array, i: number, B: PewBody, t: number, st: MoodState
       k = 1 + 0.03 * Math.sin(t * 9) + 0.14 * cheerBurst(cheerPhase(st.age)) * (r - 0.2);
       break;
     case "goodbye":
-      k = 1 + 0.015 * Math.sin(t * 2 + y * 3) + (x > 0 ? 0.07 * goodbyeWave(st.age) * x * Math.sin(lat * 6 - t * 12) : 0);
+      k =
+        1 +
+        0.015 * Math.sin(t * 2 + y * 3) +
+        (x > 0 ? 0.07 * goodbyeWave(st.age) * x * Math.sin(lat * 6 - t * 12) : 0);
       break;
     case "muted":
       k = 1 + 0.01 * Math.sin(t * 1.4 + y * 2);
@@ -637,7 +653,14 @@ function turn(B: PewBody, t: number, dt: number, st: MoodState): void {
  * One frame of life. `look` is where something interesting is, -1..1 on each
  * axis (a finger, the composer); without one it drifts and glances by itself.
  */
-export function advancePew(B: PewBody, t: number, dt: number, mood: PewMood, lookX?: number, lookY?: number): void {
+export function advancePew(
+  B: PewBody,
+  t: number,
+  dt: number,
+  mood: PewMood,
+  lookX?: number,
+  lookY?: number,
+): void {
   "worklet";
   const step_ = clamp(dt, 0.001, 1 / 30);
   B.last = t;
@@ -670,8 +693,26 @@ export function settlePew(B: PewBody, t: number, mood: PewMood, lookX = 0, lookY
       B.v[i * 3 + a] = 0;
     }
   }
-  B.yaw = mood === "sleepy" ? (B.sleep === 3 ? -0.3 : B.sleep === 4 ? 0.4 : B.sleep === 1 ? 0.04 : 0.12) : lookX * 0.6;
-  B.pitch = mood === "sleepy" ? (B.sleep === 5 ? -0.45 : B.sleep === 6 ? -0.42 : -0.3) : mood === "thinking" ? 0.25 : lookY * 0.38;
+  B.yaw =
+    mood === "sleepy"
+      ? B.sleep === 3
+        ? -0.3
+        : B.sleep === 4
+          ? 0.4
+          : B.sleep === 1
+            ? 0.04
+            : 0.12
+      : lookX * 0.6;
+  B.pitch =
+    mood === "sleepy"
+      ? B.sleep === 5
+        ? -0.45
+        : B.sleep === 6
+          ? -0.42
+          : -0.3
+      : mood === "thinking"
+        ? 0.25
+        : lookY * 0.38;
 }
 
 // ── touch ───────────────────────────────────────────────────
@@ -734,7 +775,8 @@ function spinFlick(B: PewBody, angle: number, dt: number): void {
   const hand = angle / dt;
   const v = B.spinV;
   const along = Math.abs(v) < 1 || Math.sign(angle) === Math.sign(v);
-  if (along && Math.abs(hand) >= Math.abs(v) * 0.34) B.spinV = clamp(v + angle * SPIN_PUMP, -SPIN_MAX, SPIN_MAX);
+  if (along && Math.abs(hand) >= Math.abs(v) * 0.34)
+    B.spinV = clamp(v + angle * SPIN_PUMP, -SPIN_MAX, SPIN_MAX);
   else if (along) B.spinV = v * Math.exp(-dt * 3);
   else B.spinV = clamp(v + angle * SPIN_PUMP * 1.4, -SPIN_MAX, SPIN_MAX);
 }

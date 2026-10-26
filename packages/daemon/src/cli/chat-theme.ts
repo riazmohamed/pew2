@@ -38,7 +38,8 @@ export function colorMode(env: Record<string, string | undefined>): ColorMode {
   if (colorterm === "truecolor" || colorterm === "24bit") return "truecolor";
   const program = env.TERM_PROGRAM ?? "";
   if (program === "Apple_Terminal") return "256";
-  if (["iTerm.app", "WezTerm", "vscode", "ghostty", "WarpTerminal"].includes(program)) return "truecolor";
+  if (["iTerm.app", "WezTerm", "vscode", "ghostty", "WarpTerminal"].includes(program))
+    return "truecolor";
   if (env.LC_TERMINAL === "iTerm2") return "truecolor";
   return "256";
 }
@@ -123,7 +124,9 @@ function lerp(a: string, b: string, t: number): string {
 
 /** OG Coder's ping-pong primary → secondary ramp, one colour per glyph. */
 function gradient(paint: Paint, text: string, offset: number): string {
-  const oneWay = Array.from({ length: GRADIENT_STEPS }, (_, i) => lerp(THEME.primary, THEME.secondary, i / (GRADIENT_STEPS - 1)));
+  const oneWay = Array.from({ length: GRADIENT_STEPS }, (_, i) =>
+    lerp(THEME.primary, THEME.secondary, i / (GRADIENT_STEPS - 1)),
+  );
   const ramp = [...oneWay, ...oneWay.slice(1, -1).reverse()];
   let index = offset;
   let out = "";
@@ -154,9 +157,12 @@ export function bannerLines(info: BannerInfo, paint: Paint, columns: number): st
   const name = `${paint.bold(paint.fg(THEME.primary, "pew2"))}${paint.dim(" · ")}${paint.bold(paint.fg(THEME.text, info.project))}${paint.dim(` v${info.version}`)}`;
   const model = `${paint.fg(THEME.secondary, info.model ? `${info.agent} · ${info.model}` : info.agent)}${info.path ? paint.dim(`  ${info.path}`) : ""}`;
   const key = (k: string, what: string) => `${paint.fg(THEME.primary, k)}${paint.dim(` ${what}`)}`;
-  const hints = [key("/model", "switch model"), key("/shot", "screenshot"), key("Tab", "complete"), key("/help", "commands")].join(
-    paint.dim(" · "),
-  );
+  const hints = [
+    key("/model", "switch model"),
+    key("/shot", "screenshot"),
+    key("Tab", "complete"),
+    key("/help", "commands"),
+  ].join(paint.dim(" · "));
   const info3 = [name, model, hints];
   const logo = LOGO.map((line, i) => gradient(paint, line, i * 2));
   if (columns < 70) return ["", ...logo, ...info3, ""];
@@ -164,7 +170,12 @@ export function bannerLines(info: BannerInfo, paint: Paint, columns: number): st
 }
 
 /** A user turn: a shaded block with OG Coder's `> ` prefix. */
-export function userMessageLines(text: string, paint: Paint, columns: number, imageCount = 0): string[] {
+export function userMessageLines(
+  text: string,
+  paint: Paint,
+  columns: number,
+  imageCount = 0,
+): string[] {
   const width = Math.max(10, columns - 1);
   const bg = THEME.userBackground;
   const inner = width - 4;
@@ -180,7 +191,9 @@ export function userMessageLines(text: string, paint: Paint, columns: number, im
   const out = [paint.fg(bg, "▄".repeat(width))];
   rows.forEach((row, i) => {
     const pad = " ".repeat(Math.max(0, inner - [...row].length));
-    out.push(`${paint.fgBg(THEME.commandColor, bg, ` ${i === 0 ? "> " : "  "}`, true)}${paint.fgBg(THEME.commandColor, bg, `${row}${pad} `)}`);
+    out.push(
+      `${paint.fgBg(THEME.commandColor, bg, ` ${i === 0 ? "> " : "  "}`, true)}${paint.fgBg(THEME.commandColor, bg, `${row}${pad} `)}`,
+    );
   });
   out.push(paint.fg(bg, "▀".repeat(width)));
   return out;
@@ -190,7 +203,8 @@ export const BLACK_CIRCLE = process.platform === "darwin" ? "⏺" : "●";
 
 /** OG Coder's compact tool line: a dot, the tool's name in bold, the detail dim. */
 export function toolLine(title: string, paint: Paint, columns: number, status?: string): string {
-  const color = status === "failed" ? THEME.error : status === "completed" ? THEME.success : THEME.toolName;
+  const color =
+    status === "failed" ? THEME.error : status === "completed" ? THEME.success : THEME.toolName;
   const room = Math.max(10, columns - 4);
   const text = truncate(title.replace(/\s+/g, " ").trim() || "tool", room);
   const cut = text.search(/[\s(]/);
@@ -258,7 +272,8 @@ export function slashMenuLines(
     const room = Math.max(0, columns - 4 - label.length);
     return `  ${paint.fg(m.agent ? THEME.secondary : THEME.commandColor, label)} ${paint.dim(truncate(m.description, room))}`;
   });
-  if (matches.length > max) lines.push(`  ${paint.dim(`… ${matches.length - max} more, keep typing`)}`);
+  if (matches.length > max)
+    lines.push(`  ${paint.dim(`… ${matches.length - max} more, keep typing`)}`);
   return lines;
 }
 
@@ -313,7 +328,9 @@ export function footerLines(view: FooterView, paint: Paint, columns: number): st
   if ([...leftPlain].length > room) leftPlain = truncate(leftPlain, Math.max(1, room));
   const left = leftPlain
     .split(" │ ")
-    .map((part, i) => (i === 0 && leftParts.length > 1 ? paint.dim(part) : paint.fg(THEME.textMuted, part)))
+    .map((part, i) =>
+      i === 0 && leftParts.length > 1 ? paint.dim(part) : paint.fg(THEME.textMuted, part),
+    )
     .join(sep);
   const gap = " ".repeat(Math.max(1, width - 1 - [...leftPlain].length - rightLen));
   const first = ` ${left}${rightLen ? `${gap}${rightParts.join(sep)}` : ""}`;

@@ -11,7 +11,15 @@ import { haptics } from "./haptics";
 import { StageButton } from "./stage/StageButton";
 import { Sheet } from "./Sheet";
 import { FolderPicker } from "./FolderPicker";
-import { CHIP_LAYOUT, CONTEXT_MAX, ContextChips, Field, INSTRUCTIONS_MAX, INSTRUCTIONS_PLACEHOLDER, StageInput } from "./NewGoalSheet";
+import {
+  CHIP_LAYOUT,
+  CONTEXT_MAX,
+  ContextChips,
+  Field,
+  INSTRUCTIONS_MAX,
+  INSTRUCTIONS_PLACEHOLDER,
+  StageInput,
+} from "./NewGoalSheet";
 import { dashedOutline } from "./stage/DashedRule";
 import { KEN_COLOR } from "../pew/palette";
 import { withAlpha } from "../motion";
@@ -42,7 +50,18 @@ interface GoalSettingsSheetProps {
   online?: boolean;
 }
 
-function GoalSettingsSheetView({ visible, goal, state, onAction, results, modelOption, onClose, browse, onBrowse, online }: GoalSettingsSheetProps) {
+function GoalSettingsSheetView({
+  visible,
+  goal,
+  state,
+  onAction,
+  results,
+  modelOption,
+  onClose,
+  browse,
+  onBrowse,
+  online,
+}: GoalSettingsSheetProps) {
   const reduce = useReducedMotion();
   const [context, setContext] = useState<string[]>([]);
   const [instructions, setInstructions] = useState("");
@@ -104,63 +123,94 @@ function GoalSettingsSheetView({ visible, goal, state, onAction, results, modelO
   const models = [
     { value: "", name: "Same as GG Goals" },
     ...(modelOption?.options ?? []),
-    ...(model && !modelOption?.options?.some((o) => o.value === model) ? [{ value: model, name: model }] : []),
+    ...(model && !modelOption?.options?.some((o) => o.value === model)
+      ? [{ value: model, name: model }]
+      : []),
   ];
 
   return (
     // GG Goals' purple for everything lit here, the sheet's strip included.
     <AgentColorProvider value={KEN_COLOR}>
-    <Sheet visible={visible} label="Goal settings" title={goal?.name ?? "Goal"} onClose={onClose}>
-      <StageScroll style={styles.scroll} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        {working ? <Text style={styles.locked} numberOfLines={1}>Pause the goal to change its settings</Text> : null}
-        <Field label="Instructions">
-          <StageInput
-            style={styles.multi}
-            value={instructions}
-            onChangeText={setInstructions}
-            maxLength={INSTRUCTIONS_MAX}
-            placeholder={INSTRUCTIONS_PLACEHOLDER}
-            multiline
-            editable={!working}
+      <Sheet visible={visible} label="Goal settings" title={goal?.name ?? "Goal"} onClose={onClose}>
+        <StageScroll
+          style={styles.scroll}
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+        >
+          {working ? (
+            <Text style={styles.locked} numberOfLines={1}>
+              Pause the goal to change its settings
+            </Text>
+          ) : null}
+          <Field label="Instructions">
+            <StageInput
+              style={styles.multi}
+              value={instructions}
+              onChangeText={setInstructions}
+              maxLength={INSTRUCTIONS_MAX}
+              placeholder={INSTRUCTIONS_PLACEHOLDER}
+              multiline
+              editable={!working}
+            />
+          </Field>
+          <Field label="Context">
+            <ContextChips chosen={context} onChange={setContext} disabled={working} />
+            {visible && !working && (
+              <Reanimated.View layout={reduce ? undefined : CHIP_LAYOUT}>
+                <FolderPicker
+                  chosen={context}
+                  onChange={(next) => setContext(next.slice(0, CONTEXT_MAX))}
+                  browse={browse}
+                  onBrowse={onBrowse}
+                  online={online}
+                  allowFiles
+                  hideChosen
+                />
+              </Reanimated.View>
+            )}
+          </Field>
+          <Field label="Workers model">
+            <View style={styles.chips}>
+              {models.map((option) => {
+                const selected = option.value === model;
+                return (
+                  <Pressable
+                    key={option.value || "same"}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected, disabled: working }}
+                    disabled={working}
+                    style={[
+                      styles.option,
+                      selected ? styles.optionOn : dashedOutline,
+                      working && styles.off,
+                    ]}
+                    onPress={() => {
+                      haptics.select();
+                      setModel(option.value);
+                    }}
+                  >
+                    <Text
+                      style={[styles.optionText, selected && styles.optionTextOn]}
+                      numberOfLines={1}
+                    >
+                      {option.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Field>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {/* save() plays the haptic. */}
+          <StageButton
+            color={KEN_COLOR}
+            disabled={!canSave}
+            feel="none"
+            label={pending.length > 0 ? "Saving…" : "Save"}
+            onPress={save}
           />
-        </Field>
-        <Field label="Context">
-          <ContextChips chosen={context} onChange={setContext} disabled={working} />
-          {visible && !working && (
-            <Reanimated.View layout={reduce ? undefined : CHIP_LAYOUT}>
-              <FolderPicker chosen={context} onChange={(next) => setContext(next.slice(0, CONTEXT_MAX))} browse={browse} onBrowse={onBrowse} online={online} allowFiles hideChosen />
-            </Reanimated.View>
-          )}
-        </Field>
-        <Field label="Workers model">
-          <View style={styles.chips}>
-            {models.map((option) => {
-              const selected = option.value === model;
-              return (
-                <Pressable
-                  key={option.value || "same"}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected, disabled: working }}
-                  disabled={working}
-                  style={[styles.option, selected ? styles.optionOn : dashedOutline, working && styles.off]}
-                  onPress={() => {
-                    haptics.select();
-                    setModel(option.value);
-                  }}
-                >
-                  <Text style={[styles.optionText, selected && styles.optionTextOn]} numberOfLines={1}>
-                    {option.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </Field>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        {/* save() plays the haptic. */}
-        <StageButton color={KEN_COLOR} disabled={!canSave} feel="none" label={pending.length > 0 ? "Saving…" : "Save"} onPress={save} />
-      </StageScroll>
-    </Sheet>
+        </StageScroll>
+      </Sheet>
     </AgentColorProvider>
   );
 }
@@ -176,7 +226,13 @@ const styles = StyleSheet.create({
   locked: { color: theme.color.attention, fontSize: theme.font.small },
   multi: { minHeight: 88, textAlignVertical: "top" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: theme.space(2) },
-  option: { paddingHorizontal: theme.space(3), paddingVertical: theme.space(2), borderRadius: theme.radius.pill, borderWidth: 1, borderColor: "transparent" },
+  option: {
+    paddingHorizontal: theme.space(3),
+    paddingVertical: theme.space(2),
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
   optionOn: { borderColor: KEN_COLOR, backgroundColor: withAlpha(KEN_COLOR, 0.1) },
   optionText: { color: theme.color.textDim, fontSize: theme.font.small },
   optionTextOn: { color: theme.color.text },

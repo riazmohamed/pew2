@@ -37,7 +37,12 @@ const doc = {
 
 test("writes one manifest per agent, and reads back as valid JSON", async () => {
   const targetDir = await tempDir();
-  const result = await syncRegistry({ raw: doc, targetDir, bundled: [], platform: "darwin-aarch64" });
+  const result = await syncRegistry({
+    raw: doc,
+    targetDir,
+    bundled: [],
+    platform: "darwin-aarch64",
+  });
 
   expect(result.written.sort()).toEqual(["gemini", "kimi"]);
   expect(await readdir(targetDir)).toHaveLength(2);
@@ -79,7 +84,12 @@ test("a locally edited manifest is never silently overwritten", async () => {
   edited.pew.env = [{ name: "MOONSHOT_API_KEY", required: true }];
   await writeFile(path, JSON.stringify(edited, null, 2));
 
-  const result = await syncRegistry({ raw: doc, targetDir, bundled: [], platform: "darwin-aarch64" });
+  const result = await syncRegistry({
+    raw: doc,
+    targetDir,
+    bundled: [],
+    platform: "darwin-aarch64",
+  });
   expect(result.conflicts).toEqual(["kimi"]);
   expect(result.written).toEqual([]);
   // Still theirs.

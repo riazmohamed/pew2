@@ -10,12 +10,7 @@
  * No network: `fetch` is injected in every case.
  */
 import { test, expect } from "bun:test";
-import {
-  CURRENT_VERSION,
-  RELEASE_API_URL,
-  checkForUpdate,
-  compareVersions,
-} from "./check.js";
+import { CURRENT_VERSION, RELEASE_API_URL, checkForUpdate, compareVersions } from "./check.js";
 
 /** A stub that answers one release payload, and records how it was called. */
 function githubReturning(tagName: unknown, init: { ok?: boolean; status?: number } = {}) {

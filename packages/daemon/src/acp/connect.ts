@@ -377,12 +377,14 @@ export async function connectProvider(options: ConnectOptions): Promise<AcpSessi
    * ended, and the last thing it printed (where the real reason is: a crash,
    * a missing build, an out-of-memory kill).
    */
-  const explainClosed = <T,>(request: Promise<T>): Promise<T> =>
+  const explainClosed = <T>(request: Promise<T>): Promise<T> =>
     request.catch(async (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       if (!/ACP connection closed/i.test(message)) throw error;
       for (let i = 0; i < 10 && !exitStatus; i++) await new Promise((r) => setTimeout(r, 50));
-      throw new Error(agentStoppedMessage(provider.manifest.name, exitStatus, stderrTail), { cause: error });
+      throw new Error(agentStoppedMessage(provider.manifest.name, exitStatus, stderrTail), {
+        cause: error,
+      });
     });
 
   // How the agent was started, and whatever it said before failing. Both
@@ -510,8 +512,7 @@ export async function connectProvider(options: ConnectOptions): Promise<AcpSessi
     // An explicit `configOptions` entry always wins: it is the current
     // protocol, so it must not be shadowed by the legacy block describing the
     // same thing.
-    const has = (category: string) =>
-      advertised.some((option) => option.category === category);
+    const has = (category: string) => advertised.some((option) => option.category === category);
     return [
       ...advertised,
       ...(has("model") ? [] : modelsAsConfigOption(created.models)),
@@ -763,22 +764,24 @@ export async function connectProvider(options: ConnectOptions): Promise<AcpSessi
     },
     promptCapabilities,
     prompt: (text: string, attachments: readonly StoredAttachment[] = [], promptOptions = {}) =>
-      explainClosed(promptOptions.goalTurn || promptOptions.planDecision
-        ? // A GG Goals turn or a plan decision: empty prompt, the turn kind rides in `_meta`.
-          connection.agent.request<unknown>("session/prompt", {
-            sessionId: current.sessionId,
-            prompt: [],
-            _meta: {
-              gg: promptOptions.goalTurn
-                ? { goalTurn: promptOptions.goalTurn }
-                : { planDecision: promptOptions.planDecision },
-            },
-          })
-        : connection.agent.request("session/prompt", {
-            sessionId: current.sessionId,
-            prompt: promptBlocks(text, attachments, promptCapabilities),
-          })),
-    extRequest: <T,>(method: string, params: Record<string, unknown>) =>
+      explainClosed(
+        promptOptions.goalTurn || promptOptions.planDecision
+          ? // A GG Goals turn or a plan decision: empty prompt, the turn kind rides in `_meta`.
+            connection.agent.request<unknown>("session/prompt", {
+              sessionId: current.sessionId,
+              prompt: [],
+              _meta: {
+                gg: promptOptions.goalTurn
+                  ? { goalTurn: promptOptions.goalTurn }
+                  : { planDecision: promptOptions.planDecision },
+              },
+            })
+          : connection.agent.request("session/prompt", {
+              sessionId: current.sessionId,
+              prompt: promptBlocks(text, attachments, promptCapabilities),
+            }),
+      ),
+    extRequest: <T>(method: string, params: Record<string, unknown>) =>
       explainClosed(connection.agent.request<T>(method, params)),
     answerAsk(requestId, result) {
       const resolve = asksPending.get(requestId);
@@ -787,8 +790,7 @@ export async function connectProvider(options: ConnectOptions): Promise<AcpSessi
       resolve(result);
       return true;
     },
-    cancel: () =>
-      connection.agent.notify("session/cancel", { sessionId: current.sessionId }),
+    cancel: () => connection.agent.notify("session/cancel", { sessionId: current.sessionId }),
     answerPermission(requestId, optionId) {
       const resolve = pending.get(requestId);
       if (!resolve) return false;

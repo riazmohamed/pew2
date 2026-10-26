@@ -32,11 +32,7 @@ let sequence = 0;
  * hold conversation state and user choices, and the process umask would
  * otherwise decide who else on the machine can read them.
  */
-export async function writeFileAtomic(
-  path: string,
-  data: string,
-  mode = 0o600,
-): Promise<void> {
+export async function writeFileAtomic(path: string, data: string, mode = 0o600): Promise<void> {
   const temp = `${path}.${process.pid}.${sequence++}.tmp`;
   await writeFile(temp, data, { encoding: "utf8", mode });
   await rename(temp, path);

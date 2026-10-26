@@ -33,7 +33,18 @@ export interface ContextBarProps {
    */
   onChooseProject?: () => void;
 }
-function ContextBarView({ workspace, usage, showCommands, onCommands, onDetails, onChecklist, planMode, showPreview, onPreview, onChooseProject }: ContextBarProps) {
+function ContextBarView({
+  workspace,
+  usage,
+  showCommands,
+  onCommands,
+  onDetails,
+  onChecklist,
+  planMode,
+  showPreview,
+  onPreview,
+  onChooseProject,
+}: ContextBarProps) {
   const details = contextDetails(workspace, usage);
   const critical = details.level === "critical";
   return (
@@ -45,28 +56,56 @@ function ContextBarView({ workspace, usage, showCommands, onCommands, onDetails,
       keyboardShouldPersistTaps="handled"
     >
       {showCommands && (
-        <StageChip label="Commands" accessibilityLabel="Show commands" onPress={onCommands}
-          trailing={<DotGlyph name="chevron-down" size={10} color={theme.color.textDim} />} />
+        <StageChip
+          label="Commands"
+          accessibilityLabel="Show commands"
+          onPress={onCommands}
+          trailing={<DotGlyph name="chevron-down" size={10} color={theme.color.textDim} />}
+        />
       )}
       {showPreview && onPreview && (
-        <StageChip label="Preview" accessibilityLabel="Preview the running site" onPress={onPreview}
-          trailing={<DotGlyph name="chevron-down" size={10} color={theme.color.textDim} />} />
+        <StageChip
+          label="Preview"
+          accessibilityLabel="Preview the running site"
+          onPress={onPreview}
+          trailing={<DotGlyph name="chevron-down" size={10} color={theme.color.textDim} />}
+        />
       )}
-      <StageChip label={workspace?.folder || "Project"} maxLabelWidth={140}
-        accessibilityLabel={onChooseProject ? `${details.project}. Choose a project` : `${details.project}. Show project details`}
+      <StageChip
+        label={workspace?.folder || "Project"}
+        maxLabelWidth={140}
+        accessibilityLabel={
+          onChooseProject
+            ? `${details.project}. Choose a project`
+            : `${details.project}. Show project details`
+        }
         onPress={onChooseProject ?? onDetails}
-        trailing={<DotGlyph name="chevron-down" size={10} color={theme.color.textDim} />} />
+        trailing={<DotGlyph name="chevron-down" size={10} color={theme.color.textDim} />}
+      />
       {details.warning && (
-        <StageChip label={details.usage} lit tone={critical ? "danger" : "attention"}
+        <StageChip
+          label={details.usage}
+          lit
+          tone={critical ? "danger" : "attention"}
           leading={<Pixel kind="attention" color={critical ? theme.color.danger : undefined} />}
-          accessibilityLabel={details.usageAccessibility} />
+          accessibilityLabel={details.usageAccessibility}
+        />
       )}
       {onChecklist && (
-        <StageChip label="Checklist" accessibilityLabel="Checklist" onPress={onChecklist}
-          leading={<Pixel kind="unread" />} />
+        <StageChip
+          label="Checklist"
+          accessibilityLabel="Checklist"
+          onPress={onChecklist}
+          leading={<Pixel kind="unread" />}
+        />
       )}
       {planMode && (
-        <StageChip label="Plan mode" lit accessibilityLabel="Plan mode" leading={<Pixel kind="live" />} />
+        <StageChip
+          label="Plan mode"
+          lit
+          accessibilityLabel="Plan mode"
+          leading={<Pixel kind="live" />}
+        />
       )}
     </ScrollView>
   );

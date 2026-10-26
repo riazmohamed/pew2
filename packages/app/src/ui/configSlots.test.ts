@@ -9,9 +9,7 @@ import { test, expect } from "bun:test";
 import { summarise } from "./configSlots";
 import type { ConfigOption } from "../useDaemon";
 
-function select(
-  partial: Partial<ConfigOption> & Pick<ConfigOption, "id" | "name">,
-): ConfigOption {
+function select(partial: Partial<ConfigOption> & Pick<ConfigOption, "id" | "name">): ConfigOption {
   return {
     type: "select",
     currentValue: "a",

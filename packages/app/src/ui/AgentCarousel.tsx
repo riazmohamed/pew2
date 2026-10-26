@@ -54,7 +54,13 @@ const SMILE_HOLD_MS = 1100;
 
 const PEW = 200;
 
-export function AgentCarousel({ agents, currentId, onSelect, onClose, arriveSmiling = false }: AgentCarouselProps) {
+export function AgentCarousel({
+  agents,
+  currentId,
+  onSelect,
+  onClose,
+  arriveSmiling = false,
+}: AgentCarouselProps) {
   const [smiling, setSmiling] = useState(arriveSmiling);
   useEffect(() => {
     if (!smiling) return;
@@ -65,7 +71,10 @@ export function AgentCarousel({ agents, currentId, onSelect, onClose, arriveSmil
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
   const list = useRef<FlatList<CarouselAgent>>(null);
-  const start = Math.max(0, agents.findIndex((a) => a.id === currentId));
+  const start = Math.max(
+    0,
+    agents.findIndex((a) => a.id === currentId),
+  );
   const [page, setPage] = useState(start);
   const agent = agents[page];
   const ink = pewInk(agent?.color);
@@ -174,7 +183,10 @@ export function AgentCarousel({ agents, currentId, onSelect, onClose, arriveSmil
   return (
     // Fades in over home rather than cutting to it, so the smiling Pew reads as
     // the same Pew carrying on.
-    <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(220)} style={[StyleSheet.absoluteFill, styles.root]}>
+    <Animated.View
+      entering={reduceMotion ? undefined : FadeIn.duration(220)}
+      style={[StyleSheet.absoluteFill, styles.root]}
+    >
       <DotGrid />
       <ScreenHeader
         title="Switch agent"
@@ -186,53 +198,79 @@ export function AgentCarousel({ agents, currentId, onSelect, onClose, arriveSmil
           doing; only its colour morphs, and its glow cross-fades. The pages
           underneath carry just the text, and swipes pass through Pew. */}
       <View style={styles.listWrap}>
-      <FlatList
-        ref={list}
-        data={agents as CarouselAgent[]}
-        keyExtractor={(a) => a.id}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        initialScrollIndex={start}
-        getItemLayout={getItemLayout}
-        onMomentumScrollEnd={onMomentumEnd}
-        onScroll={onScroll}
-        onScrollBeginDrag={() => {
-          arrowHold().target = undefined;
-          clearTimeout(arrowTimer.current);
-        }}
-        scrollEventThrottle={32}
-        style={styles.pages}
-        renderItem={({ item }) => (
-          <View style={[styles.page, { width }]}>
-            <View style={styles.pewSpot} />
-            <View style={styles.label}>
-              <Text style={styles.name} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
-                {item.name}
-              </Text>
-              <Led color={pewInk(item.color)} tone={item.available === false ? "dim" : "agent"}>
-                {item.id === currentId ? "Current" : item.available === false ? "Not set up" : "Ready"}
-              </Led>
+        <FlatList
+          ref={list}
+          data={agents as CarouselAgent[]}
+          keyExtractor={(a) => a.id}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          initialScrollIndex={start}
+          getItemLayout={getItemLayout}
+          onMomentumScrollEnd={onMomentumEnd}
+          onScroll={onScroll}
+          onScrollBeginDrag={() => {
+            arrowHold().target = undefined;
+            clearTimeout(arrowTimer.current);
+          }}
+          scrollEventThrottle={32}
+          style={styles.pages}
+          renderItem={({ item }) => (
+            <View style={[styles.page, { width }]}>
+              <View style={styles.pewSpot} />
+              <View style={styles.label}>
+                <Text
+                  style={styles.name}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.5}
+                >
+                  {item.name}
+                </Text>
+                <Led color={pewInk(item.color)} tone={item.available === false ? "dim" : "agent"}>
+                  {item.id === currentId
+                    ? "Current"
+                    : item.available === false
+                      ? "Not set up"
+                      : "Ready"}
+                </Led>
+              </View>
             </View>
+          )}
+        />
+        <View style={[StyleSheet.absoluteFill, styles.page]} pointerEvents="none">
+          <View style={styles.pewSpot}>
+            <AgentGlow color={ink} size={PEW * 1.9} />
+            <Pew
+              size={PEW}
+              mood={smiling ? "happy" : agent?.available === false ? "sleepy" : "idle"}
+              color={agent?.color}
+            />
           </View>
-        )}
-      />
-      <View style={[StyleSheet.absoluteFill, styles.page]} pointerEvents="none">
-        <View style={styles.pewSpot}>
-          <AgentGlow color={ink} size={PEW * 1.9} />
-          <Pew size={PEW} mood={smiling ? "happy" : agent?.available === false ? "sleepy" : "idle"} color={agent?.color} />
+          <View style={styles.label} />
         </View>
-        <View style={styles.label} />
-      </View>
       </View>
       <View style={styles.dots}>
         {agents.map((a, i) => (
-          <View key={a.id} style={[styles.dot, i === page && { backgroundColor: ink, width: 16 }]} />
+          <View
+            key={a.id}
+            style={[styles.dot, i === page && { backgroundColor: ink, width: 16 }]}
+          />
         ))}
       </View>
       <View style={[styles.bottom, { paddingBottom: insets.bottom + theme.space(4) }]}>
-        <Pressable onPress={() => goTo(page - 1)} accessibilityRole="button" accessibilityLabel="Previous agent" style={styles.arrow} disabled={page === 0}>
-          <DotGlyph name="back" size={20} color={page === 0 ? theme.color.textDim : theme.color.text} />
+        <Pressable
+          onPress={() => goTo(page - 1)}
+          accessibilityRole="button"
+          accessibilityLabel="Previous agent"
+          style={styles.arrow}
+          disabled={page === 0}
+        >
+          <DotGlyph
+            name="back"
+            size={20}
+            color={page === 0 ? theme.color.textDim : theme.color.text}
+          />
         </Pressable>
         {/* One button for every agent: its colour blends and its label
             changes in place. It used to be re-keyed per agent, which faded it
@@ -261,7 +299,11 @@ export function AgentCarousel({ agents, currentId, onSelect, onClose, arriveSmil
         >
           {/* The back chevron, mirrored: one pixel glyph for both directions. */}
           <View style={styles.mirror}>
-            <DotGlyph name="back" size={20} color={page >= agents.length - 1 ? theme.color.textDim : theme.color.text} />
+            <DotGlyph
+              name="back"
+              size={20}
+              color={page >= agents.length - 1 ? theme.color.textDim : theme.color.text}
+            />
           </View>
         </Pressable>
       </View>
@@ -276,12 +318,39 @@ const styles = StyleSheet.create({
   listWrap: { flex: 1 },
   pages: { flex: 1 },
   // Fixed height, so the text pages and the Pew overlay lay out identically.
-  label: { height: 96, alignSelf: "stretch", alignItems: "center", justifyContent: "flex-start", gap: theme.space(2) },
-  page: { alignItems: "center", justifyContent: "center", paddingHorizontal: theme.gutter, gap: theme.space(2) },
-  name: { color: theme.color.text, fontFamily: theme.display.regular, fontSize: 34, alignSelf: "stretch", textAlign: "center" },
-  dots: { flexDirection: "row", justifyContent: "center", gap: theme.space(1.5), marginBottom: theme.space(4) },
+  label: {
+    height: 96,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: theme.space(2),
+  },
+  page: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: theme.gutter,
+    gap: theme.space(2),
+  },
+  name: {
+    color: theme.color.text,
+    fontFamily: theme.display.regular,
+    fontSize: 34,
+    alignSelf: "stretch",
+    textAlign: "center",
+  },
+  dots: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: theme.space(1.5),
+    marginBottom: theme.space(4),
+  },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.stage.dash },
-  bottom: { flexDirection: "row", alignItems: "center", paddingHorizontal: theme.gutter, gap: theme.space(3) },
+  bottom: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: theme.gutter,
+    gap: theme.space(3),
+  },
   arrow: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   primaryWrap: { flex: 1 },
 });

@@ -1,10 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { agentSound, AGENT_SOUND_IDS, LOUDNESS_TIERS, loudnessTier, chargeOffsetSeconds, levelPitch, levelSound, shouldPlay, SOUND_NAMES, REPEAT_GAP_MS, hapticSound, pokeSound, detentSound, softYields, SOFT_YIELD_MS, TOUCH_SOUNDS } from "./soundsPolicy";
+import {
+  agentSound,
+  AGENT_SOUND_IDS,
+  LOUDNESS_TIERS,
+  loudnessTier,
+  chargeOffsetSeconds,
+  levelPitch,
+  levelSound,
+  shouldPlay,
+  SOUND_NAMES,
+  REPEAT_GAP_MS,
+  hapticSound,
+  pokeSound,
+  detentSound,
+  softYields,
+  SOFT_YIELD_MS,
+  TOUCH_SOUNDS,
+} from "./soundsPolicy";
 
 test("every sound has its file", () => {
-  for (const name of SOUND_NAMES) expect(existsSync(join(import.meta.dir, "..", "assets", "sounds", `${name}.wav`))).toBe(true);
+  for (const name of SOUND_NAMES)
+    expect(existsSync(join(import.meta.dir, "..", "assets", "sounds", `${name}.wav`))).toBe(true);
 });
 
 describe("thinking level", () => {
@@ -40,9 +58,23 @@ test("a resumed hold picks the charge up where it left off", () => {
 
 describe("touch sounds", () => {
   test("every haptic has a sound, and every sound has a file", () => {
-    const kinds = ["tap", "select", "sent", "finished", "attention", "warned", "poke", "detent", "failed", "toggleOn", "toggleOff", "chosen"] as const;
+    const kinds = [
+      "tap",
+      "select",
+      "sent",
+      "finished",
+      "attention",
+      "warned",
+      "poke",
+      "detent",
+      "failed",
+      "toggleOn",
+      "toggleOff",
+      "chosen",
+    ] as const;
     for (const kind of kinds) expect(SOUND_NAMES).toContain(hapticSound(kind));
-    for (const name of SOUND_NAMES) expect(existsSync(join(import.meta.dir, "..", "assets", "sounds", `${name}.wav`))).toBe(true);
+    for (const name of SOUND_NAMES)
+      expect(existsSync(join(import.meta.dir, "..", "assets", "sounds", `${name}.wav`))).toBe(true);
   });
 
   test("Pew's pokes walk four voices, never the same twice running", () => {
@@ -96,7 +128,11 @@ describe("loudness: nothing louder than its job", () => {
   const loudestDb = (name: string): number => {
     const buf = readFileSync(join(import.meta.dir, "..", "assets", "sounds", `${name}.wav`));
     const data = buf.indexOf("data") + 8;
-    const samples = new Int16Array(buf.buffer, buf.byteOffset + data, Math.floor((buf.length - data) / 2));
+    const samples = new Int16Array(
+      buf.buffer,
+      buf.byteOffset + data,
+      Math.floor((buf.length - data) / 2),
+    );
     const win = 2205;
     let best = 0;
     for (let i = 0; i + win <= samples.length; i += Math.floor(win / 2)) {
@@ -106,11 +142,15 @@ describe("loudness: nothing louder than its job", () => {
     }
     return 20 * Math.log10(best + 1e-12);
   };
-  test.each(SOUND_NAMES.filter((name) => !name.startsWith("agent-")))("%s stays within its tier", (name) => {
-    expect(loudestDb(name)).toBeLessThanOrEqual(LOUDNESS_TIERS[loudnessTier(name)] + 0.5);
-  });
+  test.each(SOUND_NAMES.filter((name) => !name.startsWith("agent-")))(
+    "%s stays within its tier",
+    (name) => {
+      expect(loudestDb(name)).toBeLessThanOrEqual(LOUDNESS_TIERS[loudnessTier(name)] + 0.5);
+    },
+  );
   test("everyday sounds sit far below the old bells", () => {
-    for (const name of ["send", "done", "confirm", "warn", "error"] as const) expect(loudestDb(name)).toBeLessThan(-30);
+    for (const name of ["send", "done", "confirm", "warn", "error"] as const)
+      expect(loudestDb(name)).toBeLessThan(-30);
     expect(loudestDb("attention")).toBeLessThan(-25);
   });
 });

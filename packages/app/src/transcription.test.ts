@@ -24,7 +24,9 @@ describe("applyTranscript", () => {
   });
 
   test("existing trailing whitespace is not doubled", () => {
-    expect(applyTranscript(beginDictation("fix the "), "login bug").draft).toBe("fix the login bug");
+    expect(applyTranscript(beginDictation("fix the "), "login bug").draft).toBe(
+      "fix the login bug",
+    );
     expect(applyTranscript(beginDictation("run ("), "again").draft).toBe("run (again");
   });
 

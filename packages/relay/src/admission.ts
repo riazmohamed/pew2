@@ -62,9 +62,7 @@ export type Admission =
 
 /** Is this string shaped like a token `pew2` could have produced? */
 export function isPairingToken(token: string | null): token is string {
-  return (
-    token !== null && token.length >= MIN_PAIRING_TOKEN_LENGTH && PAIRING_TOKEN.test(token)
-  );
+  return token !== null && token.length >= MIN_PAIRING_TOKEN_LENGTH && PAIRING_TOKEN.test(token);
 }
 
 /**

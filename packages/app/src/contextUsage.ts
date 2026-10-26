@@ -88,4 +88,3 @@ export function usageAccessibilityLabel(usage: ContextUsage): string {
   const detail = `${percent}% of context used, ${usage.used.toLocaleString()} of ${usage.size.toLocaleString()} tokens`;
   return usageLevel(percent) === "critical" ? `${detail}. Compaction is close.` : detail;
 }
-

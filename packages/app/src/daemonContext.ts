@@ -14,7 +14,14 @@ import type { Cursors } from "./cursors";
 import type { PendingAttachment } from "./attachments";
 import type { SlashCommand } from "./slashCommands";
 import type { GgState } from "./ggState";
-import type { CaptureResult, ConfigOption, DeskResult, ImageEntry, Provider, Session } from "./daemonTypes";
+import type {
+  CaptureResult,
+  ConfigOption,
+  DeskResult,
+  ImageEntry,
+  Provider,
+  Session,
+} from "./daemonTypes";
 import type { DaemonOptions, State } from "./daemonState";
 
 export interface DaemonRefs {

@@ -62,7 +62,12 @@ export function clip(text: string): string {
 }
 
 /** Record that Pew acted on a session, optionally with a line on its lane. */
-export function mark(memory: BoardMemory, sessionId: string, now: number, line?: Omit<BoardLine, "at">): void {
+export function mark(
+  memory: BoardMemory,
+  sessionId: string,
+  now: number,
+  line?: Omit<BoardLine, "at">,
+): void {
   memory.touched.set(sessionId, now);
   if (!line) return;
   const text = clip(line.text);
@@ -73,7 +78,9 @@ export function mark(memory: BoardMemory, sessionId: string, now: number, line?:
 }
 
 const record = (value: unknown): Record<string, unknown> | undefined =>
-  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 
 function contentText(content: unknown): string {
   if (Array.isArray(content)) return content.map(contentText).join("");
@@ -143,12 +150,17 @@ export function deriveLines(events: readonly wire.SessionEvent[]): BoardLine[] {
         const title = (typeof update?.title === "string" && update.title) || titles.get(id) || "";
         if (title && id) titles.set(id, title);
         if (update?.status === "completed") push("result", title, event.at);
-        else if (update?.status === "failed") push("result", title ? `Failed: ${title}` : "Failed", event.at);
+        else if (update?.status === "failed")
+          push("result", title ? `Failed: ${title}` : "Failed", event.at);
         break;
       }
       case "permission_request": {
         const toolCall = record(record(payload?.params)?.toolCall);
-        push("perm", typeof toolCall?.title === "string" ? toolCall.title : "Permission needed", event.at);
+        push(
+          "perm",
+          typeof toolCall?.title === "string" ? toolCall.title : "Permission needed",
+          event.at,
+        );
         break;
       }
       case "ask_user": {
@@ -164,7 +176,11 @@ export function deriveLines(events: readonly wire.SessionEvent[]): BoardLine[] {
 }
 
 /** The lane's feed: the call's lines, a few from before it, and Pew's marks. */
-export function laneLines(derived: readonly BoardLine[], marks: readonly BoardLine[], callStartedAt: number): BoardLine[] {
+export function laneLines(
+  derived: readonly BoardLine[],
+  marks: readonly BoardLine[],
+  callStartedAt: number,
+): BoardLine[] {
   const before = derived.filter((line) => line.at < callStartedAt).slice(-PRE_CALL_LINES);
   const during = derived.filter((line) => line.at >= callStartedAt);
   return [...before, ...during, ...marks]
@@ -174,11 +190,19 @@ export function laneLines(derived: readonly BoardLine[], marks: readonly BoardLi
     .slice(-MAX_LINES);
 }
 
-function statusOf(source: BoardSource, finishedAt: number | undefined, memory: BoardMemory, now: number): Status {
+function statusOf(
+  source: BoardSource,
+  finishedAt: number | undefined,
+  memory: BoardMemory,
+  now: number,
+): Status {
   if ((source.permissions?.size ?? 0) > 0) return "needs";
   if ((source.asks?.size ?? 0) > 0 || source.plan?.pending) return "asks";
   if (source.working) return "working";
-  if (finishedAt !== undefined && (finishedAt >= memory.callStartedAt || now - finishedAt < RECENT_DONE_MS)) {
+  if (
+    finishedAt !== undefined &&
+    (finishedAt >= memory.callStartedAt || now - finishedAt < RECENT_DONE_MS)
+  ) {
     return "done";
   }
   return "idle";
@@ -187,12 +211,17 @@ function statusOf(source: BoardSource, finishedAt: number | undefined, memory: B
 const TIER: Record<Status, number> = { needs: 1, asks: 1, working: 2, done: 3, idle: 4 };
 
 /** Build the board, updating the memory's status clocks. */
-export function buildBoard(sources: readonly BoardSource[], memory: BoardMemory, now: number): BoardSession[] {
+export function buildBoard(
+  sources: readonly BoardSource[],
+  memory: BoardMemory,
+  now: number,
+): BoardSession[] {
   const sessions = sources.map((source): BoardSession => {
     const id = source.sessionId;
     const lastAt = source.events.at(-1)?.at;
     if (memory.wasWorking.get(id) === true && !source.working) memory.finishedAt.set(id, now);
-    else if (!memory.wasWorking.has(id) && !source.working && lastAt !== undefined) memory.finishedAt.set(id, lastAt);
+    else if (!memory.wasWorking.has(id) && !source.working && lastAt !== undefined)
+      memory.finishedAt.set(id, lastAt);
     memory.wasWorking.set(id, source.working);
     const status = statusOf(source, memory.finishedAt.get(id), memory, now);
     const previous = memory.status.get(id);
@@ -211,7 +240,11 @@ export function buildBoard(sources: readonly BoardSource[], memory: BoardMemory,
       status,
       since,
       touchedAt: memory.touched.get(id) ?? 0,
-      lines: laneLines(deriveLines(source.events), memory.marks.get(id) ?? [], memory.callStartedAt),
+      lines: laneLines(
+        deriveLines(source.events),
+        memory.marks.get(id) ?? [],
+        memory.callStartedAt,
+      ),
     };
   });
   return sessions

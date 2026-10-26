@@ -68,7 +68,8 @@ function hasCard(text: string): boolean {
   return false;
 }
 
-export type LineCheck = { ok: true; text: string } | { ok: false; reason: "instruction" | "secret" | "empty" };
+export type LineCheck =
+  { ok: true; text: string } | { ok: false; reason: "instruction" | "secret" | "empty" };
 
 /**
  * One line of a call, checked before it is kept or fed back. Angle brackets
@@ -77,7 +78,8 @@ export type LineCheck = { ok: true; text: string } | { ok: false; reason: "instr
 export function checkLine(raw: string): LineCheck {
   const text = raw.replace(INVISIBLE, "").replace(/[<>]/g, " ").replace(/\s+/g, " ").trim();
   if (!text) return { ok: false, reason: "empty" };
-  if (SECRET.some((pattern) => pattern.test(text)) || hasCard(text)) return { ok: false, reason: "secret" };
+  if (SECRET.some((pattern) => pattern.test(text)) || hasCard(text))
+    return { ok: false, reason: "secret" };
   if (INJECTION.some((pattern) => pattern.test(raw))) return { ok: false, reason: "instruction" };
   return { ok: true, text };
 }

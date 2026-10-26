@@ -210,5 +210,11 @@ test("a resumed conversation keeps what the phone knew about it", () => {
   expect(resumed!.messageCount).toBe(12);
   // The turn this device timed before the daemon forgot the session. Losing it
   // here is why "Answered in 5s" vanished on every reopen that resumes.
-  expect(resumed!.receipt).toEqual({ verb: "Answered", duration: "5s", tools: 0, failed: 0, runs: [] });
+  expect(resumed!.receipt).toEqual({
+    verb: "Answered",
+    duration: "5s",
+    tools: 0,
+    failed: 0,
+    runs: [],
+  });
 });

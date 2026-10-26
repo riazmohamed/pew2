@@ -2,7 +2,16 @@
  * GG Coder and GG Goals on the main screen: the queue, ask_user, plan review,
  * autopilot, the checklist, and the goal actions and their sheets.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from "react";
 import type { useDaemon } from "./useDaemon";
 import { ggStrips, isGoalsProvider } from "./goalsAgent";
 import { goalForSession, type GoalSummary } from "./ggState";
@@ -63,11 +72,16 @@ export function useGoalControls({
   const goalState = openSessionId ? gg.goalStates[openSessionId] : undefined;
   const goalHere =
     isGoalsProvider(daemon.effectiveProviderId ?? activeId) && (openSessionId || daemon.workspace)
-      ? goalForSession(gg.goals, { sessionId: openSessionId, cwd: daemon.workspace?.cwd }, goalState)
+      ? goalForSession(
+          gg.goals,
+          { sessionId: openSessionId, cwd: daemon.workspace?.cwd },
+          goalState,
+        )
       : undefined;
   // Goal header/roster/Ken line belong to GG Goals conversations only.
   const inGoal =
-    isGoalsProvider(daemon.effectiveProviderId ?? activeId) && (goalState !== undefined || goalHere !== undefined);
+    isGoalsProvider(daemon.effectiveProviderId ?? activeId) &&
+    (goalState !== undefined || goalHere !== undefined);
 
   // GG Goals ends a message with `[ken:face] words`: shown in the goal header,
   // never in the bubble.
@@ -76,7 +90,10 @@ export function useGoalControls({
     [inGoal, daemon.turns],
   );
   // Ken's latest spoken line, for the goal's ticker.
-  const kenSays = useMemo(() => (inGoal ? latestKenSaying(daemon.turns) : null), [inGoal, daemon.turns]);
+  const kenSays = useMemo(
+    () => (inGoal ? latestKenSaying(daemon.turns) : null),
+    [inGoal, daemon.turns],
+  );
   const cancelQueued = useCallback(
     (id: string) => {
       if (openSessionId) cancelQueuedDaemon(openSessionId, id);
@@ -86,7 +103,11 @@ export function useGoalControls({
   const planHere = openSessionId ? gg.plans[openSessionId] : undefined;
   const autopilotHere = openSessionId ? gg.autopilot[openSessionId] : undefined;
   const extensionsHere = gg.extensions[daemon.effectiveProviderId ?? ""];
-  const stripsHere = ggStrips(daemon.effectiveProviderId, extensionsHere, openSessionId !== undefined);
+  const stripsHere = ggStrips(
+    daemon.effectiveProviderId,
+    extensionsHere,
+    openSessionId !== undefined,
+  );
   const [checklistOpen, setChecklistOpen] = useState(() => devSheet === "checklist");
   const openChecklist = useCallback(() => setChecklistOpen(true), []);
   const checklistHere = openSessionId ? gg.checklists[openSessionId] : undefined;
@@ -146,12 +167,18 @@ export function useGoalControls({
     // The setters are the screen's state setters, handed in: stable.
     [openGoalDaemon, setMenuOpen],
   );
-  const deleteGoal = useCallback((goal: GoalSummary) => goalAction(goal.id, "delete"), [goalAction]);
-  const openNewGoal = useCallback((prefill?: string) => {
-    setMenuOpen(false);
-    setNewGoalPrefill(prefill);
-    setNewGoalOpen(true);
-  }, [setMenuOpen, setNewGoalPrefill, setNewGoalOpen]);
+  const deleteGoal = useCallback(
+    (goal: GoalSummary) => goalAction(goal.id, "delete"),
+    [goalAction],
+  );
+  const openNewGoal = useCallback(
+    (prefill?: string) => {
+      setMenuOpen(false);
+      setNewGoalPrefill(prefill);
+      setNewGoalOpen(true);
+    },
+    [setMenuOpen, setNewGoalPrefill, setNewGoalOpen],
+  );
   const closeNewGoal = useCallback(() => setNewGoalOpen(false), [setNewGoalOpen]);
   // The sheet closes itself once its launch has opened onto the session.
   const goalCreated = useCallback(

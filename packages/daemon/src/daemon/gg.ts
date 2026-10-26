@@ -54,7 +54,12 @@ export abstract class DaemonGg extends DaemonProjects {
 
   /** `_gg/autopilot_event`: one of Ken's verdicts, logged; `human`/`capped` also push. */
   protected applyAutopilotEvent(session: ActiveSession, params: unknown) {
-    const raw = params as { phase?: unknown; reason?: unknown; body?: unknown; round?: unknown } | null;
+    const raw = params as {
+      phase?: unknown;
+      reason?: unknown;
+      body?: unknown;
+      round?: unknown;
+    } | null;
     if (typeof raw?.phase !== "string" || !AUTOPILOT_PHASES.has(raw.phase)) return;
     session.lastUsedAt = Date.now();
     this.record(session, {
@@ -64,7 +69,10 @@ export abstract class DaemonGg extends DaemonProjects {
       ...(typeof raw.body === "string" ? { body: raw.body } : {}),
       ...(typeof raw.round === "number" ? { round: raw.round } : {}),
     });
-    if ((raw.phase === "human" || raw.phase === "capped") && (params as { history?: unknown }).history !== true) {
+    if (
+      (raw.phase === "human" || raw.phase === "capped") &&
+      (params as { history?: unknown }).history !== true
+    ) {
       const sessionId = session.log.sessionId;
       const reason = typeof raw.reason === "string" && raw.reason ? `: ${raw.reason}` : "";
       this.notifyPhones(sessionId, "finished", `Ken needs you${reason}`);
@@ -74,7 +82,8 @@ export abstract class DaemonGg extends DaemonProjects {
   /** `autopilot.set`: turn Ken on or off for this session's project. */
   async setAutopilot(sessionId: string, enabled: boolean): Promise<void> {
     const session = this.require(sessionId);
-    if (session.providerId === GG_GOALS_ID) throw new Error("Autopilot is for GG Coder conversations.");
+    if (session.providerId === GG_GOALS_ID)
+      throw new Error("Autopilot is for GG Coder conversations.");
     await session.ready;
     if (!session.handle?.ggCapabilities?.autopilot) throw new Error("This agent has no Autopilot.");
     await session.handle.extRequest("_gg/autopilot/set", {
@@ -84,11 +93,15 @@ export abstract class DaemonGg extends DaemonProjects {
   }
 
   /** `checklist`: the project checklist via `_gg/checklist`, mapped to wire rows. */
-  async checklist(sessionId: string): Promise<{ staleAfterDays?: number; items: wire.ChecklistItemRow[] }> {
+  async checklist(
+    sessionId: string,
+  ): Promise<{ staleAfterDays?: number; items: wire.ChecklistItemRow[] }> {
     const session = this.require(sessionId);
-    if (session.providerId === GG_GOALS_ID) throw new Error("The checklist is for GG Coder conversations.");
+    if (session.providerId === GG_GOALS_ID)
+      throw new Error("The checklist is for GG Coder conversations.");
     await session.ready;
-    if (!session.handle?.ggCapabilities?.checklist) throw new Error("This agent has no project checklist.");
+    if (!session.handle?.ggCapabilities?.checklist)
+      throw new Error("This agent has no project checklist.");
     const raw = await session.handle.extRequest<{ staleAfterDays?: unknown; items?: unknown }>(
       "_gg/checklist",
       { sessionId: session.handle.sessionId },
@@ -158,7 +171,8 @@ export abstract class DaemonGg extends DaemonProjects {
       throw new Error("GG Coder isn't installed on this machine.");
     }
     if (!this.isEnabled(GG_PROVIDER_ID)) throw new Error("GG Coder is turned off on this machine.");
-    if (!isAvailable(provider)) throw new Error(unavailableReason(provider) ?? "GG Coder is unavailable.");
+    if (!isAvailable(provider))
+      throw new Error(unavailableReason(provider) ?? "GG Coder is unavailable.");
     const supports = (handle: AcpSessionHandle) => {
       if (!handle.ggCapabilities?.goals) {
         throw new Error("This GG Coder is too old for goals. Update it on your computer.");
@@ -178,10 +192,18 @@ export abstract class DaemonGg extends DaemonProjects {
       this.spares.delete(key);
     }
     const live = [...this.sessions.values()]
-      .filter((s) => (s.providerId === GG_PROVIDER_ID || s.providerId === GG_GOALS_ID) && s.handle && s.agentSessionId && alive(s.handle))
+      .filter(
+        (s) =>
+          (s.providerId === GG_PROVIDER_ID || s.providerId === GG_GOALS_ID) &&
+          s.handle &&
+          s.agentSessionId &&
+          alive(s.handle),
+      )
       .sort((a, b) => b.lastUsedAt - a.lastUsedAt)[0]?.handle;
     if (live) return supports(live);
-    const spare = [...this.spares.values()].find((s) => s.providerId === GG_PROVIDER_ID || s.providerId === GG_GOALS_ID);
+    const spare = [...this.spares.values()].find(
+      (s) => s.providerId === GG_PROVIDER_ID || s.providerId === GG_GOALS_ID,
+    );
     if (spare) return supports(spare.handle);
     // A capability probe already booting GG Coder will park its process as a
     // spare. Wait for that rather than racing it with a second boot: two boots
@@ -238,7 +260,10 @@ export abstract class DaemonGg extends DaemonProjects {
   /** The live daemon session open on a goal folder, newest use first. */
   protected goalSessionEntry(path: string): [string, ActiveSession] | undefined {
     return [...this.sessions.entries()]
-      .filter(([, s]) => (s.providerId === GG_PROVIDER_ID || s.providerId === GG_GOALS_ID) && s.cwd === path)
+      .filter(
+        ([, s]) =>
+          (s.providerId === GG_PROVIDER_ID || s.providerId === GG_GOALS_ID) && s.cwd === path,
+      )
       .sort((a, b) => b[1].lastUsedAt - a[1].lastUsedAt)[0];
   }
 
@@ -321,7 +346,9 @@ export abstract class DaemonGg extends DaemonProjects {
     if (action === "delete") {
       const live = this.goalSessionEntry(goal.path);
       if (live?.[1].working) throw new Error("GG Goals is working on this goal. Pause it first.");
-      await this.onBorrowed(await this.goalsConnection(), (handle) => handle.extRequest("_gg/goals/delete", { id: goalId }));
+      await this.onBorrowed(await this.goalsConnection(), (handle) =>
+        handle.extRequest("_gg/goals/delete", { id: goalId }),
+      );
       return undefined;
     }
     const { sessionId, session } = this.openGoalSession(goal);

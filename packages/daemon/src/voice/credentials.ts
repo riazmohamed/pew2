@@ -39,7 +39,10 @@ export interface VoicePaths {
   apiKey?: string;
 }
 
-export function voicePaths(env: NodeJS.ProcessEnv = process.env, home: string = homedir()): VoicePaths {
+export function voicePaths(
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = homedir(),
+): VoicePaths {
   const configDir = dirname(userProvidersDir(env));
   return {
     ggAuth: join(env.GG_AGENT_DIR || join(home, ".gg"), "auth.json"),
@@ -57,8 +60,7 @@ export interface VoiceCredential {
 }
 
 export type CredentialResult =
-  | { ok: true; credential: VoiceCredential }
-  | { ok: false; reason: string; canLogin: true };
+  { ok: true; credential: VoiceCredential } | { ok: false; reason: string; canLogin: true };
 
 /** pew2's own stored login. */
 export interface StoredVoiceAuth {
@@ -72,7 +74,8 @@ export interface StoredVoiceAuth {
 }
 
 /** No agent here has an OpenAI login (a Claude Code-only machine, say): one sign-in fixes it. */
-export const REASON_SIGN_IN = "None of your agents on this computer has an OpenAI login. Sign in once to talk to Pew.";
+export const REASON_SIGN_IN =
+  "None of your agents on this computer has an OpenAI login. Sign in once to talk to Pew.";
 export const REASON_EXPIRED =
   "Your OpenAI login on this computer expired. Open GG Coder or Codex once, or sign in here.";
 
@@ -104,7 +107,9 @@ function jwtExpiryMs(token: string): number | undefined {
 
 function jwtEmail(token: string | undefined): string | undefined {
   const claims = jwtClaims(token);
-  const email = claims?.email ?? (claims?.["https://api.openai.com/profile"] as { email?: unknown } | undefined)?.email;
+  const email =
+    claims?.email ??
+    (claims?.["https://api.openai.com/profile"] as { email?: unknown } | undefined)?.email;
   return typeof email === "string" ? email : undefined;
 }
 
@@ -160,7 +165,9 @@ async function refreshOwn(
       refreshToken: str(body.refresh_token) ?? auth.refreshToken,
       idToken: str(body.id_token) ?? auth.idToken,
       expiresAt:
-        typeof body.expires_in === "number" ? now + body.expires_in * 1000 : jwtExpiryMs(accessToken),
+        typeof body.expires_in === "number"
+          ? now + body.expires_in * 1000
+          : jwtExpiryMs(accessToken),
     };
     next.account = jwtEmail(next.idToken) ?? auth.account;
     await writeVoiceAuth(path, next);
@@ -182,21 +189,28 @@ export async function resolveCredential(
   let sawExpired = false;
 
   // 1. GG Coder.
-  const gg = ((await readJson(paths.ggAuth)) as { openai?: Record<string, unknown> } | undefined)?.openai;
+  const gg = ((await readJson(paths.ggAuth)) as { openai?: Record<string, unknown> } | undefined)
+    ?.openai;
   const ggToken = str(gg?.accessToken);
   if (ggToken) {
     const expiresAt = typeof gg?.expiresAt === "number" ? gg.expiresAt : jwtExpiryMs(ggToken);
-    if (live(expiresAt, now)) return { ok: true, credential: { source: "ggcoder", token: ggToken } };
+    if (live(expiresAt, now))
+      return { ok: true, credential: { source: "ggcoder", token: ggToken } };
     sawExpired = true;
   }
 
   // 2. Codex.
-  const codex = ((await readJson(paths.codexAuth)) as { tokens?: Record<string, unknown> } | undefined)?.tokens;
+  const codex = (
+    (await readJson(paths.codexAuth)) as { tokens?: Record<string, unknown> } | undefined
+  )?.tokens;
   const codexToken = str(codex?.access_token);
   if (codexToken) {
     if (live(jwtExpiryMs(codexToken), now)) {
       const account = jwtEmail(str(codex?.id_token));
-      return { ok: true, credential: { source: "codex", token: codexToken, ...(account ? { account } : {}) } };
+      return {
+        ok: true,
+        credential: { source: "codex", token: codexToken, ...(account ? { account } : {}) },
+      };
     }
     sawExpired = true;
   }
@@ -204,7 +218,9 @@ export async function resolveCredential(
   // 3. pew2's own login, the only one this daemon may refresh.
   const own = await readVoiceAuth(paths.voiceAuth);
   if (own?.accessToken) {
-    const current = live(own.expiresAt, now) ? own : await refreshOwn(paths.voiceAuth, own, now, fetchImpl);
+    const current = live(own.expiresAt, now)
+      ? own
+      : await refreshOwn(paths.voiceAuth, own, now, fetchImpl);
     if (current?.accessToken) {
       return {
         ok: true,

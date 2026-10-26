@@ -20,13 +20,18 @@ const GOALS_ID = "gg-goals";
 const GG_CODER_ID = "ggcoder";
 
 /** The catalog with one switch flipped, as the daemon will answer it. */
-export function applyToggle(catalog: readonly CatalogEntry[], id: string, enabled: boolean): CatalogEntry[] {
+export function applyToggle(
+  catalog: readonly CatalogEntry[],
+  id: string,
+  enabled: boolean,
+): CatalogEntry[] {
   return catalog.map((entry) => {
     if (entry.id === id) return { ...entry, enabled };
     // Turning GG Goals on turns OG Coder on with it; turning OG Coder off
     // hides GG Goals, which follows it.
     if (id === GOALS_ID && enabled && entry.id === GG_CODER_ID) return { ...entry, enabled: true };
-    if (id === GG_CODER_ID && !enabled && entry.id === GOALS_ID) return { ...entry, enabled: false };
+    if (id === GG_CODER_ID && !enabled && entry.id === GOALS_ID)
+      return { ...entry, enabled: false };
     return entry;
   });
 }

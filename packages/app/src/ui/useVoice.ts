@@ -26,7 +26,12 @@ import {
 } from "../voiceCall";
 import { IDLE_BOARD, boardFromInbox, foldBoard, type BoardState } from "../voiceBoard";
 import { openTransport, type VoiceTransport } from "./voiceTransport";
-import { cancelsEcho, onRouteChange, setProximity, setVoiceChatMode } from "../../modules/pew-audio-route";
+import {
+  cancelsEcho,
+  onRouteChange,
+  setProximity,
+  setVoiceChatMode,
+} from "../../modules/pew-audio-route";
 import { setOnCall } from "./notifier";
 import { androidCallLive, beginAndroidCall, endAndroidCall } from "./androidCall";
 import { sounds } from "./sounds";
@@ -57,16 +62,18 @@ interface PendingOffer {
 }
 
 function enterCallAudio(): Promise<void> {
-  return setAudioModeAsync({
-    playsInSilentMode: true,
-    allowsRecording: true,
-    interruptionMode: "doNotMix",
-    shouldPlayInBackground: true,
-    shouldRouteThroughEarpiece: false,
-  })
-    // Voice chat mode (system echo cancellation), still before the mic opens.
-    .then(() => void setVoiceChatMode())
-    .catch(() => {});
+  return (
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      allowsRecording: true,
+      interruptionMode: "doNotMix",
+      shouldPlayInBackground: true,
+      shouldRouteThroughEarpiece: false,
+    })
+      // Voice chat mode (system echo cancellation), still before the mic opens.
+      .then(() => void setVoiceChatMode())
+      .catch(() => {})
+  );
 }
 
 interface Options {
@@ -121,90 +128,94 @@ export function useVoice({ post, online }: Options) {
   const nextId = useCallback(() => `voice-${Date.now().toString(36)}-${++counter.current}`, []);
 
   const dispatchRef = useRef<(input: CallInput) => void>(() => {});
-  const run = useCallback((effects: CallEffect[]) => {
-    const dispatch = (input: CallInput) => dispatchRef.current(input);
-    for (const effect of effects) {
-      switch (effect.kind) {
-        case "daemon":
-          if (!postRef.current(effect.message) && effect.message.t === "voice.session") {
-            dispatch({ type: "failed", error: CALL_ERRORS.offline });
+  const run = useCallback(
+    (effects: CallEffect[]) => {
+      const dispatch = (input: CallInput) => dispatchRef.current(input);
+      for (const effect of effects) {
+        switch (effect.kind) {
+          case "daemon":
+            if (!postRef.current(effect.message) && effect.message.t === "voice.session") {
+              dispatch({ type: "failed", error: CALL_ERRORS.offline });
+            }
+            break;
+          case "connect": {
+            transport.current?.close();
+            const callId = callRef.current.callId ?? "";
+            const exchange = effect.live
+              ? (sdp: string) =>
+                  new Promise<string>((resolve, reject) => {
+                    dropOffer(CALL_ERRORS.generic);
+                    const requestId = nextId();
+                    const timer = setTimeout(() => {
+                      if (pendingOffer.current?.requestId === requestId)
+                        dropOffer(CALL_ERRORS.generic);
+                    }, OFFER_EXCHANGE_MS);
+                    pendingOffer.current = { requestId, callId, resolve, reject, timer };
+                    const offer: wire.VoiceOffer = { t: "voice.offer", requestId, callId, sdp };
+                    if (!postRef.current(offer)) dropOffer(CALL_ERRORS.offline);
+                  })
+              : undefined;
+            transport.current = openTransport(
+              effect.secret,
+              effect.expiresAt,
+              {
+                onOpen: () => dispatch({ type: "open" }),
+                onEvent: (event) => dispatch({ type: "server", event }),
+                onFailed: (error) => dispatch({ type: "failed", error }),
+              },
+              audioReady.current,
+              exchange,
+            );
+            break;
           }
-          break;
-        case "connect": {
-          transport.current?.close();
-          const callId = callRef.current.callId ?? "";
-          const exchange = effect.live
-            ? (sdp: string) =>
-                new Promise<string>((resolve, reject) => {
-                  dropOffer(CALL_ERRORS.generic);
-                  const requestId = nextId();
-                  const timer = setTimeout(() => {
-                    if (pendingOffer.current?.requestId === requestId) dropOffer(CALL_ERRORS.generic);
-                  }, OFFER_EXCHANGE_MS);
-                  pendingOffer.current = { requestId, callId, resolve, reject, timer };
-                  const offer: wire.VoiceOffer = { t: "voice.offer", requestId, callId, sdp };
-                  if (!postRef.current(offer)) dropOffer(CALL_ERRORS.offline);
-                })
-            : undefined;
-          transport.current = openTransport(
-            effect.secret,
-            effect.expiresAt,
-            {
-              onOpen: () => dispatch({ type: "open" }),
-              onEvent: (event) => dispatch({ type: "server", event }),
-              onFailed: (error) => dispatch({ type: "failed", error }),
-            },
-            audioReady.current,
-            exchange,
-          );
-          break;
-        }
-        case "realtime":
-          transport.current?.send(effect.event);
-          break;
-        case "mute":
-          transport.current?.setMuted(effect.muted);
-          break;
-        case "timer": {
-          const existing = timers.current.get(effect.key);
-          if (existing) clearTimeout(existing);
-          timers.current.set(
-            effect.key,
-            setTimeout(() => {
-              timers.current.delete(effect.key);
-              dispatch(effect.input);
-            }, effect.ms),
-          );
-          break;
-        }
-        case "cancelTimer": {
-          const existing = timers.current.get(effect.key);
-          if (existing) clearTimeout(existing);
-          timers.current.delete(effect.key);
-          break;
-        }
-        case "close":
-          dropOffer(CALL_ERRORS.generic);
-          // The hang-up tone is already playing (see `dispatch`); the call
-          // goes silent now and its audio shuts down once the tone is over.
-          if (transport.current) {
-            transport.current.close(END_TONE_MS);
-            lastReleased.current = transport.current.released;
+          case "realtime":
+            transport.current?.send(effect.event);
+            break;
+          case "mute":
+            transport.current?.setMuted(effect.muted);
+            break;
+          case "timer": {
+            const existing = timers.current.get(effect.key);
+            if (existing) clearTimeout(existing);
+            timers.current.set(
+              effect.key,
+              setTimeout(() => {
+                timers.current.delete(effect.key);
+                dispatch(effect.input);
+              }, effect.ms),
+            );
+            break;
           }
-          transport.current = undefined;
-          // Restore: the next chime re-applies the app's ambient, mixing mode.
-          // Not at once: WebRTC is still shutting its audio down, and an app
-          // sound played now (the end card's swish, a tap) waits on the audio
-          // session synchronously, which froze the screen for seconds. The
-          // call's own end cue plays natively and is unaffected.
-          clearTimeout(settleTimer.current);
-          settleTimer.current = setTimeout(() => {
-            if (!callActive(callRef.current)) sounds.setListening(false);
-          }, AUDIO_SETTLE_MS);
-          break;
+          case "cancelTimer": {
+            const existing = timers.current.get(effect.key);
+            if (existing) clearTimeout(existing);
+            timers.current.delete(effect.key);
+            break;
+          }
+          case "close":
+            dropOffer(CALL_ERRORS.generic);
+            // The hang-up tone is already playing (see `dispatch`); the call
+            // goes silent now and its audio shuts down once the tone is over.
+            if (transport.current) {
+              transport.current.close(END_TONE_MS);
+              lastReleased.current = transport.current.released;
+            }
+            transport.current = undefined;
+            // Restore: the next chime re-applies the app's ambient, mixing mode.
+            // Not at once: WebRTC is still shutting its audio down, and an app
+            // sound played now (the end card's swish, a tap) waits on the audio
+            // session synchronously, which froze the screen for seconds. The
+            // call's own end cue plays natively and is unaffected.
+            clearTimeout(settleTimer.current);
+            settleTimer.current = setTimeout(() => {
+              if (!callActive(callRef.current)) sounds.setListening(false);
+            }, AUDIO_SETTLE_MS);
+            break;
+        }
       }
-    }
-  }, [dropOffer, nextId]);
+    },
+    [dropOffer, nextId],
+  );
 
   const dispatch = useCallback(
     (input: CallInput) => {
@@ -213,7 +224,10 @@ export function useVoice({ post, online }: Options) {
       // The hang-up tone first, while the call's audio is still up: played
       // after the connection closes, it waited seconds for WebRTC to let go.
       const after = step.state.phase;
-      if ((after === "ended" && (before === "live" || before === "ending")) || (after === "failed" && before !== "failed")) {
+      if (
+        (after === "ended" && (before === "live" || before === "ending")) ||
+        (after === "failed" && before !== "failed")
+      ) {
         sounds.callCue("call-end");
       }
       callRef.current = step.state;
@@ -247,12 +261,21 @@ export function useVoice({ post, online }: Options) {
         if (pending && answer.requestId === pending.requestId && answer.callId === pending.callId) {
           pendingOffer.current = undefined;
           clearTimeout(pending.timer);
-          if (answer.ok === true && typeof answer.sdp === "string" && answer.sdp) pending.resolve(answer.sdp);
-          else pending.reject(new Error(typeof answer.error === "string" && answer.error ? answer.error : CALL_ERRORS.generic));
+          if (answer.ok === true && typeof answer.sdp === "string" && answer.sdp)
+            pending.resolve(answer.sdp);
+          else
+            pending.reject(
+              new Error(
+                typeof answer.error === "string" && answer.error
+                  ? answer.error
+                  : CALL_ERRORS.generic,
+              ),
+            );
         }
         return;
       }
-      if (t === "voice.board" || t === "voice.inbox") setBoard(foldBoard(boardRef.current, message, Date.now()));
+      if (t === "voice.board" || t === "voice.inbox")
+        setBoard(foldBoard(boardRef.current, message, Date.now()));
       dispatch({ type: "daemon", message });
     },
     [dispatch, setKnown, setBoard],
@@ -330,7 +353,14 @@ export function useVoice({ post, online }: Options) {
       }
       // A new call starts from the inbox in hand; the daemon's board replaces it within a frame.
       setBoard(boardFromInbox(callRef.current.inbox ?? []));
-      dispatch({ type: "start", requestId: nextId(), focus, sessionId, ...(place ? { place } : {}), echoGuard: !cancelsEcho() });
+      dispatch({
+        type: "start",
+        requestId: nextId(),
+        focus,
+        sessionId,
+        ...(place ? { place } : {}),
+        echoGuard: !cancelsEcho(),
+      });
     },
     [dispatch, nextId, setBoard],
   );
@@ -350,24 +380,34 @@ export function useVoice({ post, online }: Options) {
   const type = useCallback((text: string) => dispatch({ type: "typed", text }), [dispatch]);
   /** The user answered the call screen's card by tapping: send it, and tell Pew. */
   const answerOnScreen = useCallback(
-    (input: Omit<Extract<CallInput, { type: "answeredOnScreen" }>, "type">) => dispatch({ type: "answeredOnScreen", ...input }),
+    (input: Omit<Extract<CallInput, { type: "answeredOnScreen" }>, "type">) =>
+      dispatch({ type: "answeredOnScreen", ...input }),
     [dispatch],
   );
   const login = useCallback(
-    (action: "start" | "cancel" | "logout") => postRef.current({ t: "voice.login", requestId: nextId(), action }),
+    (action: "start" | "cancel" | "logout") =>
+      postRef.current({ t: "voice.login", requestId: nextId(), action }),
     [nextId],
   );
-  const setMode = useCallback((mode: VoiceMode) => postRef.current({ t: "voice.prefs", prefs: { mode } }), []);
+  const setMode = useCallback(
+    (mode: VoiceMode) => postRef.current({ t: "voice.prefs", prefs: { mode } }),
+    [],
+  );
   /** Forget what was said on earlier calls (the threads kept per chat on the computer). */
-  const forgetHistory = useCallback(() => postRef.current({ t: "voice.forget" } satisfies wire.VoiceForget), []);
+  const forgetHistory = useCallback(
+    () => postRef.current({ t: "voice.forget" } satisfies wire.VoiceForget),
+    [],
+  );
   /** Change any of the call policy's settings; the `voice.status` broadcast confirms. */
   const setPrefs = useCallback(
-    (prefs: Partial<wire.VoicePrefsValues>) => postRef.current({ t: "voice.prefs", prefs } satisfies wire.VoicePrefs),
+    (prefs: Partial<wire.VoicePrefsValues>) =>
+      postRef.current({ t: "voice.prefs", prefs } satisfies wire.VoicePrefs),
     [],
   );
   /** Let a conversation ring (or stop it). Answered by a `voice.status` with `armed`. */
   const arm = useCallback(
-    (sessionId: string, on: boolean) => postRef.current({ t: "voice.arm", sessionId, on } satisfies wire.VoiceArm),
+    (sessionId: string, on: boolean) =>
+      postRef.current({ t: "voice.arm", sessionId, on } satisfies wire.VoiceArm),
     [],
   );
 
@@ -386,7 +426,8 @@ export function useVoice({ post, online }: Options) {
   // Loaded while nothing is playing (off a call), so the first ring isn't late.
   const voiceAvailable = knowledge.kind === "known" && knowledge.status.available;
   useEffect(() => {
-    if (voiceAvailable && !callActive(callRef.current)) sounds.prepareCues(["call-dial", "call-connect", "call-end"]);
+    if (voiceAvailable && !callActive(callRef.current))
+      sounds.prepareCues(["call-dial", "call-connect", "call-end"]);
   }, [voiceAvailable]);
 
   // No banners over the call (they still reach Notification Center).
@@ -420,7 +461,27 @@ export function useVoice({ post, online }: Options) {
     };
   }, [live, micLevel]);
 
-  return { knowledge, inbox, call, board, micLevel, speech, startCall, hangUp, setMuted, dismiss, interrupt, type, answerOnScreen, login, setMode, setPrefs, arm, forgetHistory, onFrame };
+  return {
+    knowledge,
+    inbox,
+    call,
+    board,
+    micLevel,
+    speech,
+    startCall,
+    hangUp,
+    setMuted,
+    dismiss,
+    interrupt,
+    type,
+    answerOnScreen,
+    login,
+    setMode,
+    setPrefs,
+    arm,
+    forgetHistory,
+    onFrame,
+  };
 }
 
 export type Voice = ReturnType<typeof useVoice>;

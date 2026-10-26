@@ -29,7 +29,10 @@ export interface CallLive {
  * The session to show: the spotlit lane, else the session of the item the
  * call was placed from (`focus`: the inbox knows; the id's prefix otherwise).
  */
-export function liveSessionId(spotlight: string | undefined, call: { focus?: string; inbox?: CallState["inbox"] }): string | undefined {
+export function liveSessionId(
+  spotlight: string | undefined,
+  call: { focus?: string; inbox?: CallState["inbox"] },
+): string | undefined {
   if (spotlight) return spotlight;
   if (!call.focus) return undefined;
   return call.inbox?.find((item) => item.id === call.focus)?.sessionId ?? call.focus.split(":")[0];
@@ -55,7 +58,10 @@ export function lastExchange(turns: readonly Turn[]): { prompt?: string; reply: 
     const turn = turns[k];
     if (turn?.role === "agent" && turn.text.trim()) parts.push(turn.text.trim());
   }
-  return { ...(prompt?.trim() ? { prompt: oneLine(prompt, LIVE_PROMPT_CHARS) } : {}), reply: tail(parts.join("\n\n"), LIVE_MAX_CHARS) };
+  return {
+    ...(prompt?.trim() ? { prompt: oneLine(prompt, LIVE_PROMPT_CHARS) } : {}),
+    reply: tail(parts.join("\n\n"), LIVE_MAX_CHARS),
+  };
 }
 
 function baseName(path: string | undefined): string | undefined {
@@ -81,8 +87,24 @@ export function callLive(
   const working = session?.busy === true || lane?.status === "working";
   const exchange = lastExchange(session?.turns ?? []);
   if (exchange.reply || exchange.prompt) {
-    return { sessionId, ...(project ? { project } : {}), ...(exchange.prompt ? { prompt: exchange.prompt } : {}), text: exchange.reply, fromBoard: false, working };
+    return {
+      sessionId,
+      ...(project ? { project } : {}),
+      ...(exchange.prompt ? { prompt: exchange.prompt } : {}),
+      text: exchange.reply,
+      fromBoard: false,
+      working,
+    };
   }
-  const lines = (lane?.lines ?? []).filter((l) => l.kind !== "pew").map((l) => l.text.trim()).filter(Boolean);
-  return { sessionId, ...(project ? { project } : {}), text: tail(lines.join("\n"), LIVE_MAX_CHARS), fromBoard: true, working };
+  const lines = (lane?.lines ?? [])
+    .filter((l) => l.kind !== "pew")
+    .map((l) => l.text.trim())
+    .filter(Boolean);
+  return {
+    sessionId,
+    ...(project ? { project } : {}),
+    text: tail(lines.join("\n"), LIVE_MAX_CHARS),
+    fromBoard: true,
+    working,
+  };
 }

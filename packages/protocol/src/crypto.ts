@@ -114,11 +114,7 @@ export function roomId(rootKey: Uint8Array): string {
 
 /** The sealing key for one direction. */
 export function directionKey(rootKey: Uint8Array, direction: Direction): Uint8Array {
-  return derive(
-    rootKey,
-    direction === "daemon-to-app" ? INFO.daemonToApp : INFO.appToDaemon,
-    32,
-  );
+  return derive(rootKey, direction === "daemon-to-app" ? INFO.daemonToApp : INFO.appToDaemon, 32);
 }
 
 /**
@@ -198,7 +194,10 @@ let nativeAead: NativeAead | undefined;
  * and tampered or mis-addressed frames refused. Anything else leaves the JS
  * cipher in place. Returns whether it was installed.
  */
-export function useNativeAead(candidate: NativeAead | undefined, random: RandomBytes = defaultRandom): boolean {
+export function useNativeAead(
+  candidate: NativeAead | undefined,
+  random: RandomBytes = defaultRandom,
+): boolean {
   if (!candidate) {
     nativeAead = undefined;
     return false;
@@ -215,7 +214,12 @@ function agreesWithJs(candidate: NativeAead, random: RandomBytes): boolean {
     const nonce = random(NONCE_BYTES);
     const aad = utf8("pew2/v2|3|sid|7|9");
     // Several cipher blocks, multi-byte characters, and JSON escapes.
-    const text = JSON.stringify({ t: "self-test", s: "héllo · 👋 ".repeat(40), n: [1, 2.5, -3], q: '"\\n' });
+    const text = JSON.stringify({
+      t: "self-test",
+      s: "héllo · 👋 ".repeat(40),
+      n: [1, 2.5, -3],
+      q: '"\\n',
+    });
     const jsCt = toBase64Url(xchacha20poly1305(key, nonce, aad).encrypt(utf8(text)));
     if (candidate.sealText(key, nonce, aad, text) !== jsCt) return false;
     if (candidate.openText(key, nonce, aad, jsCt) !== text) return false;

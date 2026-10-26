@@ -64,10 +64,13 @@ function QueuedStripView({ messages = EMPTY, onCancel }: QueuedStripProps) {
     // Delivered: the packets leave down the wire, then the row goes.
     haptics.sent();
     setFlying(true);
-    const timer = setTimeout(() => {
-      setFlying(false);
-      setShown(EMPTY);
-    }, FLY_MS + FLY_STAGGER * 4);
+    const timer = setTimeout(
+      () => {
+        setFlying(false);
+        setShown(EMPTY);
+      },
+      FLY_MS + FLY_STAGGER * 4,
+    );
     return () => clearTimeout(timer);
   }, [messages, reduceMotion]);
 
@@ -139,7 +142,13 @@ function Packet({
     const ease = Easing.inOut(Easing.sin);
     bob.value = withDelay(
       index * 140,
-      withRepeat(withSequence(withTiming(-3, { duration: 600, easing: ease }), withTiming(0, { duration: 600, easing: ease })), -1),
+      withRepeat(
+        withSequence(
+          withTiming(-3, { duration: 600, easing: ease }),
+          withTiming(0, { duration: 600, easing: ease }),
+        ),
+        -1,
+      ),
     );
     return () => cancelAnimation(bob);
   }, [still, appActive, index, bob]);
@@ -147,7 +156,10 @@ function Packet({
   useEffect(() => {
     if (!flying || still) return;
     const delay = index * FLY_STAGGER;
-    fly.value = withDelay(delay, withTiming(320, { duration: FLY_MS, easing: Easing.in(Easing.cubic) }));
+    fly.value = withDelay(
+      delay,
+      withTiming(320, { duration: FLY_MS, easing: Easing.in(Easing.cubic) }),
+    );
     opacity.value = withDelay(delay, withTiming(0, { duration: FLY_MS }));
   }, [flying, still, index, fly, opacity]);
 

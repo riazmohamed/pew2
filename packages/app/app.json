@@ -22,19 +22,14 @@
       "appleTeamId": "396M7LY29W",
       "//entitlements": "The App Group the home/Lock Screen widget reads from: the app writes `pew2.snapshot` there (src/ui/useHomeWidget.ts), and so does the notification service extension when a push lands while the app is asleep (targets/notifications). Both targets mirror this value from here.",
       "entitlements": {
-        "com.apple.security.application-groups": [
-          "group.io.github.kenkaiii.pew2"
-        ],
+        "com.apple.security.application-groups": ["group.io.github.kenkaiii.pew2"],
         "com.apple.developer.usernotifications.time-sensitive": true
       },
       "//infoPlist": "Ships verbatim into Info.plist, so no comment keys inside it — Apple reads what is written there. `ITSAppUsesNonExemptEncryption: false` answers the export-compliance question at build time instead of halting every upload to ask it. The answer is honest: this app's own cryptography is the pairing seal in @pew2/protocol (XChaCha20-Poly1305 and HKDF-SHA256 from @noble) over TLS, both exempt under the standard 'uses only encryption exempt from EAR' category. Adding a non-exempt algorithm of our own means revisiting this line, not merely the answer in the console. `UIBackgroundModes: [audio]` keeps a live voice conversation running with the screen locked or the phone in a pocket; expo-notifications merges its own `remote-notification` into the same array at prebuild.",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocalNetworkUsageDescription": "Used to connect to the pew2 daemon running on your computer when both are on the same network.",
-        "UIBackgroundModes": [
-          "audio",
-          "voip"
-        ]
+        "UIBackgroundModes": ["audio", "voip"]
       }
     },
     "android": {
@@ -60,9 +55,7 @@
         "android.permission.BLUETOOTH_CONNECT"
       ],
       "//blockedPermissions": "The WebRTC config plugin adds SYSTEM_ALERT_WINDOW for screen-sharing overlays, which this app never draws and which Play review asks to justify.",
-      "blockedPermissions": [
-        "android.permission.SYSTEM_ALERT_WINDOW"
-      ]
+      "blockedPermissions": ["android.permission.SYSTEM_ALERT_WINDOW"]
     },
     "web": {
       "favicon": "./assets/favicon.png"

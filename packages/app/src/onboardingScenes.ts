@@ -30,10 +30,26 @@ export interface SampleAlert {
 }
 
 const SAMPLES: readonly { origin: NoticeOrigin; kind: NoticeKind; text: string }[] = [
-  { origin: { folder: "storefront", agentName: "Claude Code" }, kind: "finished", text: "Added the cart tests. All 42 pass." },
-  { origin: { folder: "billing-api", agentName: "Codex" }, kind: "approval", text: "npm run migrate" },
-  { origin: { folder: "docs", agentName: "GG Coder" }, kind: "finished", text: "The README now covers Windows setup." },
-  { origin: { folder: "ios-app", agentName: "Gemini CLI" }, kind: "question", text: "Keep the old onboarding or replace it?" },
+  {
+    origin: { folder: "storefront", agentName: "Claude Code" },
+    kind: "finished",
+    text: "Added the cart tests. All 42 pass.",
+  },
+  {
+    origin: { folder: "billing-api", agentName: "Codex" },
+    kind: "approval",
+    text: "npm run migrate",
+  },
+  {
+    origin: { folder: "docs", agentName: "GG Coder" },
+    kind: "finished",
+    text: "The README now covers Windows setup.",
+  },
+  {
+    origin: { folder: "ios-app", agentName: "Gemini CLI" },
+    kind: "question",
+    text: "Keep the old onboarding or replace it?",
+  },
 ];
 
 export const SAMPLE_ALERTS: readonly SampleAlert[] = SAMPLES.map((sample) => ({
@@ -51,7 +67,8 @@ export const ALERT_EVERY_MS = 2600;
 export function alertsAt(ms: number): { index: number; alert: SampleAlert }[] {
   const n = Math.floor(Math.max(0, ms) / ALERT_EVERY_MS);
   const out: { index: number; alert: SampleAlert }[] = [];
-  for (let i = n; i >= 0 && out.length < 3; i--) out.push({ index: i, alert: SAMPLE_ALERTS[i % SAMPLE_ALERTS.length]! });
+  for (let i = n; i >= 0 && out.length < 3; i--)
+    out.push({ index: i, alert: SAMPLE_ALERTS[i % SAMPLE_ALERTS.length]! });
   return out;
 }
 
@@ -86,7 +103,8 @@ export interface InstallFrame {
 
 export function installAt(ms: number): InstallFrame {
   const t = Math.max(0, ms) % LOOP_MS;
-  const typeFor = (start: number, text: string) => Math.max(0, Math.min(text.length, Math.floor(((t - start) * TYPE_CPS) / 1000)));
+  const typeFor = (start: number, text: string) =>
+    Math.max(0, Math.min(text.length, Math.floor(((t - start) * TYPE_CPS) / 1000)));
   const typed = typeFor(TYPE_START_MS, INSTALL_TYPE);
   const setupTypedAt = TYPE_START_MS + (INSTALL_TYPE.length * 1000) / TYPE_CPS;
   const setupDone = t >= setupTypedAt + 700;
@@ -95,7 +113,14 @@ export function installAt(ms: number): InstallFrame {
   const pairTypedAt = pairStart + (PAIR_TYPE.length * 1000) / TYPE_CPS;
   const qr = t >= pairTypedAt + 400;
   const linking = t >= pairTypedAt + 1000;
-  return { typed, setupDone, pairTyped, qr, linking, mood: linking ? "reading" : qr ? "happy" : "typing" };
+  return {
+    typed,
+    setupDone,
+    pairTyped,
+    qr,
+    linking,
+    mood: linking ? "reading" : qr ? "happy" : "typing",
+  };
 }
 
 // ── Voice: Pew talks, then listens ──────────────────────────────────────

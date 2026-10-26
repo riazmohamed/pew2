@@ -42,16 +42,29 @@ const sessionStub: Session = {
 };
 
 test("the session row retains images, thoughts and text while another chat is open", () => {
-  const screenshot = { update: {
-    sessionUpdate: "tool_call_update",
-    content: [{ type: "content", content: { type: "resource_link", uri: "out/screenshot.png", mimeType: "image/png" } }],
-  } };
+  const screenshot = {
+    update: {
+      sessionUpdate: "tool_call_update",
+      content: [
+        {
+          type: "content",
+          content: { type: "resource_link", uri: "out/screenshot.png", mimeType: "image/png" },
+        },
+      ],
+    },
+  };
   let next = foldBackgroundEvent(state([], [sessionStub]), "s1", "s1:0", {
-    update: { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Inspecting the screen" } },
+    update: {
+      sessionUpdate: "agent_thought_chunk",
+      content: { type: "text", text: "Inspecting the screen" },
+    },
   });
   next = foldBackgroundEvent(next, "s1", "s1:1", screenshot);
   next = foldBackgroundEvent(next, "s1", "s1:2", {
-    update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Here is the screenshot" } },
+    update: {
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: "Here is the screenshot" },
+    },
   });
   // Opening a live session restores this row, not the cleared foreground turns.
   expect(next.turns).toEqual([]);
@@ -62,10 +75,12 @@ test("the session row retains images, thoughts and text while another chat is op
 });
 
 test("a batch of chunks lands as coalesced turns in one state", () => {
-  const next = foldSessionEvents(
-    state([], [sessionStub]),
-    [user(0, "Fix the bug"), agent(1, "Looking "), agent(2, "into it"), agent(3, " now")],
-  );
+  const next = foldSessionEvents(state([], [sessionStub]), [
+    user(0, "Fix the bug"),
+    agent(1, "Looking "),
+    agent(2, "into it"),
+    agent(3, " now"),
+  ]);
 
   expect(next.turns).toEqual([
     { id: "s1:0", role: "user", text: "Fix the bug" },
@@ -88,7 +103,10 @@ test("replayed messages sent either side of a tool call keep their paragraph bre
 });
 
 test("the session mirror gains the turns and a title from the first user message", () => {
-  const next = foldSessionEvents(state([], [sessionStub]), [user(0, "Refactor auth"), agent(1, "On it")]);
+  const next = foldSessionEvents(state([], [sessionStub]), [
+    user(0, "Refactor auth"),
+    agent(1, "On it"),
+  ]);
 
   expect(next.sessions[0]?.title).toBe("Refactor auth");
   expect(next.sessions[0]?.turns).toHaveLength(2);
@@ -110,15 +128,19 @@ test("adoption keeps the render key, so the prompt does not remount", () => {
     role: "user",
     text: "Hello",
   };
-  const next = foldSessionEvents(state([optimisticTurn], [sessionStub]), [
-    user(0, "Hello"),
-  ]);
+  const next = foldSessionEvents(state([optimisticTurn], [sessionStub]), [user(0, "Hello")]);
 
   expect(next.turns[0]?.key).toBe("local:0");
 });
 
 test("a queued prompt stops saying so once the daemon echoes it back", () => {
-  const waiting: Turn = { id: "local:0", key: "local:0", role: "user", text: "Hello", queued: true };
+  const waiting: Turn = {
+    id: "local:0",
+    key: "local:0",
+    role: "user",
+    text: "Hello",
+    queued: true,
+  };
   const next = foldSessionEvents(state([waiting], [sessionStub]), [user(0, "Hello")]);
 
   expect(next.turns[0]?.queued).toBeUndefined();
@@ -141,7 +163,11 @@ test("a permission request in replayed history does not resurface", () => {
     {
       sessionId: "s1",
       seq: 0,
-      payload: { kind: "permission_request", requestId: "p1", params: { toolCall: { title: "Run bash?" } } },
+      payload: {
+        kind: "permission_request",
+        requestId: "p1",
+        params: { toolCall: { title: "Run bash?" } },
+      },
     },
   ]);
 
@@ -218,8 +244,16 @@ test("replay restores the context percentage, unlike busy", () => {
   };
 
   const folded = foldSessionEvents(state, [
-    { sessionId: "s1", seq: 1, payload: { update: { sessionUpdate: "usage_update", used: 10, size: 1000 } } },
-    { sessionId: "s1", seq: 2, payload: { update: { sessionUpdate: "usage_update", used: 250, size: 1000 } } },
+    {
+      sessionId: "s1",
+      seq: 1,
+      payload: { update: { sessionUpdate: "usage_update", used: 10, size: 1000 } },
+    },
+    {
+      sessionId: "s1",
+      seq: 2,
+      payload: { update: { sessionUpdate: "usage_update", used: 250, size: 1000 } },
+    },
   ]);
 
   expect(folded.usage).toEqual({ used: 250, size: 1000 });
@@ -231,11 +265,21 @@ test("a replayed reading is also kept on the conversation's row", () => {
   // Reopening a chat later replays only events this phone hasn't seen, so the
   // row is where its reading has to survive; without it the context sheet said
   // the agent "doesn't report context usage" on every return to a chat.
-  const row: Session = { id: "s1", providerId: "ggcoder", title: "t", startedAt: 0, turns: [], configOptions: [] };
-  const folded = foldSessionEvents(
-    { turns: [], sessions: [row], busy: false },
-    [{ sessionId: "s1", seq: 1, payload: { update: { sessionUpdate: "usage_update", used: 46_670, size: 1_000_000 } } }],
-  );
+  const row: Session = {
+    id: "s1",
+    providerId: "ggcoder",
+    title: "t",
+    startedAt: 0,
+    turns: [],
+    configOptions: [],
+  };
+  const folded = foldSessionEvents({ turns: [], sessions: [row], busy: false }, [
+    {
+      sessionId: "s1",
+      seq: 1,
+      payload: { update: { sessionUpdate: "usage_update", used: 46_670, size: 1_000_000 } },
+    },
+  ]);
   expect(folded.sessions[0]!.usage).toEqual({ used: 46_670, size: 1_000_000 });
 });
 
@@ -243,7 +287,13 @@ const toolCall = (seq: number, id: string, title: string) => ({
   sessionId: "s1",
   seq,
   payload: {
-    update: { sessionUpdate: "tool_call", toolCallId: id, title, kind: "execute", status: "in_progress" },
+    update: {
+      sessionUpdate: "tool_call",
+      toolCallId: id,
+      title,
+      kind: "execute",
+      status: "in_progress",
+    },
   },
 });
 
@@ -324,7 +374,10 @@ test("a catch-up takes down a sheet that was answered elsewhere", () => {
   // daemon saying so, and it has to be acted on: an approve button wired to a
   // resolved request does nothing at all when tapped.
   const before = {
-    ...state([], [{ ...sessionStub, permission: { requestId: "p1", title: "Run bash?", options: [] } }]),
+    ...state(
+      [],
+      [{ ...sessionStub, permission: { requestId: "p1", title: "Run bash?", options: [] } }],
+    ),
     permission: { requestId: "p1", title: "Run bash?", options: [] },
     activity: IDLE_ACTIVITY,
     loadingSession: false,
@@ -370,7 +423,9 @@ test("a request inside a catch-up batch is not trusted on its own", () => {
   // replayed event would file an approval the agent was let past minutes ago,
   // and leave a button that posts a dead id.
   const background = { ...sessionStub, id: "s2" };
-  const missed = [{ sessionId: "s2", seq: 3, payload: { kind: "permission_request", requestId: "p1" } }];
+  const missed = [
+    { sessionId: "s2", seq: 3, payload: { kind: "permission_request", requestId: "p1" } },
+  ];
 
   expect(
     foldBackgroundCatchUp(state([], [background]), "s2", missed, true, []).sessions[0]?.permission,
@@ -429,7 +484,11 @@ test("a background catch-up that changes nothing keeps the same array", () => {
 
 test("missed events land in the conversation they belong to, not the open one", () => {
   const background = { ...sessionStub, id: "s2", busy: true };
-  const open = { ...sessionStub, id: "s1", turns: [{ id: "s1:0", role: "user" as const, text: "Mine" }] };
+  const open = {
+    ...sessionStub,
+    id: "s1",
+    turns: [{ id: "s1:0", role: "user" as const, text: "Mine" }],
+  };
   const before = state(open.turns, [open, background]);
   const next = foldBackgroundCatchUp(before, "s2", [s2Agent(4, "Done, all green.")], true);
 
@@ -464,7 +523,11 @@ test("a reply that lands while the user is elsewhere is there when they return",
 test("a background session's chunks coalesce into one bubble like any other", () => {
   const background = { ...sessionStub, id: "s2" };
   let next = state([], [background]);
-  for (const [seq, text] of [[0, "Looking "], [1, "into "], [2, "it"]] as const) {
+  for (const [seq, text] of [
+    [0, "Looking "],
+    [1, "into "],
+    [2, "it"],
+  ] as const) {
     next = foldBackgroundEvent(next, "s2", `s2:${seq}`, s2Agent(seq, text).payload);
   }
 
@@ -481,7 +544,7 @@ test("an event for a conversation the drawer does not hold changes nothing", () 
   expect(foldBackgroundEvent(before, undefined, "x:0", s2Agent(0, "Hi").payload)).toBe(before);
   // A tool call is not a chunk: nothing to render into a transcript that is
   // not on screen, and no reason to re-render the drawer for it.
-  expect(foldBackgroundEvent(before, "s1", "s1:0", { update: { sessionUpdate: "tool_call" } })).toBe(
-    before,
-  );
+  expect(
+    foldBackgroundEvent(before, "s1", "s1:0", { update: { sessionUpdate: "tool_call" } }),
+  ).toBe(before);
 });

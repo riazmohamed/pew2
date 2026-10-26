@@ -53,7 +53,10 @@ describe("widgetSnapshot", () => {
 
   it("names the project and the agent, and keeps only a colour Swift can read", () => {
     const snapshot = widgetSnapshot({
-      sessions: [session("a", { startedAt: 1000 }), session("b", { providerId: "gg", folder: undefined, cwd: "/Users/k/site/" })],
+      sessions: [
+        session("a", { startedAt: 1000 }),
+        session("b", { providerId: "gg", folder: undefined, cwd: "/Users/k/site/" }),
+      ],
       asks: {},
       providers,
       machine: "Ken's Mac",
@@ -73,7 +76,11 @@ describe("widgetSnapshot", () => {
   });
 
   it("leaves out a conversation still being opened, which no link could reach", () => {
-    const snapshot = widgetSnapshot({ sessions: [session("pending:1", { busy: true })], asks: {}, providers });
+    const snapshot = widgetSnapshot({
+      sessions: [session("pending:1", { busy: true })],
+      asks: {},
+      providers,
+    });
     expect(snapshot.rows).toEqual([]);
     expect(snapshot.working).toBe(0);
   });
@@ -110,7 +117,11 @@ describe("recent", () => {
   });
 
   it("keeps the list order for conversations with no time, and never invents one", () => {
-    const snapshot = widgetSnapshot({ sessions: [session("a"), session("b")], asks: {}, providers });
+    const snapshot = widgetSnapshot({
+      sessions: [session("a"), session("b")],
+      asks: {},
+      providers,
+    });
     expect(snapshot.recent.map((row) => row.id)).toEqual(["a", "b"]);
     expect(snapshot.recent[0]?.at).toBeUndefined();
   });
@@ -128,7 +139,9 @@ describe("sameSnapshot", () => {
     const input = { sessions: [session("a")], asks: {}, providers };
     const first = widgetSnapshot(input);
     expect(sameSnapshot(first, widgetSnapshot(input))).toBe(true);
-    expect(sameSnapshot(first, widgetSnapshot({ ...input, sessions: [session("a", { busy: true })] }))).toBe(false);
+    expect(
+      sameSnapshot(first, widgetSnapshot({ ...input, sessions: [session("a", { busy: true })] })),
+    ).toBe(false);
     expect(sameSnapshot(undefined, first)).toBe(false);
   });
 });

@@ -82,7 +82,11 @@ export type FrameRefs = Pick<
   | "draftsEnabled"
 > & { deviceId?: string };
 
-export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, frame: unknown): void {
+export function handleSealedFrame(
+  refs: FrameRefs,
+  connection: FrameConnection,
+  frame: unknown,
+): void {
   const {
     setState,
     setGg,
@@ -123,7 +127,10 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
   // Live drafts: ephemeral, keystroke-rate, and not a stream boundary, so
   // handled before the batch is flushed and never through state.
   if (message.t === "session.draft") {
-    if (draftsEnabled.current === true && shouldApplyRemoteDraft(message, refs.deviceId ?? "phone", sessionRef.current)) {
+    if (
+      draftsEnabled.current === true &&
+      shouldApplyRemoteDraft(message, refs.deviceId ?? "phone", sessionRef.current)
+    ) {
       draftListener.current?.(message.text);
     }
     return;
@@ -132,10 +139,14 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
   // Only authenticated, visible prose may wait. Control/replay/background
   // frames flush before any notification or state transition below.
   const update = message.payload?.update;
-  const batchable = streamForeground.current && message.t === "session.event" &&
+  const batchable =
+    streamForeground.current &&
+    message.t === "session.event" &&
     message.sessionId === sessionRef.current &&
-    (update?.sessionUpdate === "agent_message_chunk" || update?.sessionUpdate === "agent_thought_chunk") &&
-    update.content?.type === "text" && typeof update.content.text === "string";
+    (update?.sessionUpdate === "agent_message_chunk" ||
+      update?.sessionUpdate === "agent_thought_chunk") &&
+    update.content?.type === "text" &&
+    typeof update.content.text === "string";
   if (!batchable) resetStream();
 
   // GG extension frames: state beside the transcript, never in it.
@@ -333,9 +344,11 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
       pendingStart.current = undefined;
     }
     const mine =
-      adoptedRequestId !== undefined &&
-      viewingRef.current === pendingSessionKey(adoptedRequestId);
-    const reopened = message.resumed === true && awaitingResume.current && matchesRestore(restoring.current, message);
+      adoptedRequestId !== undefined && viewingRef.current === pendingSessionKey(adoptedRequestId);
+    const reopened =
+      message.resumed === true &&
+      awaitingResume.current &&
+      matchesRestore(restoring.current, message);
     if (reopened) {
       awaitingResume.current = false;
       restoring.current = undefined;
@@ -345,13 +358,19 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
     // that asked lost on a dropped connection. Same conversation, so it takes
     // the screen; without this the phone kept the old id and every message
     // answered "Unknown session" (20 Oct).
-    const onScreen = sessionRef.current ? sessionsRef.current.find((entry) => entry.id === sessionRef.current) : undefined;
+    const onScreen = sessionRef.current
+      ? sessionsRef.current.find((entry) => entry.id === sessionRef.current)
+      : undefined;
     const replacesScreen =
       message.resumed === true &&
       typeof message.agentSessionId === "string" &&
       onScreen?.agentSessionId === message.agentSessionId &&
       onScreen?.id !== message.sessionId;
-    claimsScreen = mine || reopened || replacesScreen || (viewingRef.current === undefined && message.resumed !== true);
+    claimsScreen =
+      mine ||
+      reopened ||
+      replacesScreen ||
+      (viewingRef.current === undefined && message.resumed !== true);
     if (claimsScreen) {
       sessionRef.current = message.sessionId;
       viewingRef.current = message.sessionId;
@@ -394,8 +413,7 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
       const seen = turnText.current.get(message.sessionId) ?? "";
       // Only the opening line is ever shown, so a long turn must not
       // accumulate megabytes per session for a 140-character banner.
-      if (seen.length < NOTICE_BUFFER)
-        turnText.current.set(message.sessionId, seen + chunk.text);
+      if (seen.length < NOTICE_BUFFER) turnText.current.set(message.sessionId, seen + chunk.text);
     }
   }
 
@@ -447,7 +465,9 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
       // How it ended, so the banner neither calls a crash "finished" nor
       // announces a turn someone stopped on purpose. Absent from an older
       // daemon, which only ever meant a normal finish.
-      ...(message.outcome === "failed" || message.outcome === "cancelled" ? { outcome: message.outcome } : {}),
+      ...(message.outcome === "failed" || message.outcome === "cancelled"
+        ? { outcome: message.outcome }
+        : {}),
       ...(typeof message.reason === "string" ? { reason: message.reason } : {}),
     };
 
@@ -474,7 +494,10 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
       // or stopped.
       ws.send(
         JSON.stringify(
-          secure.seal({ t: "preview.list", sessionId: sessionRef.current }, { sid: sessionRef.current }),
+          secure.seal(
+            { t: "preview.list", sessionId: sessionRef.current },
+            { sid: sessionRef.current },
+          ),
         ),
       );
     }
@@ -501,8 +524,7 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
     const resumed = message.agentSessionId
       ? sessionsRef.current.find(
           (entry) =>
-            entry.agentSessionId === message.agentSessionId &&
-            entry.id !== message.sessionId,
+            entry.agentSessionId === message.agentSessionId && entry.id !== message.sessionId,
         )
       : undefined;
     if (resumed) {
@@ -594,9 +616,17 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
       const stale =
         current && !liveSessions.current.has(current)
           ? sessionsRef.current.find((entry) => entry.id === current)
-          : !current && restoring.current?.id === viewingRef.current ? restoring.current : undefined;
+          : !current && restoring.current?.id === viewingRef.current
+            ? restoring.current
+            : undefined;
       if (stale?.agentSessionId && stale.providerId) {
-        const target: RestoreTarget = { id: stale.id, providerId: stale.providerId, agentSessionId: stale.agentSessionId, title: stale.title, cwd: stale.cwd };
+        const target: RestoreTarget = {
+          id: stale.id,
+          providerId: stale.providerId,
+          agentSessionId: stale.agentSessionId,
+          title: stale.title,
+          cwd: stale.cwd,
+        };
         restoring.current = target;
         sessionRef.current = undefined;
         // The screen is still this conversation, and the reopen about to
@@ -613,16 +643,20 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
             }),
           ),
         );
-        setState((s) => ({ ...s, busy: true, loadingSession: true, restoreTarget: target, restoreError: undefined }));
+        setState((s) => ({
+          ...s,
+          busy: true,
+          loadingSession: true,
+          restoreTarget: target,
+          restoreError: undefined,
+        }));
       }
     }
     for (const provider of message.providers ?? []) {
       if (!provider.available || probed.current.has(provider.id)) continue;
       probed.current.add(provider.id);
       pendingCapabilities.current.add(provider.id);
-      ws.send(
-        JSON.stringify(secure.seal({ t: "provider.capabilities", providerId: provider.id })),
-      );
+      ws.send(JSON.stringify(secure.seal({ t: "provider.capabilities", providerId: provider.id })));
     }
 
     // Anything typed while there was no signal goes now. Here rather than
@@ -668,15 +702,18 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
     // conversation that is no longer on screen, or it is the
     // no-session answer (the agent's last project) arriving after a
     // session has since opened somewhere else.
-    const mine = message.sessionId
-      ? message.sessionId === sessionRef.current
-      : !sessionRef.current;
+    const mine = message.sessionId ? message.sessionId === sessionRef.current : !sessionRef.current;
     if (!mine) return;
     const workspace: Workspace = {
       cwd: message.cwd,
       folder: message.folder ?? message.cwd,
       repo: typeof message.repo === "boolean" ? message.repo : undefined,
-      uncommitted: typeof message.uncommitted === "number" && Number.isFinite(message.uncommitted) && message.uncommitted >= 0 ? message.uncommitted : undefined,
+      uncommitted:
+        typeof message.uncommitted === "number" &&
+        Number.isFinite(message.uncommitted) &&
+        message.uncommitted >= 0
+          ? message.uncommitted
+          : undefined,
     };
     setState((s) => ({ ...s, workspace }));
     return;
@@ -735,16 +772,24 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
     captureReplies.current.delete(message.requestId);
     done?.({
       ok: message.ok === true,
-      ...(typeof message.data === "string" && typeof message.mimeType === "string" && {
-        picture: { name: typeof message.name === "string" ? message.name : "mac-screen.jpg", mimeType: message.mimeType, data: message.data },
-      }),
+      ...(typeof message.data === "string" &&
+        typeof message.mimeType === "string" && {
+          picture: {
+            name: typeof message.name === "string" ? message.name : "mac-screen.jpg",
+            mimeType: message.mimeType,
+            data: message.data,
+          },
+        }),
       message: message.message,
     });
     return;
   }
 
   // The answer to "open/close on computer": one tap's result, never state.
-  if ((message.t === "desk.opened" || message.t === "desk.closed") && typeof message.requestId === "string") {
+  if (
+    (message.t === "desk.opened" || message.t === "desk.closed") &&
+    typeof message.requestId === "string"
+  ) {
     const done = deskReplies.current.get(message.requestId);
     deskReplies.current.delete(message.requestId);
     done?.({ ok: message.ok === true, app: message.app, message: message.message });
@@ -764,7 +809,13 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
     return;
   }
 
-  if (message.t === "error" && message.code === "resume_failed" && message.sessionId && message.sessionId !== sessionRef.current) return;
+  if (
+    message.t === "error" &&
+    message.code === "resume_failed" &&
+    message.sessionId &&
+    message.sessionId !== sessionRef.current
+  )
+    return;
 
   // Read once, out here: an updater may run twice, and two different
   // clock readings would time the same turn differently on each pass.
@@ -772,12 +823,25 @@ export function handleSealedFrame(refs: FrameRefs, connection: FrameConnection, 
   if (batchable) {
     const chunk = readChunk(message.payload);
     if (chunk && !isEmptyChunk(chunk)) {
-      batch.push({ sessionId: message.sessionId, id: `${message.sessionId}:${message.seq}`, chunk, payload: message.payload, now });
+      batch.push({
+        sessionId: message.sessionId,
+        id: `${message.sessionId}:${message.seq}`,
+        chunk,
+        payload: message.payload,
+        now,
+      });
     }
     return;
   }
 
   setState((prev) =>
-    reduceMessage(prev, message, { sessionRef, pendingCapabilities, claimsScreen, adoptedRequestId, completedTurn, now }),
+    reduceMessage(prev, message, {
+      sessionRef,
+      pendingCapabilities,
+      claimsScreen,
+      adoptedRequestId,
+      completedTurn,
+      now,
+    }),
   );
 }

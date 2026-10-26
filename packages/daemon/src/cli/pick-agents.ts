@@ -7,7 +7,14 @@
  * to read in one sitting for that reason.
  */
 import { onKeypress, colorLevel, styler, glyphs, unicodeOk, terminalWidth } from "./ui.js";
-import { initialState, reduce, render, summary, type PickerItem, type PickerState } from "./picker.js";
+import {
+  initialState,
+  reduce,
+  render,
+  summary,
+  type PickerItem,
+  type PickerState,
+} from "./picker.js";
 
 export interface PickOptions {
   /** Already-disabled agents, so reopening setup shows the last choice. */

@@ -44,7 +44,8 @@ test("an oversized log keeps its tail, because that is the part worth reading", 
 test("rotation never leaves a half-written first line", async () => {
   // Cutting at a byte offset lands mid-line; a log that opens on fragment of a
   // stack trace reads as corruption.
-  const lines = Array.from({ length: 500 }, (_, i) => `entry-${i}-padding-padding`).join("\n") + "\n";
+  const lines =
+    Array.from({ length: 500 }, (_, i) => `entry-${i}-padding-padding`).join("\n") + "\n";
   const path = await tempLog(lines);
 
   await rotateLog(path, 512, 256);

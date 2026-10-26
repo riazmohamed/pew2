@@ -41,9 +41,11 @@ export interface Gate {
  *   and the steps up to it are pointless with one.
  */
 export function gate(progress: Progress | undefined, paired: boolean): Gate {
-  if (progress === undefined) return paired ? { step: undefined, repair: false } : { step: "welcome", repair: false };
+  if (progress === undefined)
+    return paired ? { step: undefined, repair: false } : { step: "welcome", repair: false };
   // Forgotten (or never paired since): from the top, as on a first launch.
-  if (progress === "finished") return paired ? { step: undefined, repair: false } : { step: "welcome", repair: false };
+  if (progress === "finished")
+    return paired ? { step: undefined, repair: false } : { step: "welcome", repair: false };
   const after = STEPS.indexOf(progress) > STEPS.indexOf("pair");
   if (paired) return after ? { step: progress, repair: false } : { step: "voice", repair: false };
   return after ? { step: "pair", repair: false } : { step: progress, repair: false };
@@ -77,10 +79,10 @@ export function devStep(raw: string | undefined): Step | undefined {
   return STEPS.find((step) => step === raw);
 }
 
-export const INSTALL_COMMAND = "curl -fsSL https://raw.githubusercontent.com/KenKaiii/pew2/main/install.sh | sh";
+export const INSTALL_COMMAND =
+  "curl -fsSL https://raw.githubusercontent.com/KenKaiii/pew2/main/install.sh | sh";
 /** How the install command is shown (one line); copying gives the full one. */
 export const INSTALL_SHOWN = "curl -fsSL …/pew2/install.sh | sh";
 export const SETUP_COMMAND = "pew2 setup";
 /** Shows the QR code the phone scans (`pew2 setup` ends by pointing here). */
 export const PAIR_COMMAND = "pew2 pair";
-

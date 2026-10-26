@@ -22,11 +22,7 @@
  */
 import { File, Paths } from "expo-file-system";
 
-import {
-  fromCachedSessions,
-  type CachedSession,
-  type SessionCacheFile,
-} from "./sessionCache";
+import { fromCachedSessions, type CachedSession, type SessionCacheFile } from "./sessionCache";
 import type { Session } from "./useDaemon";
 
 const FILE = "sessions.json";

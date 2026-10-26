@@ -83,9 +83,7 @@ describe("readAvailableCommands", () => {
 
 describe("applyCommand", () => {
   it("leaves the caret past a space, ready for instructions", () => {
-    expect(applyCommand({ name: "review", description: "", hint: "a path" })).toBe(
-      "/review ",
-    );
+    expect(applyCommand({ name: "review", description: "", hint: "a path" })).toBe("/review ");
   });
 
   it("does the same for a command that declares no argument", () => {
@@ -103,9 +101,7 @@ describe("splitCommand", () => {
   });
 
   it("handles a namespaced name", () => {
-    expect(splitCommand("/minimal-claude:candy now")?.command).toBe(
-      "/minimal-claude:candy",
-    );
+    expect(splitCommand("/minimal-claude:candy now")?.command).toBe("/minimal-claude:candy");
   });
 
   it("is undefined for prose, so ordinary text is not decorated", () => {

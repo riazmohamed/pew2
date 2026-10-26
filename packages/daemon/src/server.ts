@@ -17,8 +17,9 @@ import { watchPairing } from "./pairing-watch.js";
 import { decideClaim, type ClaimDecision } from "./device-claim.js";
 import { SecureChannel, e2e, envelopeHeader, wire } from "@pew2/protocol";
 import { handleMessage } from "./handler.js";
-import { RelayClient } from "./relay-client.js";
+import { KEEPALIVE_FRAME, KEEPALIVE_REPLY, RelayClient } from "./relay-client.js";
 import { relayOrigin } from "./push.js";
+import { persistPushTargets, readPushTargets } from "./push-store.js";
 import { hostname } from "node:os";
 import { daemonLogPaths, rotateLog, startLogRotation } from "./logs.js";
 import { sweepOrphans } from "./children.js";
@@ -79,6 +80,12 @@ let rootKey = e2e.fromHex(pairing.key);
 // The device this pairing belongs to, once one has claimed it. Held here for
 // the same reason as the two above: a rotation clears it while the daemon runs.
 let claimedBy = pairing.claimedBy;
+
+// The phones that asked for banners before this process started. A restart
+// with the phone in a pocket would otherwise announce nothing until the app is
+// next opened by hand. See `push-store.ts`.
+daemon.pushTargets.restore(await readPushTargets(currentToken));
+persistPushTargets(daemon.pushTargets, () => currentToken);
 
 /**
  * Admit a device that has already proved it holds the key, claiming the pairing
@@ -249,6 +256,15 @@ const server = Bun.serve({
       const client = clients.get(ws);
       if (!client) return;
 
+      // The app's "are you still there?" on coming back to the foreground. The
+      // relay answers the identical bytes itself without waking anything; this
+      // is the same answer for a phone on the LAN. Content-free, so it needs no
+      // hello first, exactly as at the relay.
+      if (raw === KEEPALIVE_FRAME) {
+        ws.send(KEEPALIVE_REPLY);
+        return;
+      }
+
       let frame: unknown;
       try {
         frame = JSON.parse(raw);
@@ -406,6 +422,9 @@ const stopWatching = watchPairing(pairingPath(), pairing, () => loadPairing(), {
     // it. Not carried over: the point of rotating is to hand the pairing to a
     // different phone.
     claimedBy = next.claimedBy;
+    // And the phones it was telling: they belonged to the old pairing, and the
+    // new phone registers itself the moment it connects.
+    daemon.pushTargets.clear();
   },
   disconnectClients: () => {
     // Sealed with the previous key, so they cannot be carried across. The app

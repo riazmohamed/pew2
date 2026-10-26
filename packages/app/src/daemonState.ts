@@ -82,6 +82,59 @@ export const CONNECT_TIMEOUT = 10_000;
  */
 export const WEBSOCKET_CONNECTING = 0;
 
+/** `WebSocket.OPEN`, by value, for the same reason as {@link WEBSOCKET_CONNECTING}. */
+export const WEBSOCKET_OPEN = 1;
+
+/**
+ * The cleartext "are you still there?", byte for byte what the daemon sends.
+ *
+ * The relay answers exactly this string from its hibernation auto-response
+ * (`KEEPALIVE_REQUEST` in `packages/relay`), without waking the room, and the
+ * LAN server answers it too. Any other spelling would go unanswered.
+ */
+export const KEEPALIVE_FRAME = '{"t":"ping"}';
+
+/**
+ * How long a socket gets to prove itself when the app comes back.
+ *
+ * After hours suspended, `OPEN` is a memory rather than a fact: the network
+ * dropped the connection while JavaScript was frozen and nothing has told the
+ * socket yet. Trusting it meant waiting for iOS to notice, which is where the
+ * five to ten seconds of "getting sorted" on reopening went. A round trip to
+ * the relay is a fraction of this even on cellular; anything slower is
+ * replaced, at the cost of one reconnect if it was merely slow.
+ */
+export const LIVENESS_TIMEOUT = 3_000;
+
+/** What coming back to the foreground does with the socket it finds. */
+export type ResumeCheck =
+  /** Looks open: ask it to answer within {@link LIVENESS_TIMEOUT}. */
+  | "probe"
+  /** An attempt started recently: leave it to finish. */
+  | "wait"
+  /** An attempt from before the app was put away: start a fresh one now. */
+  | "replace"
+  /** Nothing usable: connect now. */
+  | "connect";
+
+/**
+ * Decide what to do with the socket on returning to the foreground.
+ *
+ * @param readyState The current socket's state, or undefined for none.
+ * @param connectingFor How long ago that socket was created, in ms.
+ */
+export function resumeCheck(readyState: number | undefined, connectingFor: number): ResumeCheck {
+  if (readyState === WEBSOCKET_OPEN) return "probe";
+  // A handshake started before the phone was locked has been frozen with it,
+  // and its own deadline would leave the user looking at a spinner for up to
+  // ten more seconds. One started a moment ago is the opposite: it may be one
+  // frame from opening, and replacing it would only restart the wait.
+  if (readyState === WEBSOCKET_CONNECTING) {
+    return connectingFor >= LIVENESS_TIMEOUT ? "replace" : "wait";
+  }
+  return "connect";
+}
+
 export interface State {
   status: Status;
   /**

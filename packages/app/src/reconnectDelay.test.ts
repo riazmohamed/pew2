@@ -1,5 +1,30 @@
 import { describe, expect, test } from "bun:test";
-import { reconnectDelay } from "./daemonState";
+import {
+  LIVENESS_TIMEOUT,
+  WEBSOCKET_CONNECTING,
+  WEBSOCKET_OPEN,
+  reconnectDelay,
+  resumeCheck,
+} from "./daemonState";
+
+describe("resumeCheck", () => {
+  test("a socket that looks open is asked to prove it, not trusted", () => {
+    // After hours suspended `OPEN` is stale: trusting it is what left the app
+    // waiting for iOS to notice the connection was gone.
+    expect(resumeCheck(WEBSOCKET_OPEN, 0)).toBe("probe");
+  });
+  test("an attempt frozen from before the app was put away is replaced", () => {
+    expect(resumeCheck(WEBSOCKET_CONNECTING, LIVENESS_TIMEOUT)).toBe("replace");
+  });
+  test("an attempt that just started is left to finish", () => {
+    expect(resumeCheck(WEBSOCKET_CONNECTING, 200)).toBe("wait");
+  });
+  test("no socket, or one closing, connects now", () => {
+    expect(resumeCheck(undefined, 0)).toBe("connect");
+    expect(resumeCheck(2, 0)).toBe("connect");
+    expect(resumeCheck(3, 0)).toBe("connect");
+  });
+});
 
 describe("reconnectDelay", () => {
   test("doubles from one second", () => {

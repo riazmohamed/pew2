@@ -89,6 +89,9 @@ const HEARTBEAT_MS = 25_000;
  */
 export const KEEPALIVE_FRAME = '{"t":"ping"}';
 
+/** The relay's answer to {@link KEEPALIVE_FRAME} (`KEEPALIVE_RESPONSE` there), which the LAN server gives too. */
+export const KEEPALIVE_REPLY = '{"t":"pong"}';
+
 export class RelayClient {
   private socket: WebSocket | null = null;
   /**

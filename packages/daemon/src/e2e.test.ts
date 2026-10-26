@@ -98,6 +98,23 @@ test("a device the pairing does not belong to is refused, in the clear", async (
   stranger.close();
 }, TEST_TIMEOUT);
 
+test("the LAN socket answers the app's liveness probe exactly as the relay does", async () => {
+  // Coming back to the foreground, the app asks before trusting a socket that
+  // only *looks* open. Unanswered, a phone on the LAN would reconnect every time.
+  const ws = new WebSocket(`ws://127.0.0.1:${daemon.port}/?token=${daemon.token}`);
+  const pong = new Promise<string>((resolve) => {
+    ws.onmessage = (event) => {
+      if (String(event.data) === '{"t":"pong"}') resolve(String(event.data));
+    };
+  });
+  await new Promise<void>((resolve) => {
+    ws.onopen = () => resolve();
+  });
+  ws.send('{"t":"ping"}');
+  expect(await pong).toBe('{"t":"pong"}');
+  ws.close();
+}, TEST_TIMEOUT);
+
 test("a sealed message from a socket that never said hello is ignored entirely", async () => {
   const silent = new WebSocket(`ws://127.0.0.1:${daemon.port}/?token=${daemon.token}`);
   const frames: any[] = [];

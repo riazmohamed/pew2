@@ -39,6 +39,10 @@ export default tseslint.config(
       "packages/app/ios/**",
       "packages/app/android/**",
       "**/*.d.ts",
+      // The coding agent's local scratch space (gitignored): throwaway repros
+      // and harnesses outside every tsconfig, so the type-aware rules cannot
+      // even parse them. CI never sees it; only a local `npm run lint` did.
+      ".gg/**",
     ],
   },
 

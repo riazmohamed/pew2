@@ -12,10 +12,13 @@
  * - **The relay is not involved.** It would be the obvious place for a device
  *   registry, and it is the one component that must stay a dumb pipe holding no
  *   user state. The desktop has internet; it can call the push service itself.
- * - **Tokens are held in memory only.** A push token identifies a phone, and
- *   writing one to disk gives the daemon a persistent record of a device for no
- *   gain: the app re-registers on every connect, and a daemon that just started
- *   has nothing to announce yet anyway.
+ *
+ * Tokens used to be held in memory only, on the theory that the app
+ * re-registers on every connect. But a phone in a pocket does not connect, and
+ * the daemon restarts without it — a self-update picks exactly the quiet hours
+ * when nobody is looking — so every banner after a restart went nowhere until
+ * the app was next opened by hand. They are now kept on disk, tied to the
+ * pairing (`push-store.ts`), so a rotation still forgets the old phone.
  *
  * The cost of the feature is honest and belongs here rather than buried: the
  * banner's title and body are rendered by iOS with no JavaScript involved, so
@@ -31,6 +34,15 @@ const PUSH_URL = "https://exp.host/--/api/v2/push/send";
 /** Matches what `getExpoPushTokenAsync` returns, so junk never reaches Expo. */
 const TOKEN_SHAPE = /^Expo(nent)?PushToken\[[^\]]+\]$/;
 
+/** A PushKit token, as `app.voip` accepts one (`wire.ts`). */
+const VOIP_TOKEN_SHAPE = /^[0-9a-f]{64,200}$/;
+
+/** What the registry holds, by device, as plain data. */
+export interface PushSnapshot {
+  targets: Record<string, Pick<Target, "token" | "platform">>;
+  voip: Record<string, VoipTarget>;
+}
+
 /** A phone that can be rung like a call: its PushKit token and which APNs it belongs to. */
 export interface VoipTarget {
   token: string;
@@ -38,7 +50,7 @@ export interface VoipTarget {
 }
 
 /** A phone that has asked to be told when its agents finish. */
-interface Target {
+export interface Target {
   token: string;
   platform: "ios" | "android";
   /** Android needs the channel named on the message, not just on the device. */
@@ -86,19 +98,79 @@ const CATEGORY = "agentTurn";
  */
 export class PushRegistry {
   private readonly targets = new Map<string, Target>();
-  /** Phones that can ring like a call (PushKit), by device. In memory: phones re-send on every connect. */
+  /** Phones that can ring like a call (PushKit), by device. */
   private readonly voipTargets = new Map<string, VoipTarget>();
+
+  /**
+   * Called after anything here actually changes, so it can be written down.
+   *
+   * Not on a re-registration of the same token: the app sends one on every
+   * connect, and a write per reconnect would be a write for nothing.
+   */
+  onChange?: () => void;
 
   /** Remember (or, with `null`, forget) a device's VoIP token. */
   registerVoip(deviceId: string, token: string | null, env: VoipTarget["env"]): void {
-    if (token === null) this.voipTargets.delete(deviceId);
-    else this.voipTargets.set(deviceId, { token, env });
+    if (token === null) {
+      if (this.voipTargets.delete(deviceId)) this.onChange?.();
+      return;
+    }
+    const known = this.voipTargets.get(deviceId);
+    if (known?.token === token && known.env === env) return;
+    this.voipTargets.set(deviceId, { token, env });
+    this.onChange?.();
   }
 
   forgetVoip(token: string): void {
+    let changed = false;
     for (const [deviceId, target] of this.voipTargets) {
-      if (target.token === token) this.voipTargets.delete(deviceId);
+      if (target.token === token) changed = this.voipTargets.delete(deviceId) || changed;
     }
+    if (changed) this.onChange?.();
+  }
+
+  /** Everything held, in the shape `push-store.ts` writes. */
+  snapshot(): PushSnapshot {
+    return {
+      targets: Object.fromEntries(
+        [...this.targets].map(([deviceId, { token, platform }]) => [deviceId, { token, platform }]),
+      ),
+      voip: Object.fromEntries(this.voipTargets),
+    };
+  }
+
+  /**
+   * Take back what a previous process held.
+   *
+   * Every entry goes through the same checks a live registration does, because
+   * the file is only as trustworthy as whatever last wrote it. Does not call
+   * `onChange`: nothing new has happened.
+   */
+  restore(snapshot: PushSnapshot): void {
+    const onChange = this.onChange;
+    this.onChange = undefined;
+    try {
+      for (const [deviceId, target] of Object.entries(snapshot.targets)) {
+        if (target.platform === "ios" || target.platform === "android") {
+          this.register(deviceId, target.token, target.platform);
+        }
+      }
+      for (const [deviceId, target] of Object.entries(snapshot.voip)) {
+        if (VOIP_TOKEN_SHAPE.test(target.token) && (target.env === "sandbox" || target.env === "production")) {
+          this.registerVoip(deviceId, target.token, target.env);
+        }
+      }
+    } finally {
+      this.onChange = onChange;
+    }
+  }
+
+  /** Forget every phone: the pairing they belonged to is gone. */
+  clear(): void {
+    if (this.targets.size === 0 && this.voipTargets.size === 0) return;
+    this.targets.clear();
+    this.voipTargets.clear();
+    this.onChange?.();
   }
 
   voipList(): [deviceId: string, target: VoipTarget][] {
@@ -117,12 +189,15 @@ export class PushRegistry {
    */
   register(deviceId: string, token: string, platform: "ios" | "android", ringer?: string): boolean {
     if (!TOKEN_SHAPE.test(token)) return false;
+    const known = this.targets.get(deviceId);
+    if (known?.token === token && known.platform === platform) return true;
     this.targets.set(deviceId, {
       token,
       platform,
       ...(platform === "android" ? { channelId: ANDROID_CHANNEL } : null),
       ...(platform === "android" && ringer === "native" ? { nativeRing: true } : null),
     });
+    this.onChange?.();
     return true;
   }
 
@@ -134,9 +209,11 @@ export class PushRegistry {
    * limited, so this is not merely tidy.
    */
   forget(token: string): void {
+    let changed = false;
     for (const [deviceId, target] of this.targets) {
-      if (target.token === token) this.targets.delete(deviceId);
+      if (target.token === token) changed = this.targets.delete(deviceId) || changed;
     }
+    if (changed) this.onChange?.();
   }
 
   list(): Target[] {

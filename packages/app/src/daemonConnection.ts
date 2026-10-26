@@ -11,7 +11,15 @@ import { createStreamBatch, foldStreamBatch } from "./streamBatch";
 import { dropPendingSessions, isPendingSession } from "./pendingSession";
 import { markSent, partitionOutbox, queuedPendingSessions } from "./outbox";
 import { beginActivity } from "./activity";
-import { CONNECT_TIMEOUT, STALLED_ATTEMPTS, WEBSOCKET_CONNECTING, reconnectDelay } from "./daemonState";
+import {
+  CONNECT_TIMEOUT,
+  KEEPALIVE_FRAME,
+  LIVENESS_TIMEOUT,
+  STALLED_ATTEMPTS,
+  WEBSOCKET_CONNECTING,
+  reconnectDelay,
+  resumeCheck,
+} from "./daemonState";
 import type { DaemonRefs } from "./daemonContext";
 import { handleSealedFrame, type FrameRefs } from "./daemonFrame";
 import { refusalText } from "./fatalNotice";
@@ -104,6 +112,17 @@ export function openConnection(
   attempts.current = 0;
   setState((s) => (s.unreachable ? { ...s, unreachable: false } : s));
 
+  // The socket `connect` last opened, and what `resume.current` may do to it.
+  let current:
+    | {
+        startedAt: number;
+        /** Ask the far end to answer; replace the socket if it does not. */
+        probe: () => void;
+        /** Let this socket go and open the next one at once. */
+        replace: (why: string) => void;
+      }
+    | undefined;
+
   const connect = () => {
     if (!alive.current) return;
     resetStream();
@@ -121,6 +140,54 @@ export function openConnection(
     // make the new connection's first frames look like replays.
     const secure = new SecureChannel(e2e.fromHex(pairingKey), "app");
     channel.current = secure;
+
+    // The liveness check in flight, if any: cleared by the first frame back.
+    let probe: ReturnType<typeof setTimeout> | undefined;
+
+    /**
+     * Abandon this socket and open the next one now.
+     *
+     * Not through `close`: a WebSocket close waits for the far end's answer,
+     * and over the relay that took ten seconds — on a dead connection it never
+     * comes at all. This socket is let go of at once (its handlers off, so
+     * nothing it does later reaches state) and the next one opens beside it.
+     * Not a failure: no backoff, and it counts against nothing.
+     */
+    const replace = (why: string) => {
+      if (socket.current !== ws || !alive.current || fatal.current) return;
+      connLog(`${why}: reconnecting now`);
+      clearTimeout(deadline);
+      clearTimeout(probe);
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onclose = null;
+      ws.onerror = null;
+      try {
+        ws.close();
+      } catch {
+        // Already gone.
+      }
+      attempts.current = 0;
+      connect();
+    };
+
+    current = {
+      startedAt: Date.now(),
+      probe: () => {
+        if (socket.current !== ws || probe !== undefined) return;
+        try {
+          ws.send(KEEPALIVE_FRAME);
+        } catch {
+          replace("probe could not be sent");
+          return;
+        }
+        probe = setTimeout(() => {
+          probe = undefined;
+          replace("no answer to the probe");
+        }, LIVENESS_TIMEOUT);
+      },
+      replace,
+    };
 
     /**
      * Deliver everything typed while there was nowhere to send it.
@@ -285,6 +352,11 @@ export function openConnection(
     };
 
     ws.onmessage = (event) => {
+      // Anything at all coming back proves the path works, not only the pong.
+      if (probe !== undefined) {
+        clearTimeout(probe);
+        probe = undefined;
+      }
       let frame: unknown;
       try {
         frame = JSON.parse(event.data as string);
@@ -306,25 +378,7 @@ export function openConnection(
       // "not connected" until something else reset it. Start over at once:
       // a new socket, a new channel, a new hello.
       if (kind === "hello" && (frame as { role?: unknown }).role === "daemon") {
-        if (socket.current !== ws || !alive.current || fatal.current) return;
-        connLog("computer rejoined: reconnecting now");
-        // Not through `close`: a WebSocket close waits for the far end's
-        // answer, and over the relay that took ten seconds. This socket is
-        // let go of at once (its handlers off, so nothing it does later
-        // reaches state) and the next one opens beside it. Not a failure:
-        // no backoff, and it counts against nothing.
-        clearTimeout(deadline);
-        ws.onopen = null;
-        ws.onmessage = null;
-        ws.onclose = null;
-        ws.onerror = null;
-        try {
-          ws.close();
-        } catch {
-          // Already gone.
-        }
-        attempts.current = 0;
-        connect();
+        replace("computer rejoined");
         return;
       }
       if (kind === "error") {
@@ -446,6 +500,8 @@ export function openConnection(
 
     ws.onclose = () => {
       clearTimeout(deadline);
+      clearTimeout(probe);
+      probe = undefined;
       connLog("closed");
       scheduleReconnect();
     };
@@ -464,21 +520,11 @@ export function openConnection(
     // A refusal the daemon explained is still a refusal after a trip to the
     // home screen; retrying it here would defeat the whole point of `fatal`.
     if (fatal.current) return;
-    const ws = socket.current;
-    // A live socket needs nothing. `CONNECTING` is left alone too: an attempt
-    // is already in flight, and replacing it would abandon a connection that
-    // may be one frame from opening.
-    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-      return;
-    }
-    if (retry.current) {
-      clearTimeout(retry.current);
-      retry.current = null;
-    }
-    // Deliberately back to zero. The attempts behind us were made against a
-    // backgrounded app, and carrying their count forward would both stretch
-    // the next delay and let one more failure trip the "can't reach your
-    // machine" threshold on what is, for the user, the first try.
+    // Deliberately back to zero, whatever the socket is doing. The attempts
+    // behind us were made against a backgrounded app, and carrying their count
+    // forward would both stretch the next delay (to the full ten seconds on
+    // screen) and let one more failure trip the "can't reach your machine"
+    // threshold on what is, for the user, the first try.
     attempts.current = 0;
     // And the verdict those attempts produced goes with them. The UI checks
     // `unreachable` before `status`, so leaving it set would keep "Can't reach
@@ -486,6 +532,22 @@ export function openConnection(
     // the pessimistic message this whole path exists to get rid of. Guarded so
     // a resume with nothing to correct does not re-render the tree.
     setState((s) => (s.unreachable ? { ...s, unreachable: false } : s));
+    const ws = socket.current;
+    const check = resumeCheck(ws?.readyState, Date.now() - (current?.startedAt ?? 0));
+    connLog(`foreground: ${check}`);
+    if (check === "wait") return;
+    if (check === "probe") {
+      current?.probe();
+      return;
+    }
+    if (check === "replace") {
+      current?.replace("attempt from before the app was put away");
+      return;
+    }
+    if (retry.current) {
+      clearTimeout(retry.current);
+      retry.current = null;
+    }
     connect();
   };
 
@@ -495,6 +557,7 @@ export function openConnection(
     streamBoundary.current = undefined;
     alive.current = false;
     resume.current = undefined;
+    current = undefined;
     if (retry.current) clearTimeout(retry.current);
     const ws = socket.current;
     socket.current = null;

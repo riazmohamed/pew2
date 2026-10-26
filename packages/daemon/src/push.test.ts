@@ -31,6 +31,37 @@ describe("PushRegistry", () => {
     expect(registry.size).toBe(0);
   });
 
+  it("reports real changes only, so a reconnect re-registering costs no write", () => {
+    const registry = new PushRegistry();
+    let changes = 0;
+    registry.onChange = () => changes++;
+    registry.register("phone", TOKEN, "ios");
+    registry.register("phone", TOKEN, "ios");
+    registry.registerVoip("phone", "ab".repeat(32), "production");
+    registry.registerVoip("phone", "ab".repeat(32), "production");
+    expect(changes).toBe(2);
+    registry.forget("ExponentPushToken[nobody]");
+    expect(changes).toBe(2);
+    registry.forget(TOKEN);
+    registry.clear();
+    expect(changes).toBe(4);
+  });
+
+  it("restores a snapshot through the same checks as a live registration", () => {
+    const registry = new PushRegistry();
+    registry.restore({
+      targets: {
+        phone: { token: TOKEN, platform: "ios" },
+        junk: { token: "not-a-token", platform: "ios" },
+      },
+      voip: { phone: { token: "ab".repeat(32), env: "sandbox" }, junk: { token: "zz", env: "sandbox" } },
+    });
+    expect(registry.snapshot()).toEqual({
+      targets: { phone: { token: TOKEN, platform: "ios" } },
+      voip: { phone: { token: "ab".repeat(32), env: "sandbox" } },
+    });
+  });
+
   it("names the Android channel, without which the banner is filed silently", () => {
     const registry = new PushRegistry();
     registry.register("phone", TOKEN, "android");

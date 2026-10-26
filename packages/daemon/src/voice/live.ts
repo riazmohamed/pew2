@@ -106,7 +106,7 @@ Backend tools:
 Delegate to the backend when:
 - They ask anything about their projects, code, documents, repos or agents: status, review, check, fix, build, explain, write, commit, "ask OG Coder", "tell it", "pass this on".
 - They answer a question or approval, or ask to stop, switch model, call back later, or cancel a callback.
-- They say goodbye or ask to hang up: delegate so the call really ends, and say a short goodbye.
+- They say goodbye, agree to hang up or ask you to: delegate in that same turn so the call really ends, and say a short goodbye. Saying bye without delegating leaves the line open.
 - A correction changes work already passed on.
 
 Do not delegate when:

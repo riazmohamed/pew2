@@ -993,6 +993,16 @@ function settleLiveCaption(state: CallState): CallState {
   return addTranscript(settled, open.who === "pew" ? "assistant" : "user", open.text);
 }
 
+/**
+ * Whether Pew's line is a goodbye: a "bye" or "hanging up" in a line that is
+ * not asking ("Okay to hang up now?" is not one).
+ */
+export function saysGoodbye(line: string): boolean {
+  const text = line.trim().toLowerCase();
+  if (!text || text.endsWith("?")) return false;
+  return /\b(good-?bye|bye(-bye)?|hanging up)\b/.test(text);
+}
+
 /** Live engine: one transcript delta. A change of speaker settles the other's line first. */
 function liveDelta(state: CallState, who: CallCaption["who"], delta: unknown): CallState {
   if (typeof delta !== "string" || delta === "") return state;
@@ -1397,7 +1407,24 @@ function stepInner(state: CallState, input: CallInput): CallStep {
       }
       if (input.what === "liveSpeech") {
         if (state.engine !== "live" || state.activity !== "speaking") return { state, effects };
-        return { state: { ...state, activity: "listening" }, effects };
+        const listening: CallState = { ...state, activity: "listening" };
+        // Pew said goodbye but never ended the call: GPT-Live often says
+        // "hanging up, bye" without delegating end_call (26 Oct), which left
+        // the line open until they asked again. Its goodbye is the hang-up.
+        if (
+          state.phase === "live" &&
+          state.caption?.who === "pew" &&
+          saysGoodbye(state.caption.text)
+        ) {
+          effects.push({
+            kind: "timer",
+            key: "liveHangup",
+            ms: LIVE_HANGUP_MS,
+            input: { type: "timeout", what: "liveHangup" },
+          });
+          return { state: { ...listening, phase: "ending" }, effects };
+        }
+        return { state: listening, effects };
       }
       if (input.what === "liveHangup") {
         if (state.engine !== "live" || !callActive(state)) return { state, effects };

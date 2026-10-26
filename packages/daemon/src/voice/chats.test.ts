@@ -249,3 +249,25 @@ test("Pew's reach: open chats, plus the newest projects of the last two weeks, n
   );
   expect(new Set(withinReach(many, now).map((c) => c.cwd)).size).toBe(REACH_PROJECTS);
 });
+
+test("start_chat finds a project outside the recent reach by its exact name only", async () => {
+  // rinaztec was not among the recent projects, so the call said "I don't
+  // know a project called rinaztec" (26 Oct).
+  const { port: p, calls } = port({ projects: async () => ["/w/rinaztec", "/w/academy-rinaztec"] });
+  const result = JSON.parse(
+    (
+      await runChatTool(
+        "start_chat",
+        JSON.stringify({ project: "rinaztec", agent: "Codex", text: "Find the repo" }),
+        p,
+      )
+    ).output,
+  );
+  expect(result).toMatchObject({ ok: true, session_id: "live-2", sent: true });
+  expect(calls[0]).toBe("start codex /w/rinaztec");
+
+  const partial = JSON.parse(
+    (await runChatTool("start_chat", JSON.stringify({ project: "rinaz", text: "x" }), p)).output,
+  );
+  expect(partial).toMatchObject({ ok: false, error: "unknown project" });
+});

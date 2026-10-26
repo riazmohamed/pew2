@@ -1060,6 +1060,7 @@ function chatPort(ctx: HandlerContext, callId: string): ChatPort {
   const port = voicePort(ctx, callId);
   return {
     chats: () => reachableChats(daemon),
+    projects: () => daemon.voiceProjects(),
     agents: () => daemon.voiceAgents(),
     contextProvider: () => {
       const context = daemon.voice.callContext(callId);

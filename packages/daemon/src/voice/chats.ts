@@ -32,6 +32,12 @@ export interface ChatPort {
   contextProvider(): string | undefined;
   /** Reopen a stored conversation; the live session id, or undefined when it failed. */
   resume(chat: VoiceChat): Promise<string | undefined>;
+  /**
+   * Every project folder pew2 knows, beyond the recent ones in `chats()`. Only
+   * an exact name is looked up here, so a project named outright is found
+   * without widening what Pew lists or guesses at.
+   */
+  projects?(): Promise<string[]>;
   /** Start a new conversation in a project path from history; its live session id. */
   start(providerId: string, cwd: string): Promise<string>;
   tellAgent(sessionId: string, text: string): { ok: boolean; queued?: boolean };
@@ -255,10 +261,16 @@ export async function runChatTool(
     if (name === "start_chat") {
       const project = str(args.project);
       if (!project) return fail("Which project?", "project required");
-      const cwds = matchProjects(
+      let cwds = matchProjects(
         project,
         chats.map((chat) => chat.cwd),
       );
+      // Outside the recent reach: a project named exactly still counts
+      // ("I don't know a project called rinaztec", 26 Oct).
+      if (cwds.length === 0 && port.projects) {
+        const want = words(project);
+        cwds = (await port.projects()).filter((cwd) => words(projectName(cwd)) === want);
+      }
       if (cwds.length === 0)
         return fail(`I don't know a project called ${project}.`, "unknown project");
       const names = [...new Set(cwds.map(projectName))];

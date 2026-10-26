@@ -14,6 +14,7 @@ import {
   newItemText,
   newsText,
   voicePushRequest,
+  saysGoodbye,
   voiceStatusLine,
   VOICE_UNKNOWN,
   type CallEffect,
@@ -1277,5 +1278,58 @@ describe("live engine (GPT-Live, run by the daemon)", () => {
     ]);
     expect(realtime(effects)).toEqual([]);
     expect(state.completed).toHaveLength(1);
+  });
+});
+
+describe("live engine: Pew's goodbye hangs up", () => {
+  const live = () =>
+    run(
+      IDLE_CALL,
+      { type: "start", requestId: "v1" },
+      {
+        type: "daemon",
+        message: {
+          t: "voice.session",
+          requestId: "v1",
+          ok: true,
+          callId: "c1",
+          engine: "live",
+          model: "gpt-live-1",
+          items: [],
+        },
+      },
+      { type: "open" },
+    ).state;
+  const say = (text: string) => ({
+    type: "server" as const,
+    event: { type: "session.output_transcript.delta", delta: text },
+  });
+
+  test("goodbye lines and non-goodbyes", () => {
+    expect(saysGoodbye("Alright, hanging up. Bye.")).toBe(true);
+    expect(saysGoodbye("Will do, bye.")).toBe(true);
+    expect(saysGoodbye("Bye. I'll ring you when it's done.")).toBe(true);
+    expect(saysGoodbye("Goodbye!")).toBe(true);
+    expect(saysGoodbye("Absolutely, I will ring you when it's done. Okay to hang up now?")).toBe(
+      false,
+    );
+    expect(saysGoodbye("Sent to rinaztec.")).toBe(false);
+    expect(saysGoodbye("The bypass is on.")).toBe(false);
+  });
+
+  test("a goodbye ends the call once Pew stops talking, without end_call", () => {
+    let step = run(live(), say("Alright, hanging up."), say(" Bye."));
+    expect(step.state.phase).toBe("live");
+    step = run(step.state, { type: "timeout", what: "liveSpeech" });
+    expect(step.state.phase).toBe("ending");
+    expect(timers(step.effects)).toContain("liveHangup");
+    const done = run(step.state, { type: "timeout", what: "liveHangup" });
+    expect(done.state.phase).toBe("ended");
+  });
+
+  test("an offer to hang up does not hang up", () => {
+    let step = run(live(), say("I'll ring you when it's done. Okay to hang up now?"));
+    step = run(step.state, { type: "timeout", what: "liveSpeech" });
+    expect(step.state.phase).toBe("live");
   });
 });

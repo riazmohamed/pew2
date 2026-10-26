@@ -824,3 +824,14 @@ test("the old id still reaches the window after the handover, and re-announces i
   );
   rig.daemon.closeAll();
 });
+
+test("a native turn's start and end reach the call (lanes and call-me-when-done)", async () => {
+  const { daemon, session } = await handoverRig();
+  let touched = 0;
+  (daemon as any).touchBoard = () => void touched++;
+  (daemon as any).nativeTurnStart(session);
+  expect(touched).toBe(1);
+  (daemon as any).nativeTurnEnd(session);
+  expect(touched).toBe(2);
+  daemon.closeAll();
+});

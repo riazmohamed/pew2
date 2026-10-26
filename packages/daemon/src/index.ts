@@ -432,6 +432,15 @@ export class Daemon extends DaemonConnectSession {
    * so the app's later requests naming it (it re-sends the cwd for days) are
    * recognised for any agent, not only the one whose history it came from.
    */
+  /**
+   * Every project folder pew2 knows (chosen before, or with any chat), for a
+   * project named on a call that is outside Pew's recent reach.
+   */
+  async voiceProjects(): Promise<string[]> {
+    const chats = await this.voiceChats().catch(() => []);
+    return [...new Set([...(await this.chosenProjects()), ...chats.map((chat) => chat.cwd)])];
+  }
+
   async acceptVoiceProject(cwd: string): Promise<string> {
     return this.rememberProject(cwd);
   }
@@ -1668,6 +1677,7 @@ export class Daemon extends DaemonConnectSession {
     session.turnStartedAt = Date.now();
     session.turnText = undefined;
     this.awake.evaluate();
+    this.touchBoard();
   }
 
   private nativeTurnEnd(session: ActiveSession) {
@@ -1676,6 +1686,9 @@ export class Daemon extends DaemonConnectSession {
     session.working = false;
     const sessionId = session.log.sessionId;
     this.awake.evaluate();
+    // A call's lanes and a "call me when it's done" follow the window's turns
+    // too: without this a native turn's end never reached the callback (26 Oct).
+    this.touchBoard();
     // The same pair `session.prompt` sends at a turn's end: the spinner, and
     // the push for a phone that is asleep.
     this.send({ t: "session.idle", sessionId, ...this.sessionOrigin(sessionId) });

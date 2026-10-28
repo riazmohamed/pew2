@@ -33,12 +33,12 @@ import { View, type StyleProp, type ViewStyle } from "react-native";
 import { SETTLE_MS, heightAction } from "../settledHeight";
 import type { PendingAttachment } from "../attachments";
 import type { ContextUsage } from "../contextUsage";
-import type { PlanEntry } from "../chunks";
 import type { Workspace } from "../useDaemon";
 import type { Dictation } from "./useDictation";
 import { Composer, type ComposerHandle, type ComposerSelector } from "./Composer";
 import { ContextBar } from "./ContextBar";
 import { PlanCard } from "./PlanCard";
+import type { WorkProgress } from "../workProgress";
 import { changesAccessibilityLabel } from "../workspaceLabel";
 
 export interface ComposerDockHandle {
@@ -76,8 +76,8 @@ interface Props {
   onPreview?: () => void;
   /** The project pill chooses a project instead (an empty new conversation). */
   onChooseProject?: () => void;
-  /** The agent's plan for this conversation, when it sent one. */
-  plan?: readonly PlanEntry[];
+  /** The plan and the newest steps of the work in progress, when there is any. */
+  work?: WorkProgress;
   /**
    * Send the draft, answering whether it actually went.
    *
@@ -126,7 +126,7 @@ function ComposerDockView(
     showPreview,
     onPreview,
     onChooseProject,
-    plan,
+    work,
     onSend,
     busy,
     onStop,
@@ -219,9 +219,9 @@ function ComposerDockView(
       {/* Held from the first frame (empty until the agent's commands and the
           project arrive, a moment after launch): rendering it only once they
           had arrived pushed the input down after the screen was drawn. */}
-      {/* The plan, when there is one in progress; hidden while typing for the
-          same reason as the row below. */}
-      {!typing && plan && <PlanCard plan={plan} />}
+      {/* The plan and the steps streaming, while there is work to follow.
+          Folded to one line while typing, so the draft keeps its room. */}
+      {work && !typing ? <PlanCard work={work} /> : null}
       {!typing && (
         <ContextBar
           workspace={workspace}

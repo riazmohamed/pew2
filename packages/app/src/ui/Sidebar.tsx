@@ -9,7 +9,7 @@
  * panel itself is static. App owns the motion.
  */
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Gesture, GestureDetector, type PanGesture } from "react-native-gesture-handler";
+import { Gesture, type PanGesture } from "react-native-gesture-handler";
 import {
   Alert,
   Dimensions,
@@ -34,7 +34,8 @@ import type { DrawerRow } from "../historyMetadata";
 import { recentSessionsForProvider } from "../sessionHistory";
 import { useAppActive } from "./useAppActive";
 import { useDrawerWidth } from "./useDrawerWidth";
-import { projectTabItems, sessionsInProject, type Project } from "../projects";
+import { sessionsInProject, type Project } from "../projects";
+import { ProjectPicker } from "./ProjectPicker";
 import type { Provider, Status } from "../useDaemon";
 import { lastActiveLabel, sortGoals, type GoalSummary } from "../ggState";
 import { goalDrawerRow } from "../goalsAgent";
@@ -42,7 +43,7 @@ import { Pew } from "../pew/Pew";
 import { pewInk } from "../pew/palette";
 import { Led } from "./stage/Led";
 import { Pixel } from "./stage/Pixel";
-import { DashedRule, dashedOutline } from "./stage/DashedRule";
+import { DashedRule } from "./stage/DashedRule";
 import { useAgentColor } from "./stage/agentColor";
 import { Dissolve } from "./motion/Dissolve";
 import { DotGlyph } from "./stage/DotGlyph";
@@ -57,8 +58,8 @@ import { DotGlyph } from "./stage/DotGlyph";
 interface SidebarProps {
   open: boolean;
   /**
-   * The drawer's own swipe-to-close. The project row is a sideways list, so
-   * a sideways swipe that starts on it scrolls the projects instead.
+   * The drawer's own swipe-to-close. A drag that starts on the open project
+   * list scrolls the projects instead.
    */
   closeGesture?: PanGesture;
   providers: Provider[];
@@ -149,7 +150,17 @@ export interface SidebarGoals {
 const STAGGERED_ROWS = Math.ceil(Dimensions.get("window").height / theme.size.touch);
 const ROW_STAGGER_MS = 28;
 const RAIL_WIDTH = 64;
-const RAIL_PEW = 48;
+
+/** A short name under each rail Pew, so the agents read apart at a glance. */
+const RAIL_NAMES: Record<string, string> = {
+  ggcoder: "OG",
+  "gg-goals": "Goals",
+  "claude-code": "Claude",
+};
+function railName(provider: { id: string; name: string }): string {
+  return RAIL_NAMES[provider.id] ?? provider.name.split(/\s+/)[0]!.slice(0, 7);
+}
+const RAIL_PEW = 40;
 const RAIL_BUTTON = 52;
 /** The right column's own left rail: every heading, tab and row starts here. */
 const COLUMN_PAD = theme.space(4);
@@ -529,6 +540,12 @@ const RailAgent = memo(function RailAgent({
           sleepStyle={RAIL_SLEEP[index % RAIL_SLEEP.length]}
           paused={paused || !enabled}
         />
+        <Text
+          style={[styles.railLabel, { color: selected ? ink : theme.color.textDim }]}
+          numberOfLines={1}
+        >
+          {railName(provider)}
+        </Text>
         {mark && (
           <View style={styles.railBadge}>
             <Pixel kind={mark} color={mark === "attention" ? undefined : ink} paused={paused} />
@@ -538,67 +555,6 @@ const RailAgent = memo(function RailAgent({
     </Dissolve>
   );
 });
-
-/** One project tab: dashed at rest, solid in the agent colour when chosen. */
-const ALL_TAB = "\u0000all";
-
-const ProjectTab = memo(function ProjectTab({
-  path,
-  label,
-  a11y,
-  selected,
-  onSelect,
-}: {
-  path?: string;
-  label: string;
-  a11y: string;
-  selected: boolean;
-  onSelect: (path?: string) => void;
-}) {
-  const agent = useAgentColor();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={a11y}
-      accessibilityState={{ selected }}
-      onPress={() => {
-        if (selected) return;
-        haptics.select();
-        onSelect(path);
-      }}
-      style={({ pressed }) => [
-        styles.tab,
-        selected
-          ? { borderStyle: "solid", borderColor: agent, backgroundColor: withAlpha(agent, 0.1) }
-          : null,
-        pressed && styles.pressed,
-      ]}
-    >
-      <Text style={[styles.tabText, selected && { color: agent }]} numberOfLines={1}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-});
-
-/** The project strip's last tab: a folder the agent has not been used in yet. */
-function BrowseTab({ onPress }: { onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Another folder. Start a new chat in a folder on your computer"
-      onPress={() => {
-        haptics.tap();
-        onPress();
-      }}
-      style={({ pressed }) => [styles.tab, styles.browseTab, pressed && styles.pressed]}
-    >
-      <Text style={styles.tabText} numberOfLines={1}>
-        Another folder…
-      </Text>
-    </Pressable>
-  );
-}
 
 function SidebarView({
   open,
@@ -627,8 +583,8 @@ function SidebarView({
   closeGesture,
 }: SidebarProps) {
   const insets = useSafeAreaInsets();
-  // The project row's scroll, claimed before the drawer's close swipe: a
-  // swipe that starts on the row scrolls it, anywhere else still closes.
+  // The project list's scroll, claimed before the drawer's close swipe: a
+  // drag that starts on the list scrolls it, anywhere else still closes.
   const tabsGesture = useMemo(() => {
     const native = Gesture.Native();
     return closeGesture ? native.blocksExternalGesture(closeGesture) : native;
@@ -667,7 +623,6 @@ function SidebarView({
     () => projects.find((project) => project.path === selectedProjectPath),
     [projects, selectedProjectPath],
   );
-  const tabItems = useMemo(() => projectTabItems(projects), [projects]);
   // Narrowed before the recent-work cap, or a project's older conversations
   // would be cut away by a window they were never in.
   const visible = useMemo(
@@ -793,41 +748,19 @@ function SidebarView({
             />
           ) : (
             <>
-              {/* Horizontal tabs instead of a dropdown: the row scrolls, so many
-                  projects still fit, and the choice is visible without a tap. */}
+              {/* A dropdown with search: the old sideways row of tabs was
+                  hard to read and to scroll with many projects. */}
               {(projects.length > 0 || onBrowseFolder) && (
-                <GestureDetector gesture={tabsGesture}>
-                  <FlatList
-                    // Windowed: GG Coder can hold hundreds of projects, and
-                    // mounting every dashed pill at once made switching to it
-                    // visibly slower than to any other agent.
+                <View style={styles.picker}>
+                  <ProjectPicker
                     key={activeProviderId ?? "all-providers"}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.tabScroller}
-                    contentContainerStyle={styles.tabs}
-                    data={tabItems}
-                    extraData={selectedProject?.path}
-                    keyExtractor={(item) => item.path ?? ALL_TAB}
-                    initialNumToRender={8}
-                    maxToRenderPerBatch={8}
-                    windowSize={5}
-                    renderItem={({ item }) => (
-                      <ProjectTab
-                        path={item.path}
-                        label={item.label}
-                        a11y={item.a11y}
-                        selected={item.path === selectedProject?.path}
-                        onSelect={onSelectProject}
-                      />
-                    )}
-                    // The way to a folder this agent has never been used in: the
-                    // tabs only list projects it already knows.
-                    ListFooterComponent={
-                      onBrowseFolder ? <BrowseTab onPress={onBrowseFolder} /> : null
-                    }
+                    projects={projects}
+                    selectedPath={selectedProject?.path}
+                    onSelect={onSelectProject}
+                    onBrowse={onBrowseFolder}
+                    listGesture={tabsGesture}
                   />
-                </GestureDetector>
+                </View>
               )}
 
               <ListHead label="Latest chats">
@@ -934,9 +867,18 @@ const styles = StyleSheet.create({
   // vertical dashed rule laid over it instead.
   railEdge: { position: "absolute", top: 0, bottom: 0, right: 0 },
   railList: { alignItems: "center", gap: theme.space(1), paddingBottom: theme.space(2) },
+  railLabel: {
+    marginTop: 2,
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "600",
+    textAlign: "center",
+    maxWidth: RAIL_WIDTH - 4,
+  },
   railButton: {
     width: RAIL_BUTTON,
-    height: RAIL_BUTTON,
+    // Room for the short name under the Pew.
+    height: RAIL_BUTTON + 12,
     borderRadius: theme.space(4),
     alignItems: "center",
     justifyContent: "center",
@@ -962,18 +904,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  tabScroller: { flexGrow: 0, marginTop: theme.space(4) },
-  tabs: { paddingHorizontal: COLUMN_PAD, gap: theme.space(2), alignItems: "center" },
-  tab: {
-    ...dashedOutline,
-    borderRadius: theme.radius.pill,
-    minHeight: theme.size.chip,
-    paddingHorizontal: theme.space(3),
-    justifyContent: "center",
-  },
-  tabText: { color: theme.color.textDim, fontSize: theme.font.small },
-  // Gapped like the tabs before it (the footer sits outside the list's gap).
-  browseTab: { marginLeft: theme.space(2) },
+  picker: { paddingHorizontal: COLUMN_PAD },
 
   listHead: {
     flexDirection: "row",

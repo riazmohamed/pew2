@@ -9,10 +9,10 @@ import Reanimated, {
   FadeIn,
   FadeOut,
   LinearTransition,
-  useReducedMotion,
   ZoomIn,
   ZoomOut,
 } from "react-native-reanimated";
+import { useReducedMotion } from "./useReducedMotion";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { theme } from "../theme";
 import { haptics } from "./haptics";

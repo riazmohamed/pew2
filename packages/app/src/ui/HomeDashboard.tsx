@@ -49,6 +49,8 @@ import { PopFx } from "./LaunchFx";
 import { haptics } from "./haptics";
 import { sounds } from "./sounds";
 import { useReducedMotion } from "./useReducedMotion";
+import { useSystemReducedMotion } from "./accessibilityState";
+import { useCalmMotion } from "./calmMotion";
 import { Dissolve } from "./motion/Dissolve";
 import { useAppActive } from "./useAppActive";
 import { Led } from "./stage/Led";
@@ -170,6 +172,8 @@ function HomeDashboardView({
   const [popKey, setPopKey] = useState(0);
   const [after, setAfter] = useState(false);
   const reduceMotion = useReducedMotion();
+  // The spin toy is the ball's, which stays in Calm; only the OS setting stops it.
+  const systemReduced = useSystemReducedMotion();
   const stageRef = useRef(0);
   // The highest stage this spin-up has whirred for: a stage reached again
   // after a dip (it slowed for a moment) is quiet, so each whirrs once.
@@ -245,7 +249,10 @@ function HomeDashboardView({
   const measureRef = useRef(measure);
   measureRef.current = measure;
   const spinMood = stage > 0 ? SPIN_STAGES[stage]!.mood : undefined;
-  const mood = homePewMood(real, spinMood ?? beat.mood, holding);
+  // Calm: the real state only, so the line rests unless something works.
+  // The idle excursions kept it moving on Home for nothing (28 Oct).
+  const calm = useCalmMotion();
+  const mood = calm ? real : homePewMood(real, spinMood ?? beat.mood, holding);
 
   // The entrance clock: set once, when the data has settled, so the label and
   // every card take their slot from one moment in reading order, however late
@@ -375,7 +382,7 @@ function HomeDashboardView({
                 interactive
                 onPress={onPressPew}
                 onHold={onHold}
-                toy={reduceMotion ? undefined : toy}
+                toy={calm || systemReduced ? undefined : toy}
                 // A near miss still grabs him, not the page.
                 reach={Math.round(pew * 0.25)}
                 accessibilityLabel={

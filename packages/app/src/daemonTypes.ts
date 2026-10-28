@@ -63,6 +63,8 @@ export type ImageEntry =
 export interface PermissionRequest {
   requestId: string;
   title: string;
+  /** What exactly is asked (command, path, diff), when the agent said. */
+  details?: string;
   options: { optionId: string; name: string }[];
 }
 

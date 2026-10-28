@@ -18,11 +18,11 @@ import Animated, {
   Easing,
   cancelAnimation,
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
+import { useReducedMotion } from "./useReducedMotion";
 import { theme } from "../theme";
 import { text } from "../appStyles";
 import { Pew } from "../pew/Pew";

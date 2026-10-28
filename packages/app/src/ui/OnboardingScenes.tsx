@@ -27,6 +27,7 @@ import {
   installAt,
 } from "../onboardingScenes";
 import { Dissolve } from "./motion/Dissolve";
+import { useReducedMotion } from "./useReducedMotion";
 import { codeBlockStyles } from "./codeBlock";
 import { ListeningWave } from "./ListeningWave";
 
@@ -224,7 +225,10 @@ const TERM_DOTS = ["#ff5f57", "#febc2e", "#28c840"];
 const WIRE = 48;
 
 /** A short dotted wire from the computer down to Pew; a packet runs it while live. */
-function Wire({ color, live }: { color: string; live: boolean }) {
+function Wire({ color, live: wanted }: { color: string; live: boolean }) {
+  // Reduce Motion or Calm: the wire stays, the packet stops.
+  const reduce = useReducedMotion();
+  const live = wanted && !reduce;
   const t = useSharedValue(0);
   useEffect(() => {
     if (!live) {

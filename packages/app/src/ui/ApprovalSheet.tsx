@@ -12,7 +12,7 @@
  * alone.
  */
 import { memo, useRef } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { theme } from "../theme";
 import { Sheet, useSheetMaxContentHeight } from "./Sheet";
 import { StageButton } from "./stage/StageButton";
@@ -73,6 +73,11 @@ function ApprovalSheetView({ permission, onAnswer, onTalk, call }: ApprovalSheet
         bounces={false}
       >
         <Text style={styles.request}>{shown?.title ?? ""}</Text>
+        {shown?.details ? (
+          <Text style={styles.details} selectable>
+            {shown.details}
+          </Text>
+        ) : null}
         <View style={styles.buttons}>
           {options.map((option) => {
             const deny = isDenyApprovalOption(option);
@@ -118,10 +123,18 @@ const styles = StyleSheet.create({
   body: { gap: theme.space(3), paddingBottom: theme.space(1) },
   // Full text, not an ellipsis: what is being approved is the whole decision,
   // and a truncated path is exactly the detail that makes it a safe one.
+  // Body colour, not dim: this is the thing being decided.
   request: {
-    color: theme.color.textDim,
+    color: theme.color.text,
+    fontSize: theme.font.body,
+    lineHeight: 22,
+  },
+  // The command, path or diff, monospaced so a diff lines up.
+  details: {
+    color: theme.color.text,
     fontSize: theme.font.small,
-    lineHeight: 20,
+    lineHeight: 18,
+    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
   },
   buttons: { gap: theme.space(2), paddingBottom: theme.space(2) },
 });

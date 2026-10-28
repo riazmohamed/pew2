@@ -11,12 +11,8 @@
 import { useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { theme } from "../theme";
-import Animated, {
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import { useReducedMotion } from "./useReducedMotion";
 import { Glass } from "./Glass";
 import { useAgentColor } from "./stage/agentColor";
 import { GlyphLitContext } from "./stage/DotGlyph";

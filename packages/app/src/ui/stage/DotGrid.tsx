@@ -9,6 +9,7 @@ import { memo, useMemo, useState } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Canvas, Picture, Skia } from "@shopify/react-native-skia";
 import { theme } from "../../theme";
+import { useCalmMotion } from "../calmMotion";
 
 interface DotGridProps {
   /** Spacing between dots. `fine` is the strip/ticker texture. */
@@ -17,6 +18,14 @@ interface DotGridProps {
 }
 
 function DotGridView({ fine = false, style }: DotGridProps) {
+  // Calm motion: the texture is left out (no canvas at all); the plain view
+  // keeps the same box so nothing moves.
+  if (useCalmMotion())
+    return <View pointerEvents="none" style={[StyleSheet.absoluteFill, style]} />;
+  return <DotGridCanvas fine={fine} style={style} />;
+}
+
+function DotGridCanvas({ fine = false, style }: DotGridProps) {
   const [size, setSize] = useState({ w: 0, h: 0 });
   const step = fine ? theme.stage.fine : theme.stage.grid;
   const color = fine ? theme.stage.fineColor : theme.stage.gridColor;

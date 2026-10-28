@@ -52,6 +52,8 @@ import { Sheet, SHEET_ROW_HEIGHT, sheetCardStyle, useSheetVisibleRows } from "./
 import { haptics } from "./haptics";
 import { useReducedMotion } from "./useReducedMotion";
 import type { Project } from "../projects";
+import { searchProjects } from "../projectSearch";
+import { ProjectSearchField } from "./ProjectPicker";
 
 /** The grid's last cell when browsing is possible. */
 const BROWSE_CELL = { browse: true } as const;
@@ -145,9 +147,11 @@ function NewChatSheetView({
   // Offered whenever the daemon can answer — including, especially, when there
   // are no projects at all. That is the cold start this exists for.
   const canBrowse = onBrowse !== undefined;
+  const [query, setQuery] = useState("");
+  const found = useMemo(() => searchProjects(projects, query), [projects, query]);
   const cells = useMemo<GridCell[]>(
-    () => (canBrowse ? [...projects, BROWSE_CELL] : projects),
-    [projects, canBrowse],
+    () => (canBrowse ? [...found, BROWSE_CELL] : found),
+    [found, canBrowse],
   );
 
   // One value for one movement. This used to be two — a native-driven spring
@@ -190,6 +194,7 @@ function NewChatSheetView({
       openingStep(startInBrowse, onBrowse !== undefined) === "browse" ? STEP_LIST : STEP_CHOICES;
     setStep(first);
     setPicked(undefined);
+    setQuery("");
     setNow(Date.now());
     step$.value = first;
     // Asked on the way in, as `openBrowser` does.
@@ -302,6 +307,9 @@ function NewChatSheetView({
           // Inert once pushed past, or the invisible pane keeps taking the taps
           // meant for the list on top of it.
           pointerEvents={step === STEP_CHOICES ? "auto" : "none"}
+          // Hidden from screen readers too, not only from taps.
+          accessibilityElementsHidden={step !== STEP_CHOICES}
+          importantForAccessibility={step === STEP_CHOICES ? "auto" : "no-hide-descendants"}
           onLayout={(event) => {
             firstHeight.value = event.nativeEvent.layout.height;
           }}
@@ -329,6 +337,14 @@ function NewChatSheetView({
               ))}
             </ScrollView>
           )}
+          {agents && agents.length === 0 && (
+            <Text style={styles.noAgents}>No agents on. Turn one on in Connection › Agents.</Text>
+          )}
+          {projects.length > 0 && (
+            <View style={styles.search}>
+              <ProjectSearchField value={query} onChange={setQuery} />
+            </View>
+          )}
           {/* Virtualised: only the cards on screen exist. Every project on the
               computer used to be built at once, each with its own entrance
               animation, and opening the sheet froze the app for seconds on a
@@ -345,6 +361,7 @@ function NewChatSheetView({
             maxToRenderPerBatch={8}
             windowSize={5}
             removeClippedSubviews
+            keyboardShouldPersistTaps="handled"
             renderItem={({ item, index }) =>
               isBrowse(item) ? (
                 <Dissolve kind="row" delay={Math.min(index, STAGGERED) * 50} style={styles.cell}>
@@ -373,15 +390,22 @@ function NewChatSheetView({
               )
             }
           />
-          {(chosen !== undefined || !canBrowse) && (
-            <StageButton
-              style={styles.primary}
-              feel="sent"
-              label={chosenName ? `Start in ${chosenName}` : "Start a chat"}
-              accessibilityLabel={`Start a chat${chosenName ? ` in ${chosenName}` : ""}${agentName ? ` with ${agentName}` : ""}`}
-              onPress={() => onStart(chosen)}
-            />
-          )}
+          {/* Always here, so the layout never jumps; disabled until a
+              project is chosen when there is a choice to make. */}
+          <StageButton
+            style={styles.primary}
+            feel="sent"
+            disabled={chosen === undefined && canBrowse}
+            label={
+              chosenName ? `Start in ${chosenName}` : canBrowse ? "Pick a project" : "Start a chat"
+            }
+            accessibilityLabel={
+              chosen === undefined && canBrowse
+                ? "Pick a project to start a chat"
+                : `Start a chat${chosenName ? ` in ${chosenName}` : ""}${agentName ? ` with ${agentName}` : ""}`
+            }
+            onPress={() => onStart(chosen)}
+          />
         </Animated.View>
 
         {/* Step two: whichever list was asked for. Mounted from the start so
@@ -391,6 +415,8 @@ function NewChatSheetView({
           <Animated.View
             style={[styles.pane, incomingStyle]}
             pointerEvents={step === STEP_LIST ? "auto" : "none"}
+            accessibilityElementsHidden={step !== STEP_LIST}
+            importantForAccessibility={step === STEP_LIST ? "auto" : "no-hide-descendants"}
             onLayout={(event) => {
               secondHeight.value = event.nativeEvent.layout.height;
             }}
@@ -661,6 +687,18 @@ const styles = StyleSheet.create({
   browseCard: { justifyContent: "center", gap: theme.space(1) },
   cardTitle: { color: theme.color.text, fontSize: theme.font.body },
   // On the sheet's rail, like the cards above it.
+  noAgents: {
+    color: theme.color.textDim,
+    fontSize: theme.font.small,
+    marginTop: theme.space(4),
+    paddingHorizontal: theme.space(4),
+  },
+  search: {
+    marginTop: theme.space(3),
+    marginHorizontal: theme.space(4),
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.surfaceRaised,
+  },
   primary: { marginTop: theme.space(3), marginBottom: theme.space(4) },
   rowPressed: { backgroundColor: theme.glass.fillPressed },
   // Yields to the chevron rather than pushing it off the row.

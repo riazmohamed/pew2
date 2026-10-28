@@ -7,13 +7,8 @@ import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { StageScroll } from "./stage/StageScroll";
 import { Canvas, Circle, Group, Path, Skia } from "@shopify/react-native-skia";
-import {
-  Easing,
-  useDerivedValue,
-  useReducedMotion,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
+import { Easing, useDerivedValue, useSharedValue, withTiming } from "react-native-reanimated";
+import { useReducedMotion } from "./useReducedMotion";
 import { Sheet, useSheetMaxContentHeight } from "./Sheet";
 import { theme } from "../theme";
 import { contextDetails } from "../contextDetails";

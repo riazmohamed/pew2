@@ -23,6 +23,24 @@ export interface CallLive {
   /** True when `text` came from the board lane rather than the transcript. */
   fromBoard: boolean;
   working: boolean;
+  /** The newest tool steps from the board (oldest first), while it works. */
+  steps: string[];
+}
+
+/** Steps the Live panel lists at most. */
+export const LIVE_STEPS = 4;
+
+/** The newest tool steps on the board lane, for the panel's step list. */
+export function liveSteps(
+  lane: Pick<BoardSession, "lines"> | undefined,
+  working: boolean,
+): string[] {
+  if (!working || !lane) return [];
+  return lane.lines
+    .filter((line) => line.kind === "tool")
+    .map((line) => line.text.trim())
+    .filter(Boolean)
+    .slice(-LIVE_STEPS);
 }
 
 /**
@@ -85,6 +103,7 @@ export function callLive(
   if (!session && !lane) return undefined;
   const project = lane?.folder ?? session?.folder ?? baseName(session?.cwd);
   const working = session?.busy === true || lane?.status === "working";
+  const steps = liveSteps(lane, working);
   const exchange = lastExchange(session?.turns ?? []);
   if (exchange.reply || exchange.prompt) {
     return {
@@ -94,6 +113,7 @@ export function callLive(
       text: exchange.reply,
       fromBoard: false,
       working,
+      steps,
     };
   }
   const lines = (lane?.lines ?? [])
@@ -105,6 +125,7 @@ export function callLive(
     ...(project ? { project } : {}),
     text: tail(lines.join("\n"), LIVE_MAX_CHARS),
     fromBoard: true,
+    steps,
     working,
   };
 }

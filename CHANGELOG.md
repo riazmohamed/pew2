@@ -15,6 +15,37 @@ Dates are the day the tag was cut.
 
 ### Added
 
+- **Minimise a call and keep using the app.** The call screen has a
+  minimise button, and Android's back button now minimises instead of
+  hanging up. A bar under the top bar shows the call (listening, speaking,
+  reconnecting, the busiest project and its step) with mute and end; tap it
+  to go back. Underneath, the chat streams and the message box works as
+  usual. The Live panel starts open and stays visible while typing.
+- **Calm animations.** Connection › Animations: Calm (default on Android)
+  draws Pew as a pulse line of LED dots in the agent's colour, with no Skia
+  canvas: a flat trace at rest, an ECG heartbeat sweeping across while it
+  works, speech bars while it talks or listens. Its clock steps 24 times a
+  second, and an idle screen draws nothing. The glow behind Pew is gone in
+  Calm. Full brings the 3D ball back.
+- **The agents read apart.** The menu's rail shows a short name under each
+  Pew (OG, Goals, Claude), and Pew uses the agent's full colour.
+- **Plan and steps stream.** Above the message box, a work card shows the
+  plan with its ticks and the newest tool steps while the agent works (open
+  by default, a tap folds it). The call's Live panel lists the steps too.
+- **The chat follows the reply.** It scrolls to the newest text while a reply
+  streams and when it ends, stops when you scroll, and resumes at the end.
+- **A call steps aside for work.** When a chat starts working on a call, the
+  call minimises to its bar and that chat opens.
+- **Project search.** The menu's project row is now a dropdown with a
+  search box (`*` is a wildcard) and recent projects first; New chat has
+  the same search.
+- **Android back closes sheets and the menu** instead of leaving the app,
+  and the menu's edge swipe no longer fights the back gesture.
+- Stop is reachable while you have a draft, the message box says
+  "Connecting…" rather than "Offline" at launch, approvals show the
+  command or diff, New chat always shows its Start button, and Preview
+  explains that Open live needs the computer's Wi-Fi.
+
 - **Calls run on GPT-Live again, inside the new call screen.** With an
   OpenAI API key on the computer (`OPENAI_API_KEY`, or `openaiApiKey` in
   `~/.pew2/voice.json`), the daemon creates the GPT-Live session from the

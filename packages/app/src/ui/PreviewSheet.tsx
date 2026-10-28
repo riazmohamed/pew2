@@ -30,6 +30,8 @@ import type { ImageEntry } from "../useDaemon";
 
 /** A live page changes on every save; this is often enough to follow along. */
 const AUTO_REFRESH_MS = 5_000;
+/** Longer than any real render; past this the spinner becomes an error. */
+const SNAPSHOT_TIMEOUT_MS = 30_000;
 
 interface PreviewSheetProps {
   visible: boolean;
@@ -37,8 +39,14 @@ interface PreviewSheetProps {
   servers: readonly PreviewServer[];
   /** The image cache: a snapshot lands under `previewImageKey(port)`. */
   images: Record<string, ImageEntry>;
-  onSnapshot: (port: number, width: number) => void;
+  onSnapshot: (port: number, width: number, retry?: boolean) => void;
   onClose: () => void;
+  /**
+   * The phone reaches the computer through the relay, not the local network,
+   * so a LAN address will not open. Absent keeps the old behaviour (live
+   * offered whenever the desktop names a LAN address).
+   */
+  viaRelay?: boolean;
 }
 
 function PreviewSheetView({
@@ -48,6 +56,7 @@ function PreviewSheetView({
   images,
   onSnapshot,
   onClose,
+  viaRelay = false,
 }: PreviewSheetProps) {
   const { width } = useWindowDimensions();
   const maxHeight = useSheetMaxContentHeight();
@@ -57,6 +66,16 @@ function PreviewSheetView({
   // The rendered page's shape, read off the bytes once they arrive, so the
   // picture takes its own height and scrolls rather than being squashed.
   const [ratio, setRatio] = useState<number | undefined>(undefined);
+  const [timedOut, setTimedOut] = useState(false);
+  // Bumped on every new snapshot request, so the timeout restarts.
+  const [attempt, setAttempt] = useState(0);
+  const [liveNote, setLiveNote] = useState<string | undefined>(undefined);
+  // Live opens a LAN address, which only works on the computer's own network.
+  // Offered whenever the computer has a LAN address. A relay pairing can't
+  // tell whether the phone is on the same Wi-Fi right now (the release app
+  // can't probe plain http), so it gets a note instead of losing the button:
+  // hiding it broke Open live at home for every relay-paired phone.
+  const liveOffered = lanHosts.length > 0;
 
   // Closing forgets the pick: a server chosen last time may be gone by the
   // next open, and the list is the right place to land.
@@ -64,6 +83,7 @@ function PreviewSheetView({
     if (!visible) {
       setSelected(undefined);
       setAuto(false);
+      setLiveNote(undefined);
     }
   }, [visible]);
 
@@ -78,7 +98,11 @@ function PreviewSheetView({
 
   const open = (port: number) => {
     const url = previewUrl(lanHosts, port);
-    if (!url) return;
+    if (!url) {
+      setLiveNote("Your computer has no local address to open. Try Snapshot instead.");
+      return;
+    }
+    setLiveNote(undefined);
     // Same chrome as a link tapped in the transcript.
     void WebBrowser.openBrowserAsync(url, {
       toolbarColor: theme.color.surface,
@@ -86,12 +110,23 @@ function PreviewSheetView({
     });
   };
 
-  const snapshot = (port: number) => {
+  const snapshot = (port: number, retry = false) => {
     setSelected(port);
-    onSnapshot(port, Math.round(width));
+    setRatio(undefined);
+    setTimedOut(false);
+    setAttempt((n) => n + 1);
+    onSnapshot(port, Math.round(width), retry);
   };
 
   const shot = selected !== undefined ? images[previewImageKey(selected)] : undefined;
+  const waiting = selected !== undefined && shot?.status !== "ready" && shot?.status !== "error";
+
+  // The spinner gives up after a while rather than turning for ever.
+  useEffect(() => {
+    if (!visible || !waiting) return;
+    const timer = setTimeout(() => setTimedOut(true), SNAPSHOT_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [visible, waiting, attempt]);
 
   return (
     <Sheet
@@ -112,6 +147,20 @@ function PreviewSheetView({
                 </Text>
               </View>
             )}
+            {ranked.length > 0 && lanHosts.length > 0 && viaRelay && (
+              <View style={[styles.row, styles.rowDivided]}>
+                <Text style={styles.description}>
+                  Open live works on the same Wi-Fi as your computer. Away from it, use a snapshot.
+                </Text>
+              </View>
+            )}
+            {liveNote && (
+              <View style={[styles.row, styles.rowDivided]}>
+                <Text style={styles.description} accessibilityLiveRegion="polite">
+                  {liveNote}
+                </Text>
+              </View>
+            )}
             {ranked.map((server, index) => (
               <View
                 key={server.port}
@@ -126,7 +175,7 @@ function PreviewSheetView({
                 <View style={styles.actions}>
                   {/* Live only when the desktop has a LAN address to name; the
                     snapshot works from anywhere the daemon does. */}
-                  {lanHosts.length > 0 && (
+                  {liveOffered && (
                     <Action
                       icon="globe-outline"
                       label="Open live"
@@ -176,9 +225,21 @@ function PreviewSheetView({
                   }
                   accessibilityLabel={`Snapshot of port ${selected}`}
                 />
-              ) : shot?.status === "error" ? (
+              ) : shot?.status === "error" || timedOut ? (
                 <View style={styles.row}>
-                  <Text style={styles.description}>{shot.message}</Text>
+                  <View style={styles.rowText}>
+                    <Text style={styles.description}>
+                      {shot?.status === "error"
+                        ? shot.message
+                        : "The snapshot is taking too long. Your computer may be busy or offline."}
+                    </Text>
+                  </View>
+                  <Action
+                    icon="refresh"
+                    label="Retry"
+                    accessibilityLabel="Try the snapshot again"
+                    onPress={() => snapshot(selected, true)}
+                  />
                 </View>
               ) : (
                 <View style={[styles.row, styles.centered]}>

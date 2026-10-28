@@ -24,3 +24,20 @@ export function showsStop(state: { busy: boolean; loadingSession: boolean }): bo
 export function pressStops(state: { busy: boolean; canSend: boolean }): boolean {
   return state.busy && !state.canSend;
 }
+
+/**
+ * The composer's placeholder when the link to the computer is not up, or
+ * undefined when it is (the normal prompt applies). Connecting is not offline:
+ * only a link given up on says sends are queued, and a refusal reconnecting
+ * cannot fix (`fatal`, the input locked) says why instead.
+ */
+export function connectionPlaceholder(state: {
+  status: "connecting" | "online" | "offline";
+  unreachable?: boolean;
+  fatal?: string;
+}): string | undefined {
+  if (state.fatal) return state.fatal;
+  if (state.status === "online") return undefined;
+  if (state.status === "connecting" && !state.unreachable) return "Connecting…";
+  return "Offline. Sends when you reconnect";
+}

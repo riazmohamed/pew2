@@ -67,6 +67,7 @@ import { Led } from "./stage/Led";
 import { DotGrid } from "./stage/DotGrid";
 import { dashedOutline } from "./stage/DashedRule";
 import { useAgentColor } from "./stage/agentColor";
+import { useBackLayer } from "./backLayers";
 
 export const SHEET_ROW_HEIGHT = 60;
 
@@ -326,6 +327,8 @@ function SheetView({
   }, [visible, reduceMotion, progress, finishExit]);
 
   const dismiss = onClose;
+  // Android back: a step back first, then close; a sheet with neither stays.
+  useBackLayer(visible, onBack ?? onClose);
   // Bound out of `haptics` here, on the JS thread, so the worklet below captures
   // a bare function instead of the object. See the note in `onEnd`.
   const tapHaptic = useCallback(() => {
@@ -474,9 +477,9 @@ function SheetView({
               <View style={styles.stripLabel}>
                 <Led tone={labelTone === "attention" ? "attention" : "agent"}>{label ?? title}</Led>
               </View>
-              {/* Keyed, so swapping close for back remounts the icon and its
-                  fade plays instead of hard-cutting. */}
-              {onClose && !onBack ? (
+              {/* Close stays beside Back: a step deep in a sheet is still one
+                  tap from leaving it. */}
+              {onClose ? (
                 <CircleButton
                   key="close"
                   label={dismissLabel ?? `Close ${title}`}

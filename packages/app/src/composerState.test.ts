@@ -1,5 +1,5 @@
-import { test, expect } from "bun:test";
-import { pressStops, showsStop } from "./composerState";
+import { describe, test, expect } from "bun:test";
+import { connectionPlaceholder, pressStops, showsStop } from "./composerState";
 
 test("a working agent can be stopped", () => {
   expect(showsStop({ busy: true, loadingSession: false })).toBe(true);
@@ -20,4 +20,16 @@ test("a running turn never blocks a send", () => {
   expect(pressStops({ busy: true, canSend: true })).toBe(false);
   expect(pressStops({ busy: true, canSend: false })).toBe(true);
   expect(pressStops({ busy: false, canSend: false })).toBe(false);
+});
+
+describe("connectionPlaceholder", () => {
+  test("connecting, offline, refused, online", () => {
+    expect(connectionPlaceholder({ status: "connecting" })).toBe("Connecting…");
+    expect(connectionPlaceholder({ status: "connecting", unreachable: true })).toBe(
+      "Offline. Sends when you reconnect",
+    );
+    expect(connectionPlaceholder({ status: "offline" })).toBe("Offline. Sends when you reconnect");
+    expect(connectionPlaceholder({ status: "offline", fatal: "Pair again." })).toBe("Pair again.");
+    expect(connectionPlaceholder({ status: "online" })).toBeUndefined();
+  });
 });

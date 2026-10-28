@@ -261,6 +261,23 @@ function ComposerView(
               </View>
             ) : null}
           </View>
+          {/* While a turn runs and the draft has words, the main button sends,
+              so stop gets its own small button beside it. */}
+          {busy && !stopping && onStop && (
+            <Pressable
+              style={({ pressed }) => [styles.iconTarget, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Stop generating"
+              onPress={() => {
+                haptics.warned();
+                onStop();
+              }}
+            >
+              <View style={styles.sendPill}>
+                <Ionicons name="square" size={13} color={theme.composer.ink} />
+              </View>
+            </Pressable>
+          )}
           <Pressable
             style={({ pressed }) => [styles.iconTarget, pressed && styles.pressed]}
             accessibilityRole="button"

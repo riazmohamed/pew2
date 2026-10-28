@@ -78,7 +78,6 @@ import { AgentColorProvider } from "./stage/agentColor";
 import {
   IDLE_BOARD,
   SPEECH_CPS,
-  boardEngaged,
   captionPageAt,
   learnSpeechRate,
   spokenLength,
@@ -124,8 +123,9 @@ import {
  * (SIGSEGV in SkRecordDraw, librnskia, 20-21 Oct) while this screen ran half a
  * dozen of them at once; a call is for listening, often while driving.
  */
-const CALM = Platform.OS === "android";
 import { useReducedMotion } from "./useReducedMotion";
+import { useCalmMotion } from "./calmMotion";
+import { callScreenVisible } from "../callMinimise";
 
 /** Pew's text colour on the canvas: the purple, lifted for reading. */
 /**
@@ -176,6 +176,8 @@ const FOLD_H = 30;
 const SWEEP_MS = 2200;
 const NOW_LINE_H = 18;
 const CONTROLS_H = 76;
+/** The type bar's resting height (one line), for the live panel above it. */
+const TYPE_BAR_H = 56;
 
 export interface ProviderColor {
   id: string;
@@ -208,6 +210,12 @@ interface Props {
   speech?: RefObject<SpeechClock>;
   /** The app's sessions (`daemon.sessions`), for the live panel. Absent: the panel shows board lines only. */
   sessions?: readonly Session[];
+  /** The call is put away behind the CallBar: the screen is hidden, the call carries on. */
+  minimised?: boolean;
+  /** Put the call away and keep talking. Absent: no minimise button, back hangs up as before. */
+  onMinimise?: () => void;
+  /** The daemon link is down mid-call. */
+  reconnecting?: boolean;
 }
 
 export function CallScreen({
@@ -225,15 +233,20 @@ export function CallScreen({
   micLevel,
   speech,
   sessions,
+  minimised = false,
+  onMinimise,
+  reconnecting = false,
 }: Props) {
-  const visible = call.phase !== "idle";
+  // Hiding unmounts only the view: the call lives in useVoice, above this.
+  const visible = callScreenVisible(call.phase, minimised);
   const over = call.phase === "ended" || call.phase === "failed";
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="fullScreen"
-      onRequestClose={over ? onDismiss : onHangUp}
+      // Back never hangs up: it puts the call away.
+      onRequestClose={over ? onDismiss : (onMinimise ?? onHangUp)}
     >
       <MissionControl
         call={call}
@@ -250,6 +263,8 @@ export function CallScreen({
         micLevel={micLevel}
         speech={speech}
         sessions={sessions}
+        onMinimise={onMinimise}
+        reconnecting={reconnecting}
         onSpeaker={
           canSwitchSpeaker ? routeSpeaker : androidSpeakerSwitch ? setAndroidSpeaker : undefined
         }
@@ -288,6 +303,8 @@ export interface MissionControlProps {
   speech?: RefObject<SpeechClock>;
   /** The app's sessions, for the live panel (what the agent is streaming back). */
   sessions?: readonly Session[];
+  onMinimise?: () => void;
+  reconnecting?: boolean;
 }
 
 /** Re-render on a short clock while a call is on screen, for type-out and captions. */
@@ -373,6 +390,8 @@ export function MissionControl({
   micLevel,
   speech,
   sessions,
+  onMinimise,
+  reconnecting = false,
 }: MissionControlProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
@@ -496,7 +515,9 @@ export function MissionControl({
   const { width, height } = useWindowDimensions();
   const voice = useMemo(() => voiceInk(color), [color]);
 
-  const engagedNow = live && view.lanes.length > 0 && boardEngaged(board, call);
+  // Lanes from the start of the call: what each chat is at is the point of
+  // looking (it used to wait for Pew to touch a session, `boardEngaged`).
+  const engagedNow = live && view.lanes.length > 0;
   useEffect(() => {
     if (call.phase === "connecting") setEngaged(false);
     else if (engagedNow) setEngaged(true);
@@ -662,7 +683,6 @@ export function MissionControl({
         <Animated.View style={[styles.pewStage, pewStyle]} accessibilityLiveRegion="polite">
           <Pew
             size={SOLO_SIZE}
-            paused={CALM}
             mood={mood}
             color={color}
             accessibilityLabel={
@@ -751,14 +771,32 @@ export function MissionControl({
           driving), under the question/approval card: hidden while one is up. */}
         {live &&
         liveView &&
-        !typing &&
         !(settled && cardFor(chosenCard ? { ...call, focus: chosenCard } : call, hiddenCards)) ? (
           <LivePanel
             live={liveView}
-            bottom={insets.bottom + 32 + CONTROLS_H + 10 + 24}
-            maxHeight={height * 0.48}
+            bottom={insets.bottom + 32 + CONTROLS_H + 10 + (typing ? TYPE_BAR_H + 8 : 24)}
+            maxHeight={height * (typing ? 0.3 : 0.48)}
             reduceMotion={reduceMotion}
           />
+        ) : null}
+        {/* Put the call away and keep using the app; the call carries on. */}
+        {onMinimise && !over ? (
+          <View style={[styles.minimise, { top: insets.top + 8 }]}>
+            <CircleButton size={44} label="Minimise and keep talking" onPress={onMinimise}>
+              <DotGlyph name="chevron-down" size={18} />
+            </CircleButton>
+          </View>
+        ) : null}
+        {reconnecting && !over ? (
+          <View
+            style={[styles.reconnecting, { top: insets.top + 14 }]}
+            pointerEvents="none"
+            accessibilityLiveRegion="polite"
+          >
+            <Led tone="attention" size={11} numberOfLines={1} maxFontSizeMultiplier={ROW_FONT_MAX}>
+              Reconnecting…
+            </Led>
+          </View>
         ) : null}
         <View style={[styles.controls, { bottom: insets.bottom + 32 }]}>
           <CircleButton
@@ -856,7 +894,8 @@ function LivePanel({
   maxHeight: number;
   reduceMotion: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  // Open from the start: the reply streaming in is what the user looks for.
+  const [open, setOpen] = useState(true);
   const scroll = useRef<ScrollView>(null);
   const toggle = () => {
     haptics.select();
@@ -870,6 +909,24 @@ function LivePanel({
             <Text style={styles.livePrompt} numberOfLines={1}>
               {live.prompt}
             </Text>
+          ) : null}
+          {/* The steps streaming while the agent works: what it is doing now. */}
+          {live.steps.length > 0 ? (
+            <View style={styles.liveSteps} accessibilityLabel={`Steps: ${live.steps.join(", ")}`}>
+              {live.steps.map((step, index) => (
+                <Text
+                  key={`${index}:${step}`}
+                  style={[
+                    styles.liveStep,
+                    index === live.steps.length - 1 && live.working && styles.liveStepNow,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {index === live.steps.length - 1 && live.working ? "▸ " : "✓ "}
+                  {step}
+                </Text>
+              ))}
+            </View>
           ) : null}
           <ScrollView
             ref={scroll}
@@ -1218,6 +1275,7 @@ function CaptionBody({
   maxChars: number;
   centred: boolean;
 }) {
+  const CALM = useCalmMotion();
   const voice = useContext(VoiceInkContext);
   if (listening) {
     return (
@@ -1751,7 +1809,6 @@ function Lane({ lane, open, y, brand, reduceMotion, feeds, onReopen }: LaneProps
       <View style={styles.lanePew}>
         <Pew
           size={LANE_PEW}
-          paused={CALM}
           mood={lane.mood}
           color={brand}
           sleepKey={lane.sessionId}
@@ -2318,6 +2375,14 @@ const styles = StyleSheet.create({
     fontSize: theme.font.small,
     lineHeight: 18,
   },
+  minimise: { position: "absolute", right: theme.gutter, zIndex: 5 },
+  reconnecting: {
+    position: "absolute",
+    left: theme.gutter * 4,
+    right: theme.gutter * 4,
+    alignItems: "center",
+    zIndex: 5,
+  },
   typeBar: {
     position: "absolute",
     left: theme.gutter,
@@ -2363,6 +2428,9 @@ const styles = StyleSheet.create({
     gap: theme.space(2),
   },
   livePrompt: { color: theme.color.textDim, fontSize: 13 },
+  liveSteps: { marginBottom: 6, gap: 2 },
+  liveStep: { color: theme.color.textFaint, fontSize: 12, lineHeight: 16 },
+  liveStepNow: { color: theme.color.textDim },
   liveScroll: { flexGrow: 0 },
   liveText: { color: theme.color.text, fontSize: 15, lineHeight: 21 },
   livePill: {

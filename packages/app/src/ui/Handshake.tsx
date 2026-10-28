@@ -9,12 +9,12 @@ import Animated, {
   Easing,
   cancelAnimation,
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
   withRepeat,
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
+import { useReducedMotion } from "./useReducedMotion";
 import { theme } from "../theme";
 import { DashedRule } from "./stage/DashedRule";
 import { withAlpha } from "../motion";

@@ -20,6 +20,7 @@ import {
 } from "react-native-reanimated";
 import { withAlpha } from "../motion";
 import { useReducedMotion } from "./useReducedMotion";
+import { useCalmMotion } from "./calmMotion";
 
 export interface AgentGlowProps {
   color: string;
@@ -31,6 +32,14 @@ export interface AgentGlowProps {
 const BLEND_MS = 420;
 
 export function AgentGlow({ color, size }: AgentGlowProps) {
+  const calm = useCalmMotion();
+  // Calm: no glow at all. A flat disc stood in for the gradient and read as a
+  // giant circle behind Pew (28 Oct: "what is this mega big circle").
+  if (calm) return null;
+  return <GlowCanvas color={color} size={size} />;
+}
+
+function GlowCanvas({ color, size }: AgentGlowProps) {
   const r = size / 2;
   const reduce = useReducedMotion();
   const from = useSharedValue(color);

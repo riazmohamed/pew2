@@ -17,7 +17,7 @@
  * `accessibilityLabel` when it carries meaning on its own.
  */
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import {
   BlurStyle,
@@ -45,6 +45,11 @@ import { HOLD_CHARGE_MS, holdPulseGap, holdPulseKind } from "./homeLife";
 import { haptics } from "../ui/haptics";
 import { useAppActive } from "../ui/useAppActive";
 import { useReducedMotion } from "../ui/useReducedMotion";
+import { useSystemReducedMotion } from "../ui/accessibilityState";
+import { useCalmMotion } from "../ui/calmMotion";
+import { FlatPew } from "./FlatPew";
+import { PewRive } from "./PewRive";
+import { RIVE_MIN_SIZE, RIVE_PEW } from "./riveFlag";
 import {
   advancePew,
   dragPew,
@@ -294,6 +299,8 @@ interface TickerProps {
   feedX: number;
   feedY: number;
   toy?: { spin: SharedValue<number>; gone: SharedValue<number>; burst: () => void };
+  /** Repaint at most 30 times a second whatever the size (Calm). */
+  halfRate: boolean;
 }
 
 const PALETTE_KEYS = ["base", "light", "dark", "glow", "eye", "off"] as const;
@@ -321,6 +328,7 @@ function PewTicker({
   feedX,
   feedY,
   toy,
+  halfRate,
 }: TickerProps) {
   const tick = useCallback(
     (info: FrameInfo) => {
@@ -360,7 +368,7 @@ function PewTicker({
       // display's rate: a 120Hz screen otherwise doubles the cost of something
       // nobody can see the difference in. The simulation still runs every frame.
       sinceDraw.value += dt;
-      if (sinceDraw.value < (S < HALF_RATE_BELOW ? 1 / 31 : 1 / 61)) return;
+      if (sinceDraw.value < (halfRate || S < HALF_RATE_BELOW ? 1 / 31 : 1 / 61)) return;
       sinceDraw.value = 0;
       // A colour change morphs: the painted palette eases toward the target,
       // so switching agent recolours the same Pew instead of swapping it.
@@ -404,6 +412,7 @@ function PewTicker({
       feedX,
       feedY,
       toy,
+      halfRate,
     ],
   );
   useFrameCallback(tick, true);
@@ -513,6 +522,13 @@ function PewView({
   });
   const appActive = useAppActive();
   const reduceMotion = useReducedMotion();
+  // Calm: every Pew is the pulse line (an ECG while working, speech bars
+  // while talking), in plain views with no Skia canvas. The 3D ball, even at
+  // 30 frames a second, cost a whole core and 60% slow frames on the OnePlus
+  // (28 Oct); Full brings it back.
+  const calm = useCalmMotion();
+  const flat = calm;
+  const systemReduced = useSystemReducedMotion();
   const palette = useMemo(() => pewPalette(color), [color]);
 
   // UI-thread state. The body is rebuilt only when the size changes.
@@ -534,11 +550,17 @@ function PewView({
     paletteSV.value = palette;
   }, [palette, paletteSV]);
 
-  const live = appActive && !paused && !reduceMotion;
+  // Calm folds into `reduceMotion`, but the big ball still moves in Calm:
+  // only the OS Reduce Motion setting holds it still.
+  // In Calm an idle ball nobody is touching holds still (Switch agent's ball
+  // idling cost a whole core and 60% slow frames on the OnePlus, 28 Oct). It
+  // moves for real states (working, talking…) and for the Home toy.
+  const restful = calm && (mood === "idle" || mood === "sleepy") && !interactive && !toy;
+  const live = appActive && !paused && !flat && !restful && !(calm ? systemReduced : reduceMotion);
 
   // Not animating: one settled, still frame in its mood (and repaint on change).
   useEffect(() => {
-    if (live) return;
+    if (live || flat) return;
     // On the UI thread like every other frame: the engine paints through
     // module-level scratch colours, and once a worklet has captured those the
     // JS-thread copies are frozen, so painting here would warn on every write.
@@ -548,7 +570,7 @@ function PewView({
       settlePew(still, 1.2, m);
       picture.value = recordFrame(still, 1.2, m, pal);
     })(S, mood, palette, seed);
-  }, [live, S, mood, palette, picture, seed]);
+  }, [live, flat, S, mood, palette, picture, seed]);
 
   // Development only: `EXPO_PUBLIC_DEV_SPIN=1` flicks the toy every 700 ms,
   // through the same dragPew a finger uses, so a capture can show each stage.
@@ -633,7 +655,13 @@ function PewView({
     return Gesture.Race(pan, Gesture.Exclusive(hold, tap));
   }, [interactive, holdable, body, tapped, spun, held, letGo, S, holdingSV, reach]);
 
-  const canvas = (
+  const rive =
+    flat && RIVE_PEW && S >= RIVE_MIN_SIZE && (Platform.OS === "android" || Platform.OS === "ios");
+  const canvas = rive ? (
+    <PewRive size={S} mood={mood} color={color} paused={paused || systemReduced} />
+  ) : flat ? (
+    <FlatPew size={S} mood={mood} palette={palette} still={!appActive || paused || systemReduced} />
+  ) : (
     <Canvas style={{ width: S, height: S }} pointerEvents="none">
       <Picture picture={picture as SharedValue<SkPicture>} />
     </Canvas>
@@ -664,6 +692,7 @@ function PewView({
           feedX={feedFrom?.x ?? S * 0.18}
           feedY={feedFrom?.y ?? S * 0.5}
           toy={toyTicker}
+          halfRate={calm}
         />
       ) : null}
       {/* The canvas never takes touches (pointerEvents none), so a detector

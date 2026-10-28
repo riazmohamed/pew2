@@ -18,6 +18,8 @@ import { DashedRule } from "./stage/DashedRule";
 import { Dissolve } from "./motion/Dissolve";
 import { theme } from "../theme";
 import type { Status } from "../useDaemon";
+import { MOTION_HINT } from "../motionMode";
+import { setMotionMode, useMotionMode } from "./calmMotion";
 import { AGENTS_NOTE, agentNote, agentRows, type CatalogEntry } from "../agentSettings";
 
 // Same fixed desktop install/update instruction formerly shown in Sidebar.
@@ -88,6 +90,7 @@ export function ConnectionSheet({
   alerts,
 }: Props) {
   const agents = agentRows(catalog);
+  const motion = useMotionMode();
   const { height: screenHeight } = useWindowDimensions();
   const title =
     status === "online" ? "Connected" : status === "connecting" ? "Connecting…" : "Offline";
@@ -204,6 +207,27 @@ export function ConnectionSheet({
             </Pressable>
           </Row>
         )}
+        <Row label="Animations" index={6}>
+          <View style={styles.awake}>
+            <Text style={styles.awakeText} numberOfLines={2}>
+              {MOTION_HINT}
+            </Text>
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{ checked: motion === "full" }}
+              accessibilityLabel={`Animations: ${motion === "calm" ? "Calm" : "Full"}. ${MOTION_HINT}`}
+              hitSlop={8}
+              onPress={() => {
+                haptics.tap();
+                setMotionMode(motion === "calm" ? "full" : "calm");
+              }}
+            >
+              <Text numberOfLines={1} style={[styles.value, styles.link]}>
+                {motion === "calm" ? "Calm" : "Full"}
+              </Text>
+            </Pressable>
+          </View>
+        </Row>
         {agents.length > 0 && (
           <>
             <DashedRule />

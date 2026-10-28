@@ -19,6 +19,7 @@
  */
 import { useSyncExternalStore } from "react";
 import { AccessibilityInfo } from "react-native";
+import { isCalm, subscribeMotionMode } from "./calmMotion";
 
 type Setting = "reduceMotion" | "reduceTransparency";
 
@@ -80,8 +81,27 @@ const subscribeTransparency = subscribe("reduceTransparency");
 const getMotion = () => values.reduceMotion;
 const getTransparency = () => values.reduceTransparency;
 
-/** Tracks the OS "Reduce Motion" setting. Every animation in the app checks it. */
+// Reduced = the OS setting or the app's own Calm mode (`calmMotion.ts`).
+const subscribeReduced = (listener: () => void) => {
+  const offMotion = subscribeMotion(listener);
+  const offCalm = subscribeMotionMode(listener);
+  return () => {
+    offMotion();
+    offCalm();
+  };
+};
+const getReduced = () => getMotion() || isCalm();
+
+/**
+ * Tracks the OS "Reduce Motion" setting, and the app's Calm mode on top of it.
+ * Every animation in the app checks it.
+ */
 export function useReducedMotion(): boolean {
+  return useSyncExternalStore(subscribeReduced, getReduced, getReduced);
+}
+
+/** Only the OS "Reduce Motion" setting, not Calm (Calm's own light motion still runs). */
+export function useSystemReducedMotion(): boolean {
   return useSyncExternalStore(subscribeMotion, getMotion, getMotion);
 }
 

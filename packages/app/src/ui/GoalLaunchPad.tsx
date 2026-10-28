@@ -12,9 +12,9 @@ import Reanimated, {
   runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
-  useReducedMotion,
   withTiming,
 } from "react-native-reanimated";
+import { useReducedMotion } from "./useReducedMotion";
 import { theme } from "../theme";
 import { haptics } from "./haptics";
 import { Led } from "./stage/Led";

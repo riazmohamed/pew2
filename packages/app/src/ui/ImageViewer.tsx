@@ -27,11 +27,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Animated, {
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { useReducedMotion } from "./useReducedMotion";
 import { theme } from "../theme";
 import { Led } from "./stage/Led";
 import { StageButton } from "./stage/StageButton";

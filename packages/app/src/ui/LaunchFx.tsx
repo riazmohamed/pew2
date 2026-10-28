@@ -8,7 +8,7 @@
  * timings too. A frame is recorded into a Skia picture, as `Pew` does, at
  * most 60 times a second.
  */
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { StyleSheet } from "react-native";
 import {
   Canvas,
@@ -19,6 +19,7 @@ import {
   type SkPicture,
 } from "@shopify/react-native-skia";
 import { beginFrame, blankPicture, endFrame } from "./skiaFrame";
+import { useCalmMotion } from "./calmMotion";
 import {
   runOnJS,
   useFrameCallback,
@@ -198,6 +199,21 @@ export function LaunchFx({
   color: string;
   values: LaunchFxValues;
 }) {
+  // Calm motion takes the plain launch (usePlainLaunch), so this is rarely
+  // mounted then; if it is, it draws nothing.
+  if (useCalmMotion()) return null;
+  return <LaunchCanvas scene={scene} color={color} values={values} />;
+}
+
+function LaunchCanvas({
+  scene,
+  color,
+  values,
+}: {
+  scene: FxScene;
+  color: string;
+  values: LaunchFxValues;
+}) {
   const palette = useMemo<FxPalette>(() => {
     const pal = pewPalette(color);
     return {
@@ -223,7 +239,12 @@ export function LaunchFx({
  * while a call connects. `on` fades it in and out over half a second, so it
  * leaves as the call picks up rather than cutting. Touch-through.
  */
-export function CallingFx({ scene, color, on }: { scene: FxScene; color: string; on: boolean }) {
+export function CallingFx(props: { scene: FxScene; color: string; on: boolean }) {
+  // Calm motion: no glow, no canvas, no frame loop.
+  return useCalmMotion() ? null : <CallingGlow {...props} />;
+}
+
+function CallingGlow({ scene, color, on }: { scene: FxScene; color: string; on: boolean }) {
   const palette = useMemo<FxPalette>(() => {
     const pal = pewPalette(color);
     return {
@@ -268,15 +289,19 @@ export function CallingFx({ scene, color, on }: { scene: FxScene; color: string;
  * Mount it for one burst (a new `key` replays it); `onDone` fires when the
  * last dot has gone. Touch-through.
  */
-export function PopFx({
-  scene,
-  color,
-  onDone,
-}: {
-  scene: FxScene;
-  color: string;
-  onDone: () => void;
-}) {
+export function PopFx(props: { scene: FxScene; color: string; onDone: () => void }) {
+  return useCalmMotion() ? <NoPop onDone={props.onDone} /> : <Pop {...props} />;
+}
+
+/** Calm motion: no burst; report it done straight away so the caller moves on. */
+function NoPop({ onDone }: { onDone: () => void }) {
+  useEffect(() => {
+    onDone();
+  }, [onDone]);
+  return null;
+}
+
+function Pop({ scene, color, onDone }: { scene: FxScene; color: string; onDone: () => void }) {
   const palette = useMemo<FxPalette>(() => {
     const pal = pewPalette(color);
     return {

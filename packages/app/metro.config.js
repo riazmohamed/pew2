@@ -18,6 +18,9 @@ const projectRoot = __dirname;
 
 const config = getDefaultConfig(projectRoot);
 
+// Pew's Rive file (src/pew/PewRive.tsx) is bundled with `require`.
+config.resolver.assetExts = [...config.resolver.assetExts, "riv"];
+
 /**
  * Evaluate each module the first time it is actually used, not at startup.
  *

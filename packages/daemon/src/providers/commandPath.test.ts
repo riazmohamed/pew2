@@ -31,6 +31,8 @@ test("a missing command resolves to undefined, so the bare name is kept", async 
 
 test("a non-executable file of the right name is not the command", async () => {
   const root = await mkdtemp(join(tmpdir(), "pew2-resolve-"));
-  await writeFile(join(root, "ogcoder"), "");
-  expect(commandPath("ogcoder", { PATH: root, HOME: root })).toBeUndefined();
+  // A name no machine has: commandPath also looks in /usr/local/bin and
+  // /opt/homebrew/bin, where a real `ogcoder` can exist (it did on 28 Oct).
+  await writeFile(join(root, "pew2-test-agent"), "");
+  expect(commandPath("pew2-test-agent", { PATH: root, HOME: root })).toBeUndefined();
 });

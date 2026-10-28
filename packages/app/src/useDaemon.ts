@@ -713,11 +713,14 @@ export function useDaemon(
       },
       /**
        * Ask the daemon to render a local dev server as a picture, stored in
-       * `images` under `previewImageKey(port)`. One in flight per port.
+       * `images` under `previewImageKey(port)`. One in flight per port, unless
+       * `retry` (the sheet's Retry after a timeout).
        */
-      snapshotPreview: (port: number, width: number) => {
+      snapshotPreview: (port: number, width: number, retry = false) => {
         const imageId = previewImageKey(port);
-        if (imagesRef.current[imageId]?.status === "loading") return;
+        // A retry goes out even over a request still marked loading: that one
+        // timed out on screen and its answer may never come.
+        if (!retry && imagesRef.current[imageId]?.status === "loading") return;
         const sent = post({ t: "preview.snapshot", requestId: imageId, port, width });
         storeImage(
           imageId,

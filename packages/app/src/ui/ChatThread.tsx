@@ -415,6 +415,15 @@ function ChatThreadView(
   // Mirrored into a ref so the inset effect below can read "is the reader at the
   // end" without re-running every time the answer changes.
   const atBottom = useRef(true);
+  // Following the newest message: on until the reader moves the thread
+  // themselves, back on once they return to the very end (a drag, a fling or
+  // the jump chip). While on, every change in the content's height (a streamed
+  // line, the reply's final markdown, a tool step) is followed to the end.
+  // FlashList's own follow (`autoscrollToBottomThreshold`) gives up when one
+  // change grows the thread by more than its threshold in one go, which left
+  // the latest text below the composer mid-stream and when a reply finished.
+  const following = useRef(true);
+  const dragging = useRef(false);
 
   // Put the keyboard away the moment the transcript is dragged.
   //
@@ -431,7 +440,21 @@ function ChatThreadView(
   // no-op when nothing is focused, so an ordinary scroll costs nothing.
   const handleScrollBeginDrag = useCallback(() => {
     dragged.current = true;
+    dragging.current = true;
+    following.current = false;
     Keyboard.dismiss();
+  }, []);
+  const handleScrollEndDrag = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    dragging.current = false;
+    if (distanceToEnd(event.nativeEvent) <= RESUME_FOLLOW_PX) following.current = true;
+  }, []);
+  // A fling (or the jump chip's animated scroll) that lands at the end.
+  const handleMomentumEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!dragging.current && distanceToEnd(event.nativeEvent) <= RESUME_FOLLOW_PX)
+      following.current = true;
+  }, []);
+  const handleContentSizeChange = useCallback(() => {
+    if (following.current && !dragging.current) list.current?.scrollToEnd({ animated: false });
   }, []);
 
   const handleScroll = useCallback(
@@ -446,6 +469,8 @@ function ChatThreadView(
         contentOffset.y + layoutMeasurement.height >=
         contentSize.height - layoutMeasurement.height * FOLLOW_THRESHOLD;
       atBottom.current = next;
+      if (!dragging.current && distanceToEnd(event.nativeEvent) <= RESUME_FOLLOW_PX)
+        following.current = true;
       onAtBottomChange(next);
     },
     [onAtBottomChange],
@@ -488,6 +513,8 @@ function ChatThreadView(
   const dragged = useRef(false);
   useEffect(() => {
     dragged.current = false;
+    following.current = true;
+    dragging.current = false;
   }, [session]);
   const reachedTop = useCallback(() => {
     if (dragged.current) revealEarlierRef.current();
@@ -557,7 +584,7 @@ function ChatThreadView(
   useEffect(() => {
     const grew = threadBottom > lastBottom.current;
     lastBottom.current = threadBottom;
-    if (!grew || !atBottom.current) return;
+    if (!grew || !(atBottom.current || following.current)) return;
     list.current?.scrollToEnd({ animated: false });
   }, [threadBottom]);
 
@@ -602,6 +629,9 @@ function ChatThreadView(
               // "interactive" — see `handleScrollBeginDrag`.
               keyboardDismissMode="on-drag"
               onScrollBeginDrag={handleScrollBeginDrag}
+              onScrollEndDrag={handleScrollEndDrag}
+              onMomentumScrollEnd={handleMomentumEnd}
+              onContentSizeChange={handleContentSizeChange}
               keyboardShouldPersistTaps="handled"
               // The transcript gives at both ends, and springs back.
               //
@@ -663,6 +693,15 @@ function ChatThreadView(
  * two can never disagree about whether you are at the bottom.
  */
 const FOLLOW_THRESHOLD = 0.2;
+
+/** How close to the very end (px) a scroll must come to resume following. */
+const RESUME_FOLLOW_PX = 48;
+
+/** Pixels between the bottom of the viewport and the end of the content. */
+function distanceToEnd(event: NativeScrollEvent): number {
+  const { contentOffset, contentSize, layoutMeasurement } = event;
+  return contentSize.height - (contentOffset.y + layoutMeasurement.height);
+}
 
 const MAINTAIN_POSITION = {
   startRenderingFromBottom: true,

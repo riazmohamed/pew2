@@ -1,5 +1,10 @@
-import { expect, test } from "bun:test";
-import { pendingPermission, readPermissionRequest, toPermissionRequest } from "./permissions";
+import { describe, expect, test } from "bun:test";
+import {
+  pendingPermission,
+  permissionDetails,
+  readPermissionRequest,
+  toPermissionRequest,
+} from "./permissions";
 
 test("an agent that offers no buttons still gets an answerable sheet", () => {
   // A sheet with no options cannot be answered, and an unanswerable sheet stops
@@ -57,4 +62,36 @@ test("the newest request is the one shown, as it is live", () => {
       { requestId: "p2", params: { toolCall: { title: "Second" } } },
     ]),
   ).toMatchObject({ requestId: "p2", title: "Second" });
+});
+
+describe("permissionDetails", () => {
+  test("nothing beyond the title gives no details", () => {
+    expect(toPermissionRequest("p", { toolCall: { title: "Run ls" } }).details).toBeUndefined();
+    expect(permissionDetails(undefined)).toBeUndefined();
+  });
+  test("command, path and diff", () => {
+    const details = permissionDetails(
+      {
+        title: "Edit",
+        rawInput: { command: "rm -rf build", file_path: "/a/b.ts" },
+        locations: [{ path: "/a/b.ts" }, { path: "/a/c.ts", line: 4 }],
+        content: [
+          { type: "diff", path: "/a/b.ts", oldText: "x", newText: "y\nz" },
+          { type: "content", content: { type: "text", text: "Because." } },
+        ],
+      },
+      "Edit",
+    );
+    expect(details).toBe(
+      "$ rm -rf build\n\n/a/b.ts\n\n/a/c.ts:4\n\n/a/b.ts\n- x\n+ y\n+ z\n\nBecause.",
+    );
+  });
+  test("argv command and the title is not repeated", () => {
+    expect(permissionDetails({ rawInput: { command: ["git", "push"] } }, "x")).toBe("$ git push");
+    expect(permissionDetails({ rawInput: "Run ls" }, "Run ls")).toBeUndefined();
+  });
+  test("capped", () => {
+    const long = "a".repeat(5000);
+    expect(permissionDetails({ rawInput: { path: long } })?.length).toBe(4001);
+  });
 });

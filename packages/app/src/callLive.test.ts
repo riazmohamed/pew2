@@ -77,6 +77,7 @@ describe("callLive", () => {
       text: "hello",
       fromBoard: false,
       working: true,
+      steps: [],
     });
   });
   test("falls back to the board lane's lines when never opened", () => {
@@ -92,5 +93,20 @@ describe("callLive", () => {
     );
     expect(live?.project).toBe("repo");
     expect(live?.working).toBe(true);
+  });
+  test("steps: the newest tool lines while working, none when idle", () => {
+    const at = 1;
+    const busyLane = {
+      ...lane,
+      lines: [1, 2, 3, 4, 5].map((n) => ({ kind: "tool" as const, text: `Step ${n}`, at })),
+    };
+    const live = callLive("s1", [{ id: "s1", turns: [], busy: true }], [busyLane]);
+    expect(live?.steps).toEqual(["Step 2", "Step 3", "Step 4", "Step 5"]);
+    const idle = callLive(
+      "s1",
+      [{ id: "s1", turns: [], busy: false }],
+      [{ ...busyLane, status: "idle" as const }],
+    );
+    expect(idle?.steps).toEqual([]);
   });
 });

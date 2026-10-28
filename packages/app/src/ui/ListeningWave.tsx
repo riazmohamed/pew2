@@ -10,7 +10,7 @@
  * columns are animated from `speaking` alone.
  */
 import { useCallback } from "react";
-import { StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Canvas, Picture, Skia, type SkPicture } from "@shopify/react-native-skia";
 import {
   useFrameCallback,
@@ -19,6 +19,7 @@ import {
   type SharedValue,
 } from "react-native-reanimated";
 import { beginFrame, blankPicture, endFrame } from "./skiaFrame";
+import { useCalmMotion } from "./calmMotion";
 
 /** Columns across, dots per column, and their spacing, in points. */
 const COLS = 17;
@@ -60,7 +61,46 @@ interface Props {
   off: string;
 }
 
-export function ListeningWave({ speaking, level, color, off }: Props) {
+/**
+ * Calm motion (see calmMotion.ts) gets a still row of plain dots, the same
+ * size, with no canvas and no frame loop: lit while the user speaks.
+ */
+export function ListeningWave(props: Props) {
+  const calm = useCalmMotion();
+  return calm ? <StillWave {...props} /> : <LiveWave {...props} />;
+}
+
+function StillWave({ speaking, color, off }: Props) {
+  const mid = (ROWS - 1) / 2;
+  return (
+    <View style={styles.canvas} pointerEvents="none">
+      {Array.from({ length: COLS }, (_, c) => {
+        const edge = Math.min(c, COLS - 1 - c);
+        const fade =
+          edge >= EDGE_COLS ? 1 : Math.sin(((edge + 1) / (EDGE_COLS + 1)) * (Math.PI / 2)) ** 2;
+        return Array.from({ length: ROWS }, (_, r) => {
+          const lit = speaking && r === mid;
+          return (
+            <View
+              key={`${c}-${r}`}
+              style={[
+                styles.dot,
+                {
+                  left: DOT * 2 + c * STEP - DOT,
+                  top: DOT * 2 + r * STEP - DOT,
+                  backgroundColor: lit ? color : off,
+                  opacity: (lit ? 1 : 0.55) * fade,
+                },
+              ]}
+            />
+          );
+        });
+      })}
+    </View>
+  );
+}
+
+function LiveWave({ speaking, level, color, off }: Props) {
   const picture = useSharedValue<SkPicture>(blankPicture());
   const t = useSharedValue(0);
   const energy = useSharedValue(0);
@@ -138,4 +178,5 @@ export function ListeningWave({ speaking, level, color, off }: Props) {
 
 const styles = StyleSheet.create({
   canvas: { width: WAVE_WIDTH, height: WAVE_HEIGHT },
+  dot: { position: "absolute", width: DOT * 2, height: DOT * 2, borderRadius: DOT },
 });

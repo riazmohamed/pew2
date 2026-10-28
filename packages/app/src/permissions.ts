@@ -15,7 +15,12 @@ import type { PermissionRequest } from "./useDaemon";
 
 /** The shape an agent sends, of which everything is optional in practice. */
 interface PermissionParams {
-  toolCall?: { title?: string };
+  toolCall?: {
+    title?: string;
+    rawInput?: unknown;
+    content?: unknown;
+    locations?: unknown;
+  };
   options?: { optionId: string; name: string }[];
 }
 
@@ -33,12 +38,76 @@ const DEFAULT_OPTIONS = [
 /** One open request, from its `requestId` and the agent's raw params. */
 export function toPermissionRequest(requestId: string, params: unknown): PermissionRequest {
   const fields = (params ?? {}) as PermissionParams;
+  const title = fields.toolCall?.title ?? "The agent needs your approval";
+  const details = permissionDetails(fields.toolCall, title);
   return {
     requestId,
-    title: fields.toolCall?.title ?? "The agent needs your approval",
+    title,
+    ...(details ? { details } : {}),
     options:
       Array.isArray(fields.options) && fields.options.length > 0 ? fields.options : DEFAULT_OPTIONS,
   };
+}
+
+/** Long enough for a real diff, short enough not to stall the sheet. */
+const DETAILS_MAX = 4000;
+
+/** Input fields that name what is touched, in the order they are shown. */
+const INPUT_KEYS = ["command", "cmd", "file_path", "path", "url", "pattern", "query"] as const;
+
+/**
+ * The request's details as plain text: the command, the paths, any text or
+ * diff the agent attached. Undefined when there is nothing beyond the title.
+ */
+export function permissionDetails(
+  toolCall: PermissionParams["toolCall"],
+  title?: string,
+): string | undefined {
+  if (!toolCall || typeof toolCall !== "object") return undefined;
+  const lines: string[] = [];
+  const add = (line: string) => {
+    const trimmed = line.trim();
+    if (trimmed && trimmed !== title?.trim() && !lines.includes(trimmed)) lines.push(trimmed);
+  };
+
+  const input = toolCall.rawInput;
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    const record = input as Record<string, unknown>;
+    for (const key of INPUT_KEYS) {
+      const value = record[key];
+      if (typeof value === "string") add(key === "command" || key === "cmd" ? `$ ${value}` : value);
+      else if (Array.isArray(value) && value.every((part) => typeof part === "string"))
+        add(`$ ${value.join(" ")}`);
+    }
+  } else if (typeof input === "string") add(input);
+
+  if (Array.isArray(toolCall.locations)) {
+    for (const location of toolCall.locations as { path?: unknown; line?: unknown }[]) {
+      if (typeof location?.path !== "string") continue;
+      add(typeof location.line === "number" ? `${location.path}:${location.line}` : location.path);
+    }
+  }
+
+  if (Array.isArray(toolCall.content)) {
+    for (const block of toolCall.content as Record<string, unknown>[]) {
+      if (block?.type === "diff" && typeof block.newText === "string") {
+        const path = typeof block.path === "string" ? block.path : "";
+        const old = typeof block.oldText === "string" ? block.oldText : "";
+        const diff = [
+          ...(old ? old.split("\n").map((line) => `- ${line}`) : []),
+          ...block.newText.split("\n").map((line) => `+ ${line}`),
+        ].join("\n");
+        add(path ? `${path}\n${diff}` : diff);
+      } else if (block?.type === "content") {
+        const inner = block.content as { type?: unknown; text?: unknown } | undefined;
+        if (inner?.type === "text" && typeof inner.text === "string") add(inner.text);
+      }
+    }
+  }
+
+  if (lines.length === 0) return undefined;
+  const text = lines.join("\n\n");
+  return text.length > DETAILS_MAX ? `${text.slice(0, DETAILS_MAX)}…` : text;
 }
 
 /** A live `permission_request` event payload, or undefined for any other event. */

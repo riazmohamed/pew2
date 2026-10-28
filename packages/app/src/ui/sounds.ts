@@ -11,6 +11,7 @@
  * Like haptics, sound is decoration: failures are swallowed and nothing waits
  * on a sound.
  */
+import { AppState } from "react-native";
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 import { Asset } from "expo-asset";
 import { canPlayCues, playCue, prepareCues, stopCue } from "../../modules/pew-audio-route";
@@ -147,7 +148,16 @@ function player(name: SoundName): AudioPlayer | undefined {
       // told not to, and during a call that session is the call's. A chime
       // ending mid-call cut the microphone dead (the server heard nothing).
       // The session is ambient and mixes, so leaving it active costs nothing.
-      p = createAudioPlayer(SOURCES[name], { keepAudioSessionActive: true });
+      // A slow status tick: nothing here reads playback status, and each
+      // expo-audio player polls on Android every `updateInterval` for as long
+      // as it exists, playing or not. At the default 500ms, ~37 cue players
+      // kept the app at ~5% CPU in the background and Android killed it for
+      // "excessive CPU" six times in five days (28 Oct, `dumpsys activity
+      // exit-info`).
+      p = createAudioPlayer(SOURCES[name], {
+        keepAudioSessionActive: true,
+        updateInterval: PLAYER_UPDATE_MS,
+      });
       players.set(name, p);
     } catch {
       return undefined;
@@ -155,6 +165,32 @@ function player(name: SoundName): AudioPlayer | undefined {
   }
   return p;
 }
+
+/** expo-audio's status tick for cue players (see `player`). */
+export const PLAYER_UPDATE_MS = 60_000;
+
+/**
+ * Release every expo-audio cue player. Only on Android (iOS plays cues
+ * natively); called when the app goes to the background, where an idle
+ * player still costs CPU. They are made again on the next play.
+ */
+export function releaseCuePlayers(): void {
+  for (const name of [...fades.keys()]) clearFade(name);
+  for (const p of players.values()) {
+    try {
+      p.remove();
+    } catch {
+      // Already gone.
+    }
+  }
+  players.clear();
+}
+
+// Background: let the players go. Not during dictation or a call (`listening`
+// or a call cue playing): the call keeps its own audio and is never here.
+AppState.addEventListener("change", (state) => {
+  if (state === "background" && !canPlayCues && !listening) releaseCuePlayers();
+});
 
 function clearFade(name: SoundName): void {
   const f = fades.get(name);

@@ -19,6 +19,7 @@ const HOME_CARDS_KEY = "pew2.homeCards.v1";
 const ALERTS_DISMISSED_KEY = "pew2.alertsDismissedAt";
 const ONBOARDING_KEY = "pew2.onboarding";
 const PROVIDERS_KEY = "pew2.providers";
+const MOTION_KEY = "pew2.motionMode";
 
 /** The agent last targeted on this device, or null if never chosen. */
 export async function loadLastProvider(): Promise<string | null> {
@@ -157,5 +158,22 @@ export async function saveHomeCards(count: number): Promise<void> {
     await SecureStore.setItemAsync(HOME_CARDS_KEY, String(count));
   } catch {
     // Laid out for the old count next launch, then corrected.
+  }
+}
+
+/** The stored "Animations" choice, raw (`motionMode.ts` reads it); null if never set or unreadable. */
+export async function loadMotionMode(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(MOTION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function saveMotionMode(mode: string): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(MOTION_KEY, mode);
+  } catch {
+    // Back to the platform default next launch at worst.
   }
 }

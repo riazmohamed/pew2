@@ -738,7 +738,9 @@ test("the phone closes OG Coder's window: refused mid-reply, otherwise quit and 
   const id = sent.find((m) => m.t === "session.started").sessionId;
   const windows = () => sent.findLast((m) => m.t === "providers")?.desk?.windows;
   (daemon as any).announceProviders();
-  expect(windows()).toEqual([{ agentSessionId: AGENT_ID, kind: "native" }]);
+  expect(windows()).toEqual([
+    expect.objectContaining({ agentSessionId: AGENT_ID, kind: "native" }),
+  ]);
 
   // Mid-reply: refused in words, nothing typed.
   const mirror = (daemon as any).sessions.get(id);

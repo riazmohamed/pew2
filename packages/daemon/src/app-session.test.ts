@@ -144,7 +144,10 @@ test("handover to the app: opened by conversation, typed both ways, mirrored, cl
   expect(daemon.isNative(id)).toBe(true);
   expect(daemon.forwardedSession("ggcoder-old")).toBe(id);
   (daemon as any).announceProviders();
-  expect(desk(sent).windows).toEqual([{ agentSessionId: AGENT_ID, kind: "native", app: true }]);
+  // With pew2's own session id, which the phone matches on when the agent id moves.
+  expect(desk(sent).windows).toEqual([
+    { agentSessionId: AGENT_ID, kind: "native", app: true, sessionId: id },
+  ]);
 
   // Phone draft: latest text into the window's composer.
   await send({ t: "session.draft", sessionId: id, text: "hel" });

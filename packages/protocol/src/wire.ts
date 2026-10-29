@@ -257,6 +257,14 @@ export const ProviderAnnounce = z.object({
             kind: z.enum(["native", "chat"]),
             /** A `native` window that is the GG Coder app's, not iTerm's. Absent: iTerm. */
             app: z.boolean().optional(),
+            /**
+             * pew2's own id for the session the window belongs to. Stable when
+             * the agent's id is not: plan mode, an accepted plan or a
+             * compaction moves the conversation to a new agent id, and the
+             * phone, still holding the old one, lost its Close (29 Oct).
+             * Absent: an older daemon; match on `agentSessionId` then.
+             */
+            sessionId: z.string().optional(),
           }),
         )
         .optional(),

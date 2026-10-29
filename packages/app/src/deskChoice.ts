@@ -19,7 +19,13 @@ export interface DeskAnnouncement {
    * Windows pew2 opened on the computer that it can close, by conversation. A
    * GG Coder app window is `native` with `app: true`.
    */
-  windows?: { agentSessionId: string; kind: "native" | "chat"; app?: boolean }[];
+  windows?: {
+    agentSessionId: string;
+    kind: "native" | "chat";
+    app?: boolean;
+    /** pew2's session id for it: stable when the agent id changes (newer daemons). */
+    sessionId?: string;
+  }[];
 }
 
 /** One button in the computer icon's menu. */
@@ -29,10 +35,22 @@ export type DeskAction = { kind: "open"; target: DeskTarget } | { kind: "close" 
 export function openWindows(
   desk: DeskAnnouncement | undefined,
   agentSessionId: string | undefined,
+  /**
+   * pew2's id for the open conversation. A window carries it (newer daemons)
+   * and it never changes, unlike the agent id, which plan mode, an accepted
+   * plan or a compaction replace: matching on the agent id alone lost the
+   * Close option after plan mode (29 Oct).
+   */
+  sessionId?: string,
 ): { native: boolean; chat: boolean; app: boolean } {
-  const mine = agentSessionId
-    ? (desk?.windows ?? []).filter((w) => w.agentSessionId === agentSessionId)
-    : [];
+  const mine =
+    agentSessionId || sessionId
+      ? (desk?.windows ?? []).filter(
+          (w) =>
+            (sessionId !== undefined && w.sessionId === sessionId) ||
+            (agentSessionId !== undefined && w.agentSessionId === agentSessionId),
+        )
+      : [];
   return {
     native: mine.some((w) => w.kind === "native" && !w.app),
     chat: mine.some((w) => w.kind === "chat"),
@@ -58,9 +76,10 @@ export function deskActions(
   desk: DeskAnnouncement | undefined,
   providerId: string | undefined,
   agentSessionId: string | undefined,
+  sessionId?: string,
 ): DeskAction[] {
   const targets = deskTargets(desk, providerId);
-  const open = openWindows(desk, agentSessionId);
+  const open = openWindows(desk, agentSessionId, sessionId);
   if (!anyOpen(open)) return targets.map((target) => ({ kind: "open" as const, target }));
   // Only one agent window at a time: with iTerm or the app holding it, the
   // other is not offered (the daemon would refuse it).

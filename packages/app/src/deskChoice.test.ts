@@ -134,3 +134,25 @@ test("an app window reads as the GG Coder app, and holds the agent's place", () 
     { kind: "open", target: "chat" },
   ]);
 });
+
+test("Close stays offered after plan mode moved the conversation to a new agent id (29 Oct)", () => {
+  // The phone still holds the old agent id; the daemon announces the window
+  // under the new one, with pew2's own session id alongside.
+  const desk = {
+    available: true,
+    native: ["ggcoder"],
+    app: ["ggcoder"],
+    windows: [
+      { agentSessionId: "after-plan", kind: "native" as const, app: true, sessionId: "ggcoder-1" },
+    ],
+  };
+  expect(openWindows(desk, "before-plan", "ggcoder-1")).toEqual({
+    native: false,
+    chat: false,
+    app: true,
+  });
+  expect(deskActions(desk, "ggcoder", "before-plan", "ggcoder-1")[0]).toEqual({ kind: "close" });
+  // Without the session id (an older daemon), the agent id still matches as before.
+  expect(openWindows(desk, "after-plan").app).toBe(true);
+  expect(openWindows(desk, "before-plan").app).toBe(false);
+});

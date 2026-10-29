@@ -1021,16 +1021,37 @@ export class Daemon extends DaemonConnectSession {
    * is `native` with `app: true`, so a phone that predates the app still
    * offers to close it.
    */
-  private deskWindows(): { agentSessionId: string; kind: "native" | "chat"; app?: true }[] {
+  private deskWindows(): {
+    agentSessionId: string;
+    kind: "native" | "chat";
+    app?: true;
+    sessionId?: string;
+  }[] {
     const seen = new Set<string>();
-    const windows: { agentSessionId: string; kind: "native" | "chat"; app?: true }[] = [];
-    const add = (agentSessionId: string | undefined, kind: "native" | "chat", app = false) => {
+    const windows: {
+      agentSessionId: string;
+      kind: "native" | "chat";
+      app?: true;
+      sessionId?: string;
+    }[] = [];
+    const add = (
+      agentSessionId: string | undefined,
+      kind: "native" | "chat",
+      app = false,
+      sessionId?: string,
+    ) => {
       if (!agentSessionId || seen.has(`${kind}:${agentSessionId}`)) return;
       seen.add(`${kind}:${agentSessionId}`);
-      windows.push({ agentSessionId, kind, ...(app && { app: true as const }) });
+      windows.push({
+        agentSessionId,
+        kind,
+        ...(app && { app: true as const }),
+        ...(sessionId && { sessionId }),
+      });
     };
-    for (const session of this.sessions.values())
-      if (session.native) add(session.agentSessionId, "native", session.native.kind === "app");
+    for (const [sessionId, session] of this.sessions)
+      if (session.native)
+        add(session.agentSessionId, "native", session.native.kind === "app", sessionId);
     for (const window of this.chatWindows.values()) add(window.agentSessionId, "chat");
     return windows;
   }

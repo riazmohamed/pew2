@@ -262,7 +262,7 @@ function DeskButton({
   const currentAgentSessionId = daemon.sessions.find(
     (session) => session.id === daemon.sessionId,
   )?.agentSessionId;
-  const deskOpen = openWindows(daemon.desk, currentAgentSessionId);
+  const deskOpen = openWindows(daemon.desk, currentAgentSessionId, daemon.sessionId);
   // Android's alert holds three buttons; a longer menu is this small list.
   const [sheet, setSheet] = useState<DeskAction[] | undefined>(undefined);
   const shown =
@@ -304,6 +304,7 @@ function DeskButton({
             daemon.desk,
             daemon.effectiveProviderId,
             currentAgentSessionId,
+            daemon.sessionId,
           );
           const first = actions[0];
           if (actions.length === 1 && first?.kind === "open") {

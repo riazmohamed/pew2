@@ -175,6 +175,16 @@ async function approvedPlanFile(cwd: string, texts: string[]): Promise<ApprovedP
   return plans[0]?.plan;
 }
 
+/**
+ * How a conversation the window moved to began: GG Coder's plan-approved
+ * prompt (a fresh accept, so a new plan), or anything else (a compaction or a
+ * plain new chat, which carries no plan of its own).
+ */
+export async function startsWithApproval(conversationFile: string): Promise<boolean> {
+  const start = await conversationStart(conversationFile);
+  return start.firstUser?.trim().startsWith(PLAN_APPROVED_PROMPT) === true;
+}
+
 /** How far back a compacted conversation is followed for its plan. */
 const MAX_COMPACTIONS = 6;
 

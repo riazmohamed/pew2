@@ -64,10 +64,25 @@ if (reaped.length > 0) {
 // unpair the phone.
 const pairing = await loadPairing();
 
+/**
+ * Test seams, for `scripts/soak` only: a module whose `nativeOptions()` stands
+ * in for iTerm, Terminal and their AppleScript, so a stress run opens and closes
+ * windows without touching the screen. Never set by launchd or `pew2 start`;
+ * unset, nothing here changes.
+ */
+const seams = process.env.PEW2_TEST_SEAMS
+  ? ((await import(process.env.PEW2_TEST_SEAMS)) as {
+      nativeOptions?: () => ConstructorParameters<typeof Daemon>[3];
+    })
+  : undefined;
+if (seams) console.log(`[seams] test seams loaded from ${process.env.PEW2_TEST_SEAMS}`);
+
 // PEW2_EXPERIMENTAL=1 also surfaces test fixtures such as the echo agent.
 const daemon = new Daemon(
   { id: "local", name: "this machine" },
   process.env.PEW2_EXPERIMENTAL === "1",
+  process.env,
+  seams?.nativeOptions?.() ?? {},
 );
 // Rings become CallKit calls through the relay (it holds the Apple key). A
 // LAN-only daemon can still name one with PEW2_PUSH_RELAY.

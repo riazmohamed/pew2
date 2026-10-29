@@ -6,6 +6,7 @@ import {
   extractPlanSteps,
   planUpdate,
   recoverApprovedPlan,
+  startsWithApproval,
   stripDoneMarkers,
   trackPlanUpdate,
   type ApprovedPlan,
@@ -163,4 +164,35 @@ test("the plan is the named file with steps, not the agent's newer notes", async
   const plan = await recoverApprovedPlan(cwd, conv);
   expect(plan?.planPath.endsWith("check-the-plan.md")).toBe(true);
   expect(plan?.steps.length).toBe(3);
+});
+
+test("only a fresh accept starts a new plan; a compaction carries the old one on", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "app-plan-s-"));
+  const write = async (name: string, first: string, parent?: string) => {
+    const file = path.join(dir, name);
+    await writeFile(
+      file,
+      [
+        { type: "session", id: name, ...(parent && { parentSessionId: parent }) },
+        { type: "message", message: { role: "user", content: [{ type: "text", text: first }] } },
+      ]
+        .map((l) => JSON.stringify(l))
+        .join("\n"),
+    );
+    return file;
+  };
+  expect(
+    await startsWithApproval(
+      await write(
+        "accept.jsonl",
+        "The plan has been approved. Implement it now, following each step in order.",
+      ),
+    ),
+  ).toBe(true);
+  expect(
+    await startsWithApproval(
+      await write("compact.jsonl", "[Previous conversation summary] ...", "accept.jsonl"),
+    ),
+  ).toBe(false);
+  expect(await startsWithApproval(path.join(dir, "missing.jsonl"))).toBe(false);
 });

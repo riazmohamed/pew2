@@ -85,7 +85,8 @@ export const DENIED_NOTE =
 export const PENDING_NOTE =
   "Your Mac is asking whether pew2 may control iTerm. Click OK there and the window opens.";
 
-interface Deps {
+/** The OS calls `Desk` makes, replaceable for tests and `scripts/soak`. */
+export interface DeskDeps {
   runAppleScript: (
     script: string,
     timeoutMs: number,
@@ -169,9 +170,9 @@ export function itermOpenScript(command: string): string {
 
 export class Desk {
   private recent = new Map<string, number>();
-  private readonly deps: Deps;
+  private readonly deps: DeskDeps;
 
-  constructor(deps: Partial<Deps> = {}) {
+  constructor(deps: Partial<DeskDeps> = {}) {
     this.deps = {
       runAppleScript,
       openCommandFile,

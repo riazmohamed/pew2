@@ -20,7 +20,7 @@ import { catalogEnabled, catalogEntries, idsToToggle } from "./providers/catalog
 import type { AskAnswer, ConfigOption } from "./acp/connect.js";
 import { encodeCwd, loadGgCoderDisplayHistory } from "./acp/ggcoder-history.js";
 import { SessionLog } from "./session/log.js";
-import { type DeskResult, Desk } from "./desk.js";
+import { type DeskDeps, type DeskResult, Desk } from "./desk.js";
 import {
   GgCoderMirror,
   conversationNames,
@@ -112,6 +112,7 @@ import {
   loadApprovedPlan,
   planUpdate,
   recoverApprovedPlan,
+  startsWithApproval,
   trackPlanUpdate,
 } from "./app-plan.js";
 
@@ -131,6 +132,8 @@ export interface NativeOptions extends Partial<NativeDeskDeps> {
   throttleMs?: number;
   /** The GG Coder app's discovery (file, fetch, pid check) for tests. */
   appDesk?: Omit<AppDeskOptions, "onChange" | "onEvent">;
+  /** `pew2 chat` window opening (AppleScript, Terminal) for tests and `scripts/soak`. */
+  desk?: Partial<DeskDeps>;
 }
 
 /** A live session's state, read-only, for tests and diagnostics. */
@@ -158,6 +161,7 @@ export class Daemon extends DaemonConnectSession {
     super(machine, includeExperimental, env);
     this.nativeOptions = native;
     this.nativeDeps = { ...defaultNativeDeps(), ...native };
+    this.desk = new Desk(native.desk);
     this.appDesk = new AppDesk({
       file: appPhoneFile(env),
       ...native.appDesk,
@@ -198,7 +202,7 @@ export class Daemon extends DaemonConnectSession {
   /** Keeps the machine from idle-sleeping while in use. Inert until `startKeepAwake`. */
   private readonly awake: KeepAwake;
   /** Opens `pew2 chat` windows on this screen when the phone asks. */
-  readonly desk = new Desk();
+  readonly desk: Desk;
   private lastClientAt?: number;
 
   private createKeepAwake(): KeepAwake {
@@ -1060,6 +1064,22 @@ export class Daemon extends DaemonConnectSession {
   private readonly chatWindows = new Map<string, { agentSessionId: string; providerId: string }>();
   private chatWindowTimer?: NodeJS.Timeout;
 
+  /**
+   * `pew2 chat` windows follow their conversation to its new agent id. Keyed by
+   * the id they were opened on, a window was no longer found by Close once the
+   * GG Coder app moved the conversation (an accepted plan, a compaction), and
+   * stayed open on the Mac (scripts/soak, 29 Oct).
+   */
+  protected override agentIdMoved(from: string, to: string): void {
+    let moved = false;
+    for (const window of this.chatWindows.values()) {
+      if (window.agentSessionId !== from) continue;
+      window.agentSessionId = to;
+      moved = true;
+    }
+    if (moved) this.announceProviders();
+  }
+
   /** Remember a `pew2 chat` window opened for a conversation. */
   trackChatWindow(sessionId: string, itermSessionId: string): void {
     const session = this.sessions.get(sessionId);
@@ -1645,13 +1665,18 @@ export class Daemon extends DaemonConnectSession {
   }
 
   /** A conversation already under way on an approved plan (pew2 restarted, linked late). */
+  /** Where GG Coder keeps a project's conversation files. */
+  private appSessionsDir(cwd: string): string {
+    return path.join(
+      this.nativeOptions.sessionsRoot ?? path.join(homedir(), ".gg", "sessions"),
+      encodeCwd(cwd),
+    );
+  }
+
   private async recoverAppPlan(session: ActiveSession) {
     const native = session.native;
     if (native?.kind !== "app" || native.approvedPlan || !session.agentSessionId) return;
-    const directory = path.join(
-      this.nativeOptions.sessionsRoot ?? path.join(homedir(), ".gg", "sessions"),
-      encodeCwd(session.cwd),
-    );
+    const directory = this.appSessionsDir(session.cwd);
     const found = await findConversationFile(directory, {
       agentSessionId: session.agentSessionId,
     }).catch(() => undefined);
@@ -1801,15 +1826,32 @@ export class Daemon extends DaemonConnectSession {
       await native.mirror.kick().catch(() => {});
       native.mirror.stop();
       native.mirror = mirror;
+      const from = session.agentSessionId;
       session.agentSessionId = agentSessionId;
-      // A new conversation: its plan (if any) comes from its own accept.
-      native.approvedPlan = undefined;
+      if (from && from !== agentSessionId) this.agentIdMoved(from, agentSessionId);
+      // A new conversation keeps the accepted plan unless it is itself a fresh
+      // accept. A compaction carries on the same plan; dropping it and
+      // recovering by "newest plan file" picked a later, rejected plan's steps
+      // (scripts/soak, 29 Oct). A fresh accept takes the plan that was just
+      // waiting in the window, which is the one accepted.
+      const file = await findConversationFile(this.appSessionsDir(session.cwd), {
+        agentSessionId,
+      }).catch(() => undefined);
+      if (file && (await startsWithApproval(file.file))) {
+        const pending = native.lastPendingPlan;
+        native.approvedPlan = pending
+          ? ((await loadApprovedPlan(pending.planPath)) ??
+            (await loadApprovedPlan(pending.planPath, pending.content)))
+          : undefined;
+        if (native.approvedPlan) native.lastPendingPlan = undefined;
+      }
       // The divider pew2's own sessions show; only where plan mode was ever seen.
       if (session.plan) this.record(session, { kind: "plan_accepted" });
       mirror.start();
       this.announceProviders();
-      // The accept prompt may already be in the file, before the baseline.
-      void this.recoverAppPlan(session).catch(() => {});
+      if (native.approvedPlan) this.recordAppPlan(session);
+      // Not known yet (pew2 restarted, or linked late): recovered from the files.
+      else void this.recoverAppPlan(session).catch(() => {});
     } finally {
       if (native.repointing === agentSessionId) native.repointing = undefined;
     }

@@ -26,12 +26,20 @@ export abstract class DaemonGg extends DaemonProjects {
     if (session.live) this.send(parsed.data);
   }
 
+  /**
+   * A conversation moved to a new agent id under a live session (an accepted
+   * plan, a compaction). Whatever else is keyed by the old id follows it.
+   */
+  protected agentIdMoved(_from: string, _to: string): void {}
+
   /** `_gg/session_reset`: an accepted plan moved the agent to a fresh on-disk session. */
   protected applySessionReset(session: ActiveSession, params: unknown) {
     const raw = params as { agentSessionId?: unknown; planTotal?: unknown } | null;
     // Resume must reopen the NEW conversation, which holds the implementation.
     if (typeof raw?.agentSessionId === "string" && raw.agentSessionId) {
+      const from = session.agentSessionId;
       session.agentSessionId = raw.agentSessionId;
+      if (from && from !== raw.agentSessionId) this.agentIdMoved(from, raw.agentSessionId);
     }
     this.record(session, {
       kind: "plan_accepted",

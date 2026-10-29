@@ -544,3 +544,21 @@ test("session.ask on a pew2 session still goes to its own agent, not the app", a
   expect(app.calls.some((c) => c.route === "ask")).toBe(false);
   rig.done();
 });
+
+test("a pew2 chat window follows its conversation to a new agent id, so Close still finds it", async () => {
+  const rig = await appRig({ withApp: false });
+  const { daemon } = rig;
+  const sessions = (daemon as any).sessions as Map<string, any>;
+  sessions.set("s1", { providerId: "ggcoder", cwd: CWD, agentSessionId: "before", live: true });
+  daemon.trackChatWindow("s1", "iterm-1");
+  // The GG Coder app accepted a plan (or compacted): the same session, a new agent id.
+  sessions.get("s1").agentSessionId = "after";
+  (daemon as any).agentIdMoved("before", "after");
+  expect((daemon as any).deskWindows()).toEqual([
+    expect.objectContaining({ agentSessionId: "after", kind: "chat" }),
+  ]);
+  const chats = [...((daemon as any).chatWindows as Map<string, any>).values()];
+  expect(chats).toEqual([expect.objectContaining({ agentSessionId: "after" })]);
+  sessions.delete("s1");
+  rig.done();
+});

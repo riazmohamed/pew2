@@ -46,12 +46,26 @@ export interface AppWindowInfo {
   agentSessionId: string | null;
   busy: boolean;
   focused: boolean;
+  /** The plan waiting for a human decision (v1.1); undefined from an older app. */
+  plan?: AppPlan | null;
+  /** The window is in plan mode (v1.1). */
+  planMode?: boolean;
 }
+
+/** A submitted plan waiting for Accept / Feedback / Reject in an app window. */
+export interface AppPlan {
+  planPath: string;
+  content: string;
+  generation: number;
+}
+
+export type AppPlanDecision = "accept" | "feedback" | "reject";
 
 export type AppEvent =
   | { type: "draft"; sessionId: string; text: string }
   | { type: "windows" }
-  | { type: "closed"; sessionId: string };
+  | { type: "closed"; sessionId: string }
+  | { type: "plan"; sessionId: string; plan: AppPlan | null };
 
 export type AppResult<T> = { ok: true; value: T } | { ok: false; status?: number; message: string };
 
@@ -88,6 +102,21 @@ export function pidAlive(pid: number): boolean {
   }
 }
 
+/** A plan as the app sends it: null for none, undefined when it isn't one. */
+function parsePlan(raw: unknown): AppPlan | null | undefined {
+  if (raw === null) return null;
+  if (!raw || typeof raw !== "object") return undefined;
+  const plan = raw as Record<string, unknown>;
+  if (
+    typeof plan.planPath !== "string" ||
+    typeof plan.content !== "string" ||
+    typeof plan.generation !== "number" ||
+    !Number.isInteger(plan.generation)
+  )
+    return undefined;
+  return { planPath: plan.planPath, content: plan.content, generation: plan.generation };
+}
+
 function parseEvent(raw: unknown): AppEvent | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const event = raw as Record<string, unknown>;
@@ -96,6 +125,10 @@ function parseEvent(raw: unknown): AppEvent | undefined {
   if (event.type === "closed") return { type: "closed", sessionId: event.sessionId };
   if (event.type === "draft" && typeof event.text === "string")
     return { type: "draft", sessionId: event.sessionId, text: event.text };
+  if (event.type === "plan") {
+    const plan = parsePlan(event.plan ?? null);
+    return plan === undefined ? undefined : { type: "plan", sessionId: event.sessionId, plan };
+  }
   return undefined;
 }
 
@@ -103,6 +136,7 @@ function parseWindow(raw: unknown): AppWindowInfo | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const w = raw as Record<string, unknown>;
   if (typeof w.sessionId !== "string" || typeof w.cwd !== "string") return undefined;
+  const plan = "plan" in w ? parsePlan(w.plan) : undefined;
   return {
     sessionId: w.sessionId,
     cwd: w.cwd,
@@ -111,6 +145,8 @@ function parseWindow(raw: unknown): AppWindowInfo | undefined {
     agentSessionId: typeof w.agentSessionId === "string" ? w.agentSessionId : null,
     busy: w.busy === true,
     focused: w.focused === true,
+    ...(plan !== undefined && { plan }),
+    ...(typeof w.planMode === "boolean" && { planMode: w.planMode }),
   };
 }
 
@@ -208,6 +244,33 @@ export class AppClient {
 
   abort(sessionId: string): Promise<boolean> {
     return this.action("abort", { sessionId });
+  }
+
+  /**
+   * Decide the window's pending plan, as its own buttons do. 409 when there is
+   * none or `generation` is stale. Answers the conversation after the decision
+   * (accept starts a fresh one).
+   */
+  async plan(
+    sessionId: string,
+    decision: AppPlanDecision,
+    feedback?: string,
+    generation?: number,
+  ): Promise<AppResult<{ agentSessionId: string | null }>> {
+    const result = await this.request("plan", {
+      sessionId,
+      decision,
+      ...(feedback !== undefined && { feedback }),
+      ...(generation !== undefined && { generation }),
+    });
+    if (!result.ok) return result;
+    const value = (result.value ?? {}) as Record<string, unknown>;
+    return {
+      ok: true,
+      value: {
+        agentSessionId: typeof value.agentSessionId === "string" ? value.agentSessionId : null,
+      },
+    };
   }
 
   close(sessionId: string): Promise<boolean> {

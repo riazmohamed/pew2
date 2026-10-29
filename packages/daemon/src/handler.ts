@@ -695,6 +695,13 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
       }
 
       case "plan.decide": {
+        // A GG Coder app window: its own Accept / Feedback / Reject, over its control API.
+        if (daemon.isAppWindow(message.sessionId)) {
+          const { sessionId, action, feedback, generation } = message;
+          const result = await daemon.decideAppPlan(sessionId, action, generation, feedback);
+          if (!result.ok) reply({ t: "error", code: "plan", message: result.message, sessionId });
+          break;
+        }
         if (daemon.sessionProvider(message.sessionId) === GG_GOALS_ID) {
           reply({
             t: "error",

@@ -164,6 +164,8 @@ export interface NativeSession {
   configuring?: boolean;
   /** Consecutive reads of the status row agreeing with each other. */
   statusRun?: { status: "busy" | "idle"; count: number };
+  /** An app window's new conversation being followed (`repointApp`), while it is. */
+  repointing?: string;
 }
 
 /** One queued message. `storing` writes its attachments; awaited when it is sent. */

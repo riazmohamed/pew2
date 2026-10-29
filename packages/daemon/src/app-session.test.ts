@@ -289,3 +289,152 @@ test("the iTerm target is untouched: native still opens iTerm, not the app", asy
   void replies;
   rig.done();
 });
+
+test("a new app chat the app names at once can send (29 Oct: mirror.expectEcho undefined)", async () => {
+  const rig = await appRig();
+  const { daemon, app, sent, directory } = rig;
+  (daemon as any).knownProject = async (_p: string, cwd: string) => cwd;
+  (daemon as any).probes.set("ggcoder", Promise.resolve({ configOptions: [], sessions: [] }));
+  const NEW_ID = "named-at-once";
+  // The real desktop app answers /phone/open with the fresh conversation's id
+  // and file straight away.
+  await writeFile(
+    path.join(directory, "2026-10-29T10-00-00-000Z_namedonce.jsonl"),
+    line({ type: "session", id: NEW_ID, cwd: CWD, timestamp: new Date().toISOString() }),
+  );
+  app.freshAgentSessionId = NEW_ID;
+  const replies: any[] = [];
+  const ctx = {
+    daemon,
+    reply: (m: unknown) => replies.push(m),
+    broadcast: (m: unknown) => sent.push(m),
+  };
+  await handleMessage(
+    JSON.stringify({
+      t: "desk.open",
+      requestId: "n2",
+      target: "app",
+      providerId: "ggcoder",
+      cwd: CWD,
+    }),
+    ctx,
+  );
+  expect(replies.at(-1)).toMatchObject({ t: "desk.opened", ok: true });
+  const started = sent.findLast((m) => m.t === "session.started");
+  expect(started.agentSessionId).toBe(NEW_ID);
+  await handleMessage(
+    JSON.stringify({ t: "session.prompt", sessionId: started.sessionId, text: "Hi how are you" }),
+    ctx,
+  );
+  await until(() => app.calls.some((c) => c.route === "send"), "sent to the app");
+  expect(app.calls.find((c) => c.route === "send")?.body).toMatchObject({
+    text: "Hi how are you",
+  });
+  expect(sent.some((m) => m.t === "session.error" || /expectEcho/.test(JSON.stringify(m)))).toBe(
+    false,
+  );
+  rig.done();
+});
+
+const PLAN = { planPath: "/p/.gg/plans/x.md", content: "# Plan\n- do it", generation: 3 };
+
+async function openedApp() {
+  const rig = await appRig();
+  await rig.send({ t: "desk.open", requestId: "r1", sessionId: "ggcoder-old", target: "app" });
+  const id: string = rig.sent.find((m) => m.t === "session.started").sessionId;
+  return { ...rig, id };
+}
+
+test("an app window's plan reaches the phone as plan.state, by event and by the window list", async () => {
+  const rig = await openedApp();
+  const { app, sent, id, daemon } = rig;
+  rig.app.emit({ type: "plan", sessionId: "win-1", plan: PLAN });
+  const state = await until(
+    () => sent.findLast((m) => m.t === "plan.state" && m.pending),
+    "plan.state",
+  );
+  expect(state).toEqual({ t: "plan.state", sessionId: id, planMode: true, pending: PLAN });
+  expect(daemon.catchUp({ [id]: -1 }).find((f) => f.sessionId === id)?.plan).toEqual(state);
+  // The poll alone (a missed event) clears it.
+  const window = app.windows[0]!;
+  window.plan = null;
+  window.planMode = false;
+  await until(
+    () => sent.findLast((m) => m.t === "plan.state")?.pending === null,
+    "cleared by poll",
+  );
+  rig.done();
+});
+
+test("plan.decide on an app window drives /phone/plan; 409 answers an error and clears the sheet", async () => {
+  const rig = await openedApp();
+  const { app, sent, replies, send, id } = rig;
+  for (const [action, feedback] of [
+    ["feedback", "shorter"],
+    ["reject", undefined],
+    ["accept", undefined],
+  ] as const) {
+    app.windows[0]!.plan = PLAN;
+    await send({ t: "plan.decide", sessionId: id, generation: 3, action, feedback });
+    expect(app.calls.findLast((c) => c.route === "plan")?.body).toEqual({
+      sessionId: "win-1",
+      decision: action,
+      generation: 3,
+      ...(feedback && { feedback }),
+    });
+  }
+  expect(replies.filter((m) => m.t === "error")).toEqual([]);
+  // Nothing waiting now.
+  await send({ t: "plan.decide", sessionId: id, generation: 3, action: "accept" });
+  expect(replies.at(-1)).toMatchObject({ t: "error", sessionId: id });
+  app.windows[0]!.plan = PLAN;
+  await send({ t: "plan.decide", sessionId: id, generation: 2, action: "accept" });
+  expect(replies.at(-1).message).toContain("changed");
+  expect(sent.findLast((m) => m.t === "plan.state")?.pending).toBeNull();
+  rig.done();
+});
+
+test("an accept that starts a fresh conversation keeps the phone on the same session", async () => {
+  const rig = await openedApp();
+  const { app, sent, send, id, daemon, directory } = rig;
+  const NEXT = "after-accept-id";
+  const next = path.join(directory, "2026-10-29T12-00-00-000Z_afteracc.jsonl");
+  await writeFile(next, line({ type: "session", id: NEXT, cwd: CWD }) + msg("p0", "user", "old"));
+  app.acceptAgentSessionId = NEXT;
+  app.windows[0]!.plan = PLAN;
+  await send({ t: "plan.decide", sessionId: id, generation: 3, action: "accept" });
+  const session = (daemon as any).sessions.get(id);
+  await until(() => session.agentSessionId === NEXT, "re-pointed");
+  expect(daemon.isNative(id)).toBe(true);
+  await appendFile(
+    next,
+    msg("u1", "user", "implement") +
+      msg("a1", "assistant", [{ type: "text", text: "Implementing now" }], "u1"),
+  );
+  await until(
+    () =>
+      sent.some(
+        (m) =>
+          m.t === "session.event" &&
+          m.sessionId === id &&
+          JSON.stringify(m).includes("Implementing"),
+      ),
+    "new conversation mirrored into the same session",
+  );
+  // The baseline: what the new file held before is not repeated.
+  expect(JSON.stringify(sent.filter((m) => m.t === "session.event"))).not.toContain('"old"');
+  rig.done();
+});
+
+test("a window that changes conversation by itself (windows event) is followed too", async () => {
+  const rig = await openedApp();
+  const { app, id, daemon, directory } = rig;
+  await writeFile(
+    path.join(directory, "2026-10-29T13-00-00-000Z_byitself.jsonl"),
+    line({ type: "session", id: "by-itself", cwd: CWD }),
+  );
+  app.windows[0]!.agentSessionId = "by-itself";
+  app.emit({ type: "windows" });
+  await until(() => (daemon as any).sessions.get(id)?.agentSessionId === "by-itself", "followed");
+  rig.done();
+});

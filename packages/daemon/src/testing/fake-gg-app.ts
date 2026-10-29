@@ -15,6 +15,9 @@ export interface FakeWindow {
   busy: boolean;
   focused: boolean;
   composer: string;
+  /** v1.1: the plan waiting for a decision, and plan mode. */
+  plan?: { planPath: string; content: string; generation: number } | null;
+  planMode?: boolean;
 }
 
 export interface FakeApp {
@@ -26,6 +29,8 @@ export interface FakeApp {
   calls: { route: string; body: Record<string, unknown> }[];
   /** What `/phone/open` answers with for a fresh conversation's agent id. */
   freshAgentSessionId: string | null;
+  /** The conversation an accepted plan starts (null: the same one). */
+  acceptAgentSessionId: string | null;
   /** Push an SSE event to every listener. */
   emit(event: unknown): void;
   /** Drop every event stream (the app quitting). */
@@ -45,6 +50,7 @@ export async function startFakeApp(): Promise<FakeApp> {
     windows: [],
     calls: [],
     freshAgentSessionId: null,
+    acceptAgentSessionId: null,
     emit(event) {
       for (const stream of streams)
         stream.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
@@ -126,6 +132,19 @@ export async function startFakeApp(): Promise<FakeApp> {
         app.windows = app.windows.filter((w) => w !== window);
         app.emit({ type: "closed", sessionId: window.sessionId });
         app.emit({ type: "windows" });
+      } else if (route === "plan") {
+        if (!window.plan) return json({ error: "no plan" }, 409);
+        if (typeof body.generation === "number" && body.generation !== window.plan.generation)
+          return json({ error: "stale plan" }, 409);
+        window.plan = null;
+        window.planMode = body.decision === "feedback";
+        app.emit({ type: "plan", sessionId: window.sessionId, plan: null });
+        if (body.decision === "accept" && app.acceptAgentSessionId) {
+          window.agentSessionId = app.acceptAgentSessionId;
+          window.sessionPath = null;
+          app.emit({ type: "windows" });
+        }
+        return json({ ok: true, agentSessionId: window.agentSessionId });
       } else if (route !== "abort") return json({ error: "not found" }, 404);
       return json({ ok: true });
     },

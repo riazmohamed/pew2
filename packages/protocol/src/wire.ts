@@ -232,6 +232,13 @@ export const ProviderAnnounce = z.object({
        */
       native: z.array(z.string()).optional(),
       /**
+       * Providers whose conversations can be opened in the GG Coder desktop
+       * app (`desk.open` with `target: "app"`), e.g. `["gg-goals","ggcoder"]`,
+       * while the app's phone control is on. Absent: not available, or an
+       * older daemon.
+       */
+      app: z.array(z.string()).optional(),
+      /**
        * This machine can send a picture of its own screen (`desk.capture`).
        * Absent: an older daemon or a platform without it; the app offers no
        * "Computer Screen" source.
@@ -244,7 +251,14 @@ export const ProviderAnnounce = z.object({
        * daemon that cannot close anything.
        */
       windows: z
-        .array(z.object({ agentSessionId: z.string(), kind: z.enum(["native", "chat"]) }))
+        .array(
+          z.object({
+            agentSessionId: z.string(),
+            kind: z.enum(["native", "chat"]),
+            /** A `native` window that is the GG Coder app's, not iTerm's. Absent: iTerm. */
+            app: z.boolean().optional(),
+          }),
+        )
         .optional(),
     })
     .optional(),
@@ -314,8 +328,10 @@ export const DeskOpen = z.object({
    * `pew2 chat` window. `native` is the agent's own app — the real OG Coder
    * screen resumed on this conversation — with the phone typing into it.
    * Offered only for providers listed in the announcement's `desk.native`.
+   * `app` is a GG Coder desktop app window, offered only for providers in
+   * `desk.app`; an older daemon refuses it, so the phone offers it only then.
    */
-  target: z.enum(["chat", "native"]).optional(),
+  target: z.enum(["chat", "native", "app"]).optional(),
   /**
    * For a conversation not started yet (no `sessionId`): the agent and the
    * project to open it in. The project is honoured only if this daemon

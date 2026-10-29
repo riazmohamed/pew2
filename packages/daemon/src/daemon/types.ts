@@ -12,6 +12,7 @@ import type {
 } from "../acp/connect.js";
 import type { SessionLog } from "../session/log.js";
 import type { NativeTyper } from "../native-desk.js";
+import type { AppTyper } from "../app-desk.js";
 import type { GgCoderMirror } from "../acp/ggcoder-mirror.js";
 import { homedir as __homedir } from "node:os";
 import { join as __join } from "node:path";
@@ -137,8 +138,16 @@ export interface ActiveSession {
 }
 
 export interface NativeSession {
+  /**
+   * Which window: an iTerm session running OG Coder (absent: iTerm, as every
+   * native window was before) or a GG Coder desktop app window (`app-desk.ts`).
+   */
+  kind?: "iterm" | "app";
+  /** The iTerm session typed into; "" for an app window. */
   itermSessionId: string;
-  typer: NativeTyper;
+  /** The app's own id for the window (`/phone/*` `sessionId`), for an app window. */
+  appSessionId?: string;
+  typer: NativeTyper | AppTyper;
   mirror: GgCoderMirror;
   /**
    * The selectors the conversation had under ACP, kept so the phone's model

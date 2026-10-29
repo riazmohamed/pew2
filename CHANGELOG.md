@@ -15,6 +15,12 @@ Dates are the day the tag was cut.
 
 ### Added
 
+- **Open in GG Coder app.** A third choice beside pew2 chat and OG Coder:
+  opens the conversation in a GG Coder desktop app window (GG Coder and GG
+  Goals chats), types the phone's draft into it live, sends, stops and closes
+  it, and mirrors what you type in the window back to the phone. Needs the
+  desktop app's Settings › Phone control switch (a build with phone control).
+
 - **Minimise a call and keep using the app.** The call screen has a
   minimise button, and Android's back button now minimises instead of
   hanging up. A bar under the top bar shows the call (listening, speaking,

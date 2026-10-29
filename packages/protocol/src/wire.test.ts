@@ -326,3 +326,38 @@ test("app.diag lines cannot forge log lines", () => {
     false,
   );
 });
+
+test("desk.open takes the GG Coder app target, and every older shape still parses", () => {
+  for (const target of [undefined, "chat", "native", "app"]) {
+    expect(
+      ClientMessage.safeParse({ t: "desk.open", requestId: "r", sessionId: "s", target }).success,
+    ).toBe(true);
+  }
+  expect(ClientMessage.safeParse({ t: "desk.open", requestId: "r", target: "x" }).success).toBe(
+    false,
+  );
+});
+
+test("the desk announcement's app list and app windows are optional", () => {
+  const announce = (desk: unknown) =>
+    ServerMessage.safeParse({
+      t: "providers",
+      machine: { id: "m", name: "m" },
+      providers: [],
+      activeSessions: [],
+      desk,
+    });
+  const older = announce({ available: true, native: ["ggcoder"] });
+  expect(older.success).toBe(true);
+  const newer = announce({
+    available: true,
+    native: ["ggcoder"],
+    app: ["gg-goals", "ggcoder"],
+    windows: [{ agentSessionId: "a", kind: "native", app: true }],
+  });
+  expect(newer.success).toBe(true);
+  if (newer.success && newer.data.t === "providers") {
+    expect(newer.data.desk?.app).toEqual(["gg-goals", "ggcoder"]);
+    expect(newer.data.desk?.windows?.[0]?.app).toBe(true);
+  }
+});

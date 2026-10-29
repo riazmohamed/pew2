@@ -398,9 +398,14 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
       case "desk.open": {
         // Replied, not broadcast: it answers the one tap that asked. The
         // project is the session's own, never a path from the client.
-        if (message.target === "native" && message.sessionId) {
-          const result = await daemon.openNative(message.sessionId);
-          console.log(`[desk] native ${message.sessionId}: ${result.ok ? "ok" : result.message}`);
+        if ((message.target === "native" || message.target === "app") && message.sessionId) {
+          const result = await daemon.openNative(
+            message.sessionId,
+            message.target === "app" ? "app" : "iterm",
+          );
+          console.log(
+            `[desk] ${message.target} ${message.sessionId}: ${result.ok ? "ok" : result.message}`,
+          );
           reply({ t: "desk.opened", requestId: message.requestId, ...result });
           break;
         }
@@ -420,8 +425,12 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           // The iTerm id stays in the daemon; a new chat has no conversation to
           // file a window under yet, so it is not offered for closing.
           const { itermSessionId: _untracked, ...result } =
-            message.target === "native"
-              ? await daemon.openNativeNew(message.providerId, project)
+            message.target === "native" || message.target === "app"
+              ? await daemon.openNativeNew(
+                  message.providerId,
+                  project,
+                  message.target === "app" ? "app" : "iterm",
+                )
               : await daemon.desk.open({ cwd: project, providerId: message.providerId });
           void _untracked;
           console.log(

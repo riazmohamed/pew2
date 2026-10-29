@@ -211,6 +211,11 @@ relay?.start();
 const { errors } = await daemon.refreshProviders();
 for (const error of errors) console.error(error.message);
 
+// The GG Coder desktop app, when its phone control is on: a third place to open a chat.
+void daemon
+  .startAppDesk()
+  .catch((error: unknown) => console.error("[app-desk] failed to start:", error));
+
 // Hold an idle-sleep assertion while someone is using this machine remotely.
 void daemon
   .startKeepAwake()

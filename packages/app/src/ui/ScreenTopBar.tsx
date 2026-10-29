@@ -3,13 +3,16 @@
  * button, the ticker and a goal's crew, over the frosted cover for its zone.
  */
 import { useState, type Dispatch, type SetStateAction } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Alert, Modal, Platform, Pressable, Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
+  anyOpen,
   closeLabel,
   deskActions,
   deskTargetLabel,
+  needsSheet,
   openWindows,
+  type DeskAction,
   type DeskTarget,
 } from "../deskChoice";
 import type { EdgeInsets } from "react-native-safe-area-context";
@@ -260,68 +263,143 @@ function DeskButton({
     (session) => session.id === daemon.sessionId,
   )?.agentSessionId;
   const deskOpen = openWindows(daemon.desk, currentAgentSessionId);
+  // Android's alert holds three buttons; a longer menu is this small list.
+  const [sheet, setSheet] = useState<DeskAction[] | undefined>(undefined);
   const shown =
     daemon.desk?.available &&
     (inThread ? !!daemon.sessionId : !daemon.sessionId && !!daemon.workspace?.cwd);
   if (!shown) return null;
+  const open = (target: DeskTarget) => {
+    const fresh = daemon.sessionId
+      ? undefined
+      : { providerId: daemon.effectiveProviderId, cwd: daemon.workspace?.cwd };
+    void daemon.openOnComputer(target, fresh).then((result) => {
+      if (result.ok && !result.message) return;
+      Alert.alert(
+        result.ok ? "Opened on the computer" : "Couldn't open it on the computer",
+        result.message ?? "",
+      );
+    });
+  };
+  const close = () => {
+    void daemon.closeOnComputer(currentAgentSessionId).then((result) => {
+      if (!result.ok) Alert.alert("Couldn't close it on the computer", result.message ?? "");
+    });
+  };
+  const actionLabel = (action: DeskAction) =>
+    action.kind === "close"
+      ? closeLabel(deskOpen, active?.name)
+      : deskTargetLabel(action.target, active?.name);
+  const run = (action: DeskAction) => (action.kind === "close" ? close() : open(action.target));
+  const title = anyOpen(deskOpen) ? "On the computer" : "Open on the computer";
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Open this conversation on the computer"
-      hitSlop={12}
-      style={({ pressed }) => [styles.deskButton, pressed && { opacity: 0.4 }]}
-      onPress={() => {
-        const open = (target: DeskTarget) => {
-          const fresh = daemon.sessionId
-            ? undefined
-            : { providerId: daemon.effectiveProviderId, cwd: daemon.workspace?.cwd };
-          void daemon.openOnComputer(target, fresh).then((result) => {
-            if (result.ok && !result.message) return;
-            Alert.alert(
-              result.ok ? "Opened on the computer" : "Couldn't open it on the computer",
-              result.message ?? "",
-            );
-          });
-        };
-        const actions = deskActions(daemon.desk, daemon.effectiveProviderId, currentAgentSessionId);
-        const first = actions[0];
-        if (actions.length === 1 && first?.kind === "open") {
-          open(first.target);
-          return;
-        }
-        const close = () => {
-          void daemon.closeOnComputer(currentAgentSessionId).then((result) => {
-            if (!result.ok) Alert.alert("Couldn't close it on the computer", result.message ?? "");
-          });
-        };
-        Alert.alert(
-          deskOpen.native || deskOpen.chat ? "On the computer" : "Open on the computer",
-          undefined,
-          [
-            ...actions.map((action) =>
-              action.kind === "close"
-                ? {
-                    text: closeLabel(deskOpen, active?.name),
-                    style: "destructive" as const,
-                    onPress: close,
-                  }
-                : {
-                    text: deskTargetLabel(action.target, active?.name),
-                    onPress: () => open(action.target),
-                  },
-            ),
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Open this conversation on the computer"
+        hitSlop={12}
+        style={({ pressed }) => [styles.deskButton, pressed && { opacity: 0.4 }]}
+        onPress={() => {
+          const actions = deskActions(
+            daemon.desk,
+            daemon.effectiveProviderId,
+            currentAgentSessionId,
+          );
+          const first = actions[0];
+          if (actions.length === 1 && first?.kind === "open") {
+            open(first.target);
+            return;
+          }
+          if (needsSheet(actions, Platform.OS)) {
+            setSheet(actions);
+            return;
+          }
+          Alert.alert(title, undefined, [
+            ...actions.map((action) => ({
+              text: actionLabel(action),
+              ...(action.kind === "close" && { style: "destructive" as const }),
+              onPress: () => run(action),
+            })),
             { text: "Cancel", style: "cancel" as const },
-          ],
-        );
-      }}
-    >
-      <Ionicons
-        name={deskOpen.native || deskOpen.chat ? "desktop" : "desktop-outline"}
-        size={16}
-        color={theme.color.textFaint}
-      />
-    </Pressable>
+          ]);
+        }}
+      >
+        <Ionicons
+          name={anyOpen(deskOpen) ? "desktop" : "desktop-outline"}
+          size={16}
+          color={theme.color.textFaint}
+        />
+      </Pressable>
+      <Modal
+        visible={sheet !== undefined}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSheet(undefined)}
+      >
+        <Pressable
+          accessibilityLabel="Cancel"
+          style={deskSheet.scrim}
+          onPress={() => setSheet(undefined)}
+        >
+          <View style={deskSheet.card}>
+            <Text style={deskSheet.title}>{title}</Text>
+            {[
+              ...(sheet ?? []).map((action) => ({ action, label: actionLabel(action) })),
+              undefined,
+            ].map((row) => (
+              <Pressable
+                key={row?.label ?? "cancel"}
+                accessibilityRole="button"
+                style={({ pressed }) => [deskSheet.row, pressed && deskSheet.pressed]}
+                onPress={() => {
+                  setSheet(undefined);
+                  if (row) run(row.action);
+                }}
+              >
+                <Text
+                  style={[
+                    deskSheet.label,
+                    row?.action.kind === "close" && deskSheet.close,
+                    !row && deskSheet.cancel,
+                  ]}
+                >
+                  {row?.label ?? "Cancel"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
+
+const deskSheet = {
+  scrim: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 32,
+  },
+  card: {
+    alignSelf: "stretch",
+    backgroundColor: theme.color.surfaceRaised,
+    borderRadius: 16,
+    paddingVertical: 8,
+  },
+  title: {
+    color: theme.color.text,
+    fontSize: 17,
+    fontWeight: "600",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  row: { paddingHorizontal: 20, paddingVertical: 14 },
+  pressed: { backgroundColor: theme.color.surfacePressed },
+  label: { color: theme.color.accent, fontSize: 16 },
+  close: { color: theme.color.danger },
+  cancel: { color: theme.color.textDim },
+} as const;
 const titleBox = { flex: 1, minWidth: 0, justifyContent: "center" } as const;
 const titleText = { flex: 0, alignSelf: "stretch" } as const;

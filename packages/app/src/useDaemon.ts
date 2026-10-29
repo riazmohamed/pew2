@@ -638,7 +638,8 @@ export function useDaemon(
       },
       /**
        * Open the conversation on screen on the computer: a `pew2 chat` window,
-       * or the agent's own app (`native`). A new conversation opens in `fresh`.
+       * the agent's own app (`native`, iTerm) or the GG Coder desktop app
+       * (`app`). A new conversation opens in `fresh`.
        */
       openOnComputer: (
         target: DeskTarget = "chat",
@@ -649,7 +650,7 @@ export function useDaemon(
         // conversation; expecting it like a reopen lets it take this screen.
         const current = sessionRef.current;
         const row =
-          target === "native" && current
+          target !== "chat" && current
             ? sessionsRef.current.find((entry) => entry.id === current)
             : undefined;
         const expected = row?.agentSessionId ? restoreTarget(row) : undefined;
@@ -672,7 +673,7 @@ export function useDaemon(
             t: "desk.open",
             requestId,
             sessionId: current,
-            ...(target === "native" && { target }),
+            ...(target !== "chat" && { target }),
             ...(!current &&
               fresh?.providerId &&
               fresh.cwd && { providerId: fresh.providerId, cwd: fresh.cwd }),

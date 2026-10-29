@@ -185,8 +185,10 @@ export interface State {
     available: boolean;
     reason?: string;
     native?: string[];
+    /** Providers the GG Coder desktop app can open (absent: not available). */
+    app?: string[];
     capture?: boolean;
-    windows?: { agentSessionId: string; kind: "native" | "chat" }[];
+    windows?: { agentSessionId: string; kind: "native" | "chat"; app?: boolean }[];
   };
   /** Every agent the computer knows, on or off. Absent = older daemon. */
   catalog?: CatalogEntry[];

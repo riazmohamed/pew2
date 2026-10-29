@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test";
-import { closeLabel, deskActions, deskTargetLabel, deskTargets, openWindows } from "./deskChoice";
+import {
+  anyOpen,
+  closeLabel,
+  deskActions,
+  deskTargetLabel,
+  deskTargets,
+  needsSheet,
+  openWindows,
+} from "./deskChoice";
 
 test("no desk, no button", () => {
   expect(deskTargets(undefined, "ggcoder")).toEqual([]);
@@ -71,5 +79,58 @@ test("a window open for this conversation puts Close first, with the other place
 
 test("a new chat (no agent id yet) has nothing to close", () => {
   const desk = { available: true, windows: [{ agentSessionId: "a1", kind: "chat" as const }] };
-  expect(openWindows(desk, undefined)).toEqual({ native: false, chat: false });
+  expect(openWindows(desk, undefined)).toEqual({ native: false, chat: false, app: false });
+});
+
+test("the GG Coder app is offered only when the daemon lists the provider in desk.app", () => {
+  const desk = { available: true, native: ["ggcoder"], app: ["gg-goals", "ggcoder"] };
+  expect(deskTargets(desk, "ggcoder")).toEqual(["native", "app", "chat"]);
+  expect(deskTargets(desk, "gg-goals")).toEqual(["app", "chat"]);
+  expect(deskTargets(desk, "claude-code")).toEqual(["chat"]);
+  // An older daemon, or the app's phone control off: no app.
+  expect(deskTargets({ available: true, native: ["ggcoder"] }, "ggcoder")).toEqual([
+    "native",
+    "chat",
+  ]);
+  expect(deskTargetLabel("app")).toBe("Open in GG Coder app");
+});
+
+test("three places to open go to a list on Android, an alert elsewhere", () => {
+  const desk = { available: true, native: ["ggcoder"], app: ["ggcoder"] };
+  const actions = deskActions(desk, "ggcoder", "a1");
+  expect(actions).toEqual([
+    { kind: "open", target: "native" },
+    { kind: "open", target: "app" },
+    { kind: "open", target: "chat" },
+  ]);
+  expect(needsSheet(actions, "android")).toBe(true);
+  expect(needsSheet(actions, "ios")).toBe(false);
+  expect(needsSheet(deskActions({ ...desk, app: undefined }, "ggcoder", "a1"), "android")).toBe(
+    false,
+  );
+});
+
+test("an app window reads as the GG Coder app, and holds the agent's place", () => {
+  const desk = {
+    available: true,
+    native: ["ggcoder"],
+    app: ["ggcoder"],
+    windows: [{ agentSessionId: "a1", kind: "native" as const, app: true }],
+  };
+  const open = openWindows(desk, "a1");
+  expect(open).toEqual({ native: false, chat: false, app: true });
+  expect(anyOpen(open)).toBe(true);
+  expect(closeLabel(open, "OG Coder")).toBe("Close GG Coder app");
+  // iTerm is not offered while the app has it; pew2 chat still is.
+  expect(deskActions(desk, "ggcoder", "a1")).toEqual([
+    { kind: "close" },
+    { kind: "open", target: "chat" },
+  ]);
+  // An iTerm window still reads as OG Coder, and the app is not offered beside it.
+  const iterm = { ...desk, windows: [{ agentSessionId: "a1", kind: "native" as const }] };
+  expect(closeLabel(openWindows(iterm, "a1"), "OG Coder")).toBe("Close OG Coder");
+  expect(deskActions(iterm, "ggcoder", "a1")).toEqual([
+    { kind: "close" },
+    { kind: "open", target: "chat" },
+  ]);
 });

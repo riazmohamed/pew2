@@ -21,7 +21,12 @@ import type { AskAnswer, ConfigOption } from "./acp/connect.js";
 import { encodeCwd, loadGgCoderDisplayHistory } from "./acp/ggcoder-history.js";
 import { SessionLog } from "./session/log.js";
 import { type DeskResult, Desk } from "./desk.js";
-import { GgCoderMirror, conversationNames, findNewConversation } from "./acp/ggcoder-mirror.js";
+import {
+  GgCoderMirror,
+  conversationNames,
+  findConversationFile,
+  findNewConversation,
+} from "./acp/ggcoder-mirror.js";
 import {
   KEYS,
   NATIVE_ALIVE_POLL_MS,
@@ -42,6 +47,15 @@ import {
   typeable,
   type NativeDeskDeps,
 } from "./native-desk.js";
+import {
+  APP_NAME,
+  APP_PROVIDERS,
+  AppDesk,
+  AppTyper,
+  appPhoneFile,
+  type AppDeskOptions,
+  type AppEvent,
+} from "./app-desk.js";
 import { readDisabled, setEnabled } from "./providers/enabled.js";
 import { discardAttachments, storeAttachments } from "./attachments.js";
 import { folderName } from "./workspace.js";
@@ -103,6 +117,8 @@ export interface NativeOptions extends Partial<NativeDeskDeps> {
   readQuietMs?: number;
   settleMs?: number;
   throttleMs?: number;
+  /** The GG Coder app's discovery (file, fetch, pid check) for tests. */
+  appDesk?: Omit<AppDeskOptions, "onChange" | "onEvent">;
 }
 
 /** A live session's state, read-only, for tests and diagnostics. */
@@ -118,6 +134,8 @@ export interface NativeSessionView {
 export class Daemon extends DaemonConnectSession {
   private readonly nativeOptions: NativeOptions;
   private readonly nativeDeps: NativeDeskDeps;
+  /** The GG Coder desktop app, when its phone control is on. Inert until `startAppDesk`. */
+  readonly appDesk: AppDesk;
 
   constructor(
     machine: { id: string; name: string },
@@ -128,6 +146,12 @@ export class Daemon extends DaemonConnectSession {
     super(machine, includeExperimental, env);
     this.nativeOptions = native;
     this.nativeDeps = { ...defaultNativeDeps(), ...native };
+    this.appDesk = new AppDesk({
+      file: appPhoneFile(env),
+      ...native.appDesk,
+      onChange: (available) => this.appAvailabilityChanged(available),
+      onEvent: (event) => this.appEvent(event),
+    });
     this.awake = this.createKeepAwake();
   }
 
@@ -191,6 +215,14 @@ export class Daemon extends DaemonConnectSession {
    */
   startKeepAwake(): Promise<void> {
     return this.awake.start();
+  }
+
+  /**
+   * Follow the GG Coder app's discovery file. Only the server calls this, so a
+   * Daemon built in a test reads nothing from the real home folder.
+   */
+  startAppDesk(): Promise<void> {
+    return this.appDesk.start();
   }
 
   get keepAwakeStatus(): KeepAwakeStatus {
@@ -952,24 +984,41 @@ export class Daemon extends DaemonConnectSession {
     // A picture of the screen goes wherever a window can be opened (macOS).
     const withCapture = status.available ? { ...status, capture: true } : status;
     const windows = this.deskWindows();
+    const app = this.appProviders();
     return {
       ...withCapture,
       ...(native.length > 0 && { native }),
+      ...(app.length > 0 && { app }),
       ...(windows.length > 0 && { windows }),
     };
   }
 
-  /** The terminal windows the phone can close, by conversation. */
-  private deskWindows(): { agentSessionId: string; kind: "native" | "chat" }[] {
+  /** Providers openable in the GG Coder app right now (macOS, app's phone control on). */
+  private appProviders(): string[] {
+    if ((this.nativeOptions.platform ?? process.platform) !== "darwin") return [];
+    if (!this.appDesk.available) return [];
+    return APP_PROVIDERS.filter(
+      (id) =>
+        this.isEnabled(id === GG_GOALS_ID ? GG_PROVIDER_ID : id) &&
+        this.providers.some((p) => p.manifest.id === id),
+    );
+  }
+
+  /**
+   * The terminal windows the phone can close, by conversation. An app window
+   * is `native` with `app: true`, so a phone that predates the app still
+   * offers to close it.
+   */
+  private deskWindows(): { agentSessionId: string; kind: "native" | "chat"; app?: true }[] {
     const seen = new Set<string>();
-    const windows: { agentSessionId: string; kind: "native" | "chat" }[] = [];
-    const add = (agentSessionId: string | undefined, kind: "native" | "chat") => {
+    const windows: { agentSessionId: string; kind: "native" | "chat"; app?: true }[] = [];
+    const add = (agentSessionId: string | undefined, kind: "native" | "chat", app = false) => {
       if (!agentSessionId || seen.has(`${kind}:${agentSessionId}`)) return;
       seen.add(`${kind}:${agentSessionId}`);
-      windows.push({ agentSessionId, kind });
+      windows.push({ agentSessionId, kind, ...(app && { app: true as const }) });
     };
     for (const session of this.sessions.values())
-      if (session.native) add(session.agentSessionId, "native");
+      if (session.native) add(session.agentSessionId, "native", session.native.kind === "app");
     for (const window of this.chatWindows.values()) add(window.agentSessionId, "chat");
     return windows;
   }
@@ -1050,7 +1099,7 @@ export class Daemon extends DaemonConnectSession {
     }
     for (const session of natives) {
       if (session.working) {
-        const name = NATIVE_APPS[session.providerId]?.name ?? "The agent";
+        const name = this.nativeName(session);
         return {
           ok: false,
           message: `${name} is in the middle of a reply. Stop it first, then close it.`,
@@ -1061,8 +1110,14 @@ export class Daemon extends DaemonConnectSession {
     const failed: string[] = [];
     for (const session of natives) {
       const native = session.native!;
-      if (!(await this.closeTerminal(native.itermSessionId, () => native.typer.quit()))) {
-        failed.push(NATIVE_APPS[session.providerId]?.name ?? "the agent");
+      const closed =
+        native.kind === "app"
+          ? await native.typer.quit()
+          : await this.closeTerminal(native.itermSessionId, () => native.typer.quit());
+      if (!closed) {
+        failed.push(
+          native.kind === "app" ? APP_NAME : (NATIVE_APPS[session.providerId]?.name ?? "the agent"),
+        );
         continue;
       }
       // Whatever it wrote last reaches the phone before the mirror goes.
@@ -1082,6 +1137,12 @@ export class Daemon extends DaemonConnectSession {
     return failed.length === 0
       ? { ok: true }
       : { ok: false, message: `${failed.join(" and ")} didn't close. Close it on the Mac.` };
+  }
+
+  /** What the phone calls a session's window: the GG Coder app, or the agent's own name. */
+  private nativeName(session: ActiveSession): string {
+    if (session.native?.kind === "app") return APP_NAME;
+    return NATIVE_APPS[session.providerId]?.name ?? "The agent";
   }
 
   /** Ask politely, wait for the window to go, then close it outright. */
@@ -1209,7 +1270,7 @@ export class Daemon extends DaemonConnectSession {
    * session of its own (a fresh id, the same `agentSessionId`), so the phone
    * replaces the row and keeps sending exactly as before.
    */
-  async openNative(sessionId: string): Promise<DeskResult> {
+  async openNative(sessionId: string, kind: "iterm" | "app" = "iterm"): Promise<DeskResult> {
     const session = this.sessions.get(sessionId);
     if (!session) {
       return {
@@ -1217,12 +1278,25 @@ export class Daemon extends DaemonConnectSession {
         message: "That conversation isn't open on the computer. Send it a message first.",
       };
     }
-    if (session.native)
-      return { ok: true, app: "iTerm", message: "It's already open in OG Coder on the computer." };
+    if (session.native) {
+      const app = session.native.kind === "app";
+      return {
+        ok: true,
+        app: app ? APP_NAME : "iTerm",
+        message: `It's already open in ${app ? "the GG Coder app" : "OG Coder"} on the computer.`,
+      };
+    }
     const provider = this.providers.find((p) => p.manifest.id === session.providerId);
-    const allowed = this.deskAnnouncement()?.native ?? [];
+    const allowed =
+      (kind === "app" ? this.deskAnnouncement()?.app : this.deskAnnouncement()?.native) ?? [];
     if (!provider || !allowed.includes(session.providerId)) {
-      return { ok: false, message: "This agent can't be opened in its own app on this computer." };
+      return {
+        ok: false,
+        message:
+          kind === "app"
+            ? "The GG Coder app isn't available on the computer. Turn on Phone control in its settings."
+            : "This agent can't be opened in its own app on this computer.",
+      };
     }
     if ((session.permissions?.size ?? 0) > 0) {
       return {
@@ -1254,6 +1328,7 @@ export class Daemon extends DaemonConnectSession {
       this.nativeOptions.sessionsRoot,
     ).catch(() => undefined);
     return this.attachNative({
+      kind,
       provider,
       providerId,
       cwd,
@@ -1280,11 +1355,22 @@ export class Daemon extends DaemonConnectSession {
    * as soon as the app has written it. Announced as a *new* session (not a
    * resume), so the phone's empty view takes it as its own.
    */
-  async openNativeNew(providerId: string, cwd: string): Promise<DeskResult> {
+  async openNativeNew(
+    providerId: string,
+    cwd: string,
+    kind: "iterm" | "app" = "iterm",
+  ): Promise<DeskResult> {
     const provider = this.providers.find((p) => p.manifest.id === providerId);
-    const allowed = this.deskAnnouncement()?.native ?? [];
+    const allowed =
+      (kind === "app" ? this.deskAnnouncement()?.app : this.deskAnnouncement()?.native) ?? [];
     if (!provider || !allowed.includes(providerId)) {
-      return { ok: false, message: "This agent can't be opened in its own app on this computer." };
+      return {
+        ok: false,
+        message:
+          kind === "app"
+            ? "The GG Coder app isn't available on the computer. Turn on Phone control in its settings."
+            : "This agent can't be opened in its own app on this computer.",
+      };
     }
     const configOptions = withStoredPrefs(
       (await this.probes.get(providerId)?.catch(() => undefined))?.configOptions ??
@@ -1292,7 +1378,7 @@ export class Daemon extends DaemonConnectSession {
         [],
       await readConfigPrefs(providerId),
     );
-    return this.attachNative({ provider, providerId, cwd, configOptions, resumed: false });
+    return this.attachNative({ kind, provider, providerId, cwd, configOptions, resumed: false });
   }
 
   /**
@@ -1301,6 +1387,7 @@ export class Daemon extends DaemonConnectSession {
    * starts fresh and the conversation it writes is found and mirrored.
    */
   private async attachNative(args: {
+    kind?: "iterm" | "app";
     provider: { command: string };
     providerId: string;
     cwd: string;
@@ -1341,32 +1428,43 @@ export class Daemon extends DaemonConnectSession {
     let mirror = args.agentSessionId ? makeMirror(args.agentSessionId) : undefined;
     await mirror?.baseline();
 
-    const opened = await openNativeWindow(this.nativeDeps, {
-      // The full path: the window's login shell may not have the agent's
-      // folder on its PATH (see `commandPath`).
-      command: commandPath(args.provider.command, this.env) ?? args.provider.command,
-      providerId,
-      agentSessionId: args.agentSessionId,
-      cwd,
-    });
+    const isApp = args.kind === "app";
+    const opened = isApp
+      ? await this.openAppWindow(providerId, cwd, args.agentSessionId)
+      : await openNativeWindow(this.nativeDeps, {
+          // The full path: the window's login shell may not have the agent's
+          // folder on its PATH (see `commandPath`).
+          command: commandPath(args.provider.command, this.env) ?? args.provider.command,
+          providerId,
+          agentSessionId: args.agentSessionId,
+          cwd,
+        });
     if (!opened.ok) return { ok: false, message: opened.message };
+    const appSessionId = "appSessionId" in opened ? opened.appSessionId : undefined;
 
     // A fresh app names its conversation once it has started: wait for the
     // file it writes, so the phone gets one session with its id attached.
-    let agentSessionId = args.agentSessionId;
+    // The desktop app may name it straight away, or in its window list.
+    let agentSessionId =
+      args.agentSessionId ?? ("agentSessionId" in opened ? opened.agentSessionId : undefined);
     if (!agentSessionId) {
       const deadline = Date.now() + (this.nativeOptions.newConversationTimeoutMs ?? 20_000);
       while (!agentSessionId && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, this.nativeOptions.pollMs ?? 300));
+        if (appSessionId) {
+          const windows = await this.appDesk.client?.windows();
+          agentSessionId =
+            windows?.find((w) => w.sessionId === appSessionId)?.agentSessionId ?? undefined;
+          if (agentSessionId) break;
+        }
         agentSessionId = (await findNewConversation(directory, known ?? new Set(), openedAt))
           ?.agentSessionId;
       }
       if (!agentSessionId) {
         return {
           ok: true,
-          app: "iTerm",
-          message:
-            "OG Coder opened, but pew2 couldn't find its conversation, so the phone isn't linked to it.",
+          app: isApp ? APP_NAME : "iTerm",
+          message: `${isApp ? "The GG Coder app" : "OG Coder"} opened, but pew2 couldn't find its conversation, so the phone isn't linked to it.`,
         };
       }
       mirror = makeMirror(agentSessionId);
@@ -1376,16 +1474,30 @@ export class Daemon extends DaemonConnectSession {
     args.beforeRegister?.();
 
     const log = new SessionLog(`${providerId}-${Date.now().toString(36)}`);
-    const native: NativeSession = {
-      itermSessionId: opened.itermSessionId,
-      typer: new NativeTyper(
-        opened.itermSessionId,
-        this.nativeDeps.osa,
-        this.nativeOptions.throttleMs,
-      ),
-      mirror: mirror!,
-      configOptions,
-    };
+    const native: NativeSession =
+      appSessionId !== undefined
+        ? {
+            kind: "app",
+            itermSessionId: "",
+            appSessionId,
+            typer: new AppTyper(
+              () => this.appDesk.client,
+              appSessionId,
+              this.nativeOptions.throttleMs,
+            ),
+            mirror: mirror!,
+            configOptions,
+          }
+        : {
+            itermSessionId: "itermSessionId" in opened ? opened.itermSessionId : "",
+            typer: new NativeTyper(
+              "itermSessionId" in opened ? opened.itermSessionId : "",
+              this.nativeDeps.osa,
+              this.nativeOptions.throttleMs,
+            ),
+            mirror: mirror!,
+            configOptions,
+          };
     const mirrorSession: ActiveSession = {
       log,
       providerId,
@@ -1418,9 +1530,137 @@ export class Daemon extends DaemonConnectSession {
     this.announceProviders();
 
     native.mirror.start();
+    if (native.kind === "app") {
+      this.watchAppWindow(native);
+      return { ok: true, app: APP_NAME };
+    }
     this.watchNativeWindow(native);
     this.readNativeWindow(native);
     return { ok: true, app: "iTerm" };
+  }
+
+  /** Open (or focus) the conversation in a GG Coder app window. */
+  private async openAppWindow(
+    providerId: string,
+    cwd: string,
+    agentSessionId: string | undefined,
+  ): Promise<
+    { ok: true; appSessionId: string; agentSessionId?: string } | { ok: false; message: string }
+  > {
+    const client = this.appDesk.client;
+    if (!client) {
+      return {
+        ok: false,
+        message:
+          "The GG Coder app isn't available on the computer. Turn on Phone control in its settings.",
+      };
+    }
+    const directory = path.join(
+      this.nativeOptions.sessionsRoot ?? path.join(homedir(), ".gg", "sessions"),
+      encodeCwd(cwd),
+    );
+    const sessionPath = agentSessionId
+      ? (await findConversationFile(directory, { agentSessionId }).catch(() => undefined))?.file
+      : undefined;
+    const opened = await client.open({
+      cwd,
+      ...(agentSessionId && { agentSessionId }),
+      ...(sessionPath && { sessionPath }),
+      mode: providerId === GG_GOALS_ID ? "goal" : "code",
+    });
+    if (!opened.ok) {
+      return {
+        ok: false,
+        message:
+          opened.status === 401 || opened.status === 404
+            ? "The GG Coder app refused the request. Check Phone control is on in its settings."
+            : `Couldn't open the GG Coder app: ${opened.message}`,
+      };
+    }
+    return {
+      ok: true,
+      appSessionId: opened.value.sessionId,
+      ...(opened.value.agentSessionId && { agentSessionId: opened.value.agentSessionId }),
+    };
+  }
+
+  /** The app session filed under its window id, if pew2 is mirroring it. */
+  private appNative(appSessionId: string): NativeSession | undefined {
+    for (const session of this.sessions.values())
+      if (session.native?.kind === "app" && session.native.appSessionId === appSessionId)
+        return session.native;
+    return undefined;
+  }
+
+  /** An event from the app: hand-typed drafts reach the phone, closed windows end their mirror. */
+  private appEvent(event: AppEvent) {
+    if (event.type === "windows") return;
+    const native = this.appNative(event.sessionId);
+    if (!native) return;
+    if (event.type === "closed") {
+      void this.endNativeWindow(native);
+      return;
+    }
+    const sessionId = this.nativeSessionId(native);
+    if (!sessionId) return;
+    // The app never echoes `/phone/draft` text, so this is the desk typing.
+    native.deskInput = event.text;
+    native.typer.observe(event.text);
+    this.send(this.setDraft(sessionId, event.text, DESK_DRAFT_FROM));
+  }
+
+  /** The app came or went: re-announce, and a gone app ends every app mirror. */
+  private appAvailabilityChanged(available: boolean) {
+    if (!available) {
+      for (const session of [...this.sessions.values()])
+        if (session.native?.kind === "app") void this.endNativeWindow(session.native);
+    }
+    this.announceProviders();
+  }
+
+  /**
+   * Polls the app's window list: a window gone (closed while the event stream
+   * was down, or the app restarted) ends the mirror, and its `busy` is the
+   * backstop for turns, as the status row is for iTerm.
+   */
+  private watchAppWindow(native: NativeSession) {
+    let checking = false;
+    native.aliveTimer = setInterval(() => {
+      if (checking) return;
+      checking = true;
+      void (async () => {
+        const windows = await this.appDesk.client?.windows();
+        // Unknown (app slow) is not proof of a close; a gone app is handled by discovery.
+        if (!windows) return;
+        const window = windows.find((w) => w.sessionId === native.appSessionId);
+        if (!window) return this.endNativeWindow(native);
+        const sessionId = this.nativeSessionId(native);
+        const session = sessionId ? this.sessions.get(sessionId) : undefined;
+        if (session)
+          this.applyNativeStatus(session, native, {
+            status: window.busy ? "busy" : "idle",
+            input: native.deskInput ?? "",
+          });
+      })()
+        .catch(() => {})
+        .finally(() => {
+          checking = false;
+        });
+    }, this.nativeOptions.alivePollMs ?? NATIVE_ALIVE_POLL_MS);
+    native.aliveTimer.unref?.();
+  }
+
+  /** The window went: the agent's last words reach the phone, then the mirror lets go. */
+  private async endNativeWindow(native: NativeSession) {
+    if (!this.nativeSessionId(native)) return;
+    await native.mirror.kick().catch(() => {});
+    // Looked up again: a reopen may have re-keyed it meanwhile.
+    const sessionId = this.nativeSessionId(native);
+    const session = sessionId ? this.sessions.get(sessionId) : undefined;
+    if (!sessionId || !session) return;
+    if (session.working) this.nativeTurnEnd(session);
+    this.closeSession(sessionId, session);
+    this.announceProviders();
   }
 
   /**
@@ -1485,6 +1725,7 @@ export class Daemon extends DaemonConnectSession {
     configId: string,
     value: string | boolean,
   ) {
+    if (native.kind === "app") throw new Error(APP_CONFIG_REFUSAL);
     const option = native.configOptions.find((o) => o.id === configId);
     if (!option) throw new Error(`Unknown option '${configId}'`);
     if (option.category !== "model" && option.category !== "thought_level")
@@ -1706,11 +1947,14 @@ export class Daemon extends DaemonConnectSession {
     const sessionId = session.log.sessionId;
     session.lastUsedAt = Date.now();
     const stored = await storeAttachments(sessionId, attachments);
+    const app = native.kind === "app";
     // The window can only take text, so files are named by path (OG Coder
     // reads a path it is given, and turns an image path into an attachment).
-    const typed = typeable(
-      [text, ...stored.map((file) => file.path)].filter((part) => part.length > 0).join(" "),
-    );
+    const whole = [text, ...stored.map((file) => file.path)]
+      .filter((part) => part.length > 0)
+      .join(" ");
+    // The app takes text whole, line breaks and all; a terminal takes one line.
+    const typed = app ? whole : typeable(whole);
     // Echoed now, as an ACP prompt is, so every client shows it at once; the
     // copy OG Coder writes to its file is then recognised and not repeated.
     this.send(
@@ -1726,13 +1970,13 @@ export class Daemon extends DaemonConnectSession {
         }),
       }),
     );
-    native.mirror.expectEcho(typeable(text));
+    native.mirror.expectEcho(app ? text : typeable(text));
     this.nativeTurnStart(session);
     const ok = await native.typer.prompt(typed);
     if (!ok) {
       this.nativeTurnEnd(session);
       throw new Error(
-        "The OG Coder window on the computer didn't take the message. Is it still open?",
+        `The ${app ? "GG Coder app" : "OG Coder"} window on the computer didn't take the message. Is it still open?`,
       );
     }
   }
@@ -1954,6 +2198,7 @@ export class Daemon extends DaemonConnectSession {
 
   closeAll() {
     this.voiceController?.stop();
+    this.appDesk.stop();
     if (this.chatWindowTimer) clearInterval(this.chatWindowTimer);
     this.chatWindowTimer = undefined;
     // The assertion must never outlive the daemon's sessions.
@@ -1983,6 +2228,10 @@ export class Daemon extends DaemonConnectSession {
 /** Said when the phone changes a selector OG Coder can't be driven to from outside. */
 export const NATIVE_CONFIG_REFUSAL =
   "OG Coder switches plan mode itself, when it decides to plan (ask it to make a plan). It can't be switched from the phone.";
+
+/** Said when the phone changes a selector on a conversation open in the GG Coder app. */
+export const APP_CONFIG_REFUSAL =
+  "The GG Coder app's model and thinking are set in its window. Change them there.";
 
 const NATIVE_WINDOW_GONE = "The OG Coder window didn't take it. Is it still open?";
 

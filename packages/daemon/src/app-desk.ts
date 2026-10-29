@@ -10,6 +10,7 @@
  * API: the app writes the same `.jsonl` as OG Coder, so `GgCoderMirror` reads
  * them back exactly as it does for an iTerm window.
  */
+import type { wire } from "@pew2/protocol";
 import { readFile } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { homedir } from "node:os";
@@ -50,7 +51,17 @@ export interface AppWindowInfo {
   plan?: AppPlan | null;
   /** The window is in plan mode (v1.1). */
   planMode?: boolean;
+  /** The window's open questions, oldest first (v1.2); undefined from an older app. */
+  asks?: AppAsk[];
 }
+
+/** One open `ask_user` card in an app window: the tool's own question payload. */
+export interface AppAsk {
+  id: string;
+  questions: unknown[];
+}
+
+export type AppAskAnswers = Record<string, string | string[]>;
 
 /** A submitted plan waiting for Accept / Feedback / Reject in an app window. */
 export interface AppPlan {
@@ -65,7 +76,9 @@ export type AppEvent =
   | { type: "draft"; sessionId: string; text: string }
   | { type: "windows" }
   | { type: "closed"; sessionId: string }
-  | { type: "plan"; sessionId: string; plan: AppPlan | null };
+  | { type: "plan"; sessionId: string; plan: AppPlan | null }
+  | { type: "ask"; sessionId: string; ask: AppAsk }
+  | { type: "ask_closed"; sessionId: string; ids: string[] };
 
 export type AppResult<T> = { ok: true; value: T } | { ok: false; status?: number; message: string };
 
@@ -117,6 +130,61 @@ function parsePlan(raw: unknown): AppPlan | null | undefined {
   return { planPath: plan.planPath, content: plan.content, generation: plan.generation };
 }
 
+const ASK_KINDS = new Set(["choice", "multi", "confirm", "text"]);
+const str = (value: unknown) => (typeof value === "string" ? value : undefined);
+
+/**
+ * The app's `ask_user` questions as the wire's `AskQuestion`, field by field:
+ * the shape is the tool's own, so this only drops what isn't one (a question
+ * with no id/text, an unknown kind, an option with no label) and stray fields.
+ */
+export function appAskQuestions(raw: unknown[]): wire.AskQuestion[] {
+  return raw.flatMap((item): wire.AskQuestion[] => {
+    if (!item || typeof item !== "object") return [];
+    const q = item as Record<string, unknown>;
+    const id = str(q.id);
+    const question = str(q.question);
+    const kind = str(q.kind);
+    if (id === undefined || question === undefined || !kind || !ASK_KINDS.has(kind)) return [];
+    const options = Array.isArray(q.options)
+      ? q.options.flatMap((o): wire.AskOption[] => {
+          if (!o || typeof o !== "object") return [];
+          const option = o as Record<string, unknown>;
+          const label = str(option.label);
+          if (label === undefined) return [];
+          const value = str(option.value);
+          const hint = str(option.hint);
+          return [
+            {
+              label,
+              ...(value !== undefined && { value }),
+              ...(hint !== undefined && { hint }),
+              ...(typeof option.recommended === "boolean" && { recommended: option.recommended }),
+            },
+          ];
+        })
+      : undefined;
+    const detail = str(q.detail);
+    return [
+      {
+        id,
+        question,
+        kind: kind as wire.AskQuestion["kind"],
+        ...(detail !== undefined && { detail }),
+        ...(options && { options }),
+        ...(typeof q.allowOther === "boolean" && { allowOther: q.allowOther }),
+      },
+    ];
+  });
+}
+
+function parseAsk(raw: unknown): AppAsk | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const ask = raw as Record<string, unknown>;
+  if (typeof ask.id !== "string" || !Array.isArray(ask.questions)) return undefined;
+  return { id: ask.id, questions: ask.questions };
+}
+
 function parseEvent(raw: unknown): AppEvent | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const event = raw as Record<string, unknown>;
@@ -129,6 +197,16 @@ function parseEvent(raw: unknown): AppEvent | undefined {
     const plan = parsePlan(event.plan ?? null);
     return plan === undefined ? undefined : { type: "plan", sessionId: event.sessionId, plan };
   }
+  if (event.type === "ask") {
+    const ask = parseAsk(event.ask);
+    return ask && { type: "ask", sessionId: event.sessionId, ask };
+  }
+  if (event.type === "ask_closed" && Array.isArray(event.ids))
+    return {
+      type: "ask_closed",
+      sessionId: event.sessionId,
+      ids: event.ids.filter((id): id is string => typeof id === "string"),
+    };
   return undefined;
 }
 
@@ -137,6 +215,12 @@ function parseWindow(raw: unknown): AppWindowInfo | undefined {
   const w = raw as Record<string, unknown>;
   if (typeof w.sessionId !== "string" || typeof w.cwd !== "string") return undefined;
   const plan = "plan" in w ? parsePlan(w.plan) : undefined;
+  const asks = Array.isArray(w.asks)
+    ? w.asks.flatMap((a) => {
+        const ask = parseAsk(a);
+        return ask ? [ask] : [];
+      })
+    : undefined;
   return {
     sessionId: w.sessionId,
     cwd: w.cwd,
@@ -147,6 +231,7 @@ function parseWindow(raw: unknown): AppWindowInfo | undefined {
     focused: w.focused === true,
     ...(plan !== undefined && { plan }),
     ...(typeof w.planMode === "boolean" && { planMode: w.planMode }),
+    ...(asks && { asks }),
   };
 }
 
@@ -271,6 +356,25 @@ export class AppClient {
         agentSessionId: typeof value.agentSessionId === "string" ? value.agentSessionId : null,
       },
     };
+  }
+
+  /**
+   * Answer (or cancel) the window's open question, as its own card does. 409
+   * when it is no longer open (settled in the window, or gone).
+   */
+  async ask(
+    sessionId: string,
+    id: string,
+    action: "answer" | "cancel",
+    answers?: AppAskAnswers,
+  ): Promise<AppResult<true>> {
+    const result = await this.request("ask", {
+      sessionId,
+      id,
+      action,
+      ...(answers !== undefined && { answers }),
+    });
+    return result.ok ? { ok: true, value: true } : result;
   }
 
   close(sessionId: string): Promise<boolean> {

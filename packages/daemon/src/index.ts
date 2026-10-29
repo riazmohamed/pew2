@@ -55,7 +55,9 @@ import {
   appPhoneFile,
   type AppDeskOptions,
   type AppEvent,
+  type AppAsk,
   type AppPlan,
+  appAskQuestions,
   type AppPlanDecision,
   type AppWindowInfo,
 } from "./app-desk.js";
@@ -1669,10 +1671,75 @@ export class Daemon extends DaemonConnectSession {
     this.send(state);
   }
 
-  /** One `/phone/windows` entry applied to its mirror: plan, then the conversation it shows. */
+  /**
+   * A question opened in an app window: held and logged exactly as pew2's own
+   * GG Coder sessions do (`onAskUser`), so the phone's card works unchanged.
+   */
+  private openAppAsk(native: NativeSession, ask: AppAsk) {
+    const found = this.appSession(native);
+    if (!found || found.session.asks?.has(ask.id)) return;
+    const { sessionId, session } = found;
+    const questions = appAskQuestions(ask.questions);
+    (session.asks ??= new Map()).set(ask.id, questions);
+    session.lastUsedAt = Date.now();
+    this.record(session, { kind: "ask_user", requestId: ask.id, questions });
+    this.notifyPhones(sessionId, "question", questions[0]?.question);
+  }
+
+  private closeAppAsks(native: NativeSession, ids: string[]) {
+    const session = this.appSession(native)?.session;
+    if (session) for (const id of ids) this.closeAsk(session, id);
+  }
+
+  /** The window's full list of open questions: new ones open, missing ones close. */
+  private syncAppAsks(native: NativeSession, asks: AppAsk[]) {
+    const session = this.appSession(native)?.session;
+    if (!session) return;
+    const open = new Set(asks.map((a) => a.id));
+    this.closeAppAsks(
+      native,
+      [...(session.asks?.keys() ?? [])].filter((id) => !open.has(id)),
+    );
+    for (const ask of asks) this.openAppAsk(native, ask);
+  }
+
+  /**
+   * The phone answered an app window's question: the window's own card, over
+   * `/phone/ask`. A 409 means it was settled elsewhere: the card closes here too.
+   */
+  async answerAppAsk(
+    sessionId: string,
+    requestId: string,
+    result: AskAnswer,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    const session = this.sessions.get(sessionId);
+    const native = session?.native;
+    const client = this.appDesk.client;
+    if (!session || native?.kind !== "app" || !native.appSessionId)
+      return { ok: false, message: "That conversation isn't open in the GG Coder app." };
+    if (!client) return { ok: false, message: "The GG Coder app isn't available on the computer." };
+    const answered = await client.ask(
+      native.appSessionId,
+      requestId,
+      result.action,
+      result.action === "answer" ? result.answers : undefined,
+    );
+    if (!answered.ok) {
+      if (answered.status === 409) {
+        this.closeAsk(session, requestId);
+        return { ok: false, message: "That question was already answered in the GG Coder app." };
+      }
+      return { ok: false, message: `The GG Coder app didn't take the answer: ${answered.message}` };
+    }
+    this.closeAsk(session, requestId);
+    return { ok: true };
+  }
+
+  /** One `/phone/windows` entry applied to its mirror: plan, questions, then the conversation it shows. */
   private applyAppWindow(native: NativeSession, window: AppWindowInfo) {
     if (window.plan !== undefined || window.planMode !== undefined)
       this.applyAppPlan(native, window.plan ?? null, window.planMode);
+    if (window.asks) this.syncAppAsks(native, window.asks);
     if (window.agentSessionId) void this.repointApp(native, window.agentSessionId);
   }
 
@@ -1836,6 +1903,14 @@ export class Daemon extends DaemonConnectSession {
     }
     if (event.type === "plan") {
       this.applyAppPlan(native, event.plan);
+      return;
+    }
+    if (event.type === "ask") {
+      this.openAppAsk(native, event.ask);
+      return;
+    }
+    if (event.type === "ask_closed") {
+      this.closeAppAsks(native, event.ids);
       return;
     }
     const sessionId = this.nativeSessionId(native);

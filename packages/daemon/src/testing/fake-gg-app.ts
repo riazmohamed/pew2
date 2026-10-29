@@ -18,6 +18,8 @@ export interface FakeWindow {
   /** v1.1: the plan waiting for a decision, and plan mode. */
   plan?: { planPath: string; content: string; generation: number } | null;
   planMode?: boolean;
+  /** v1.2: open ask_user questions, oldest first. */
+  asks?: { id: string; questions: unknown[] }[];
 }
 
 export interface FakeApp {
@@ -145,6 +147,11 @@ export async function startFakeApp(): Promise<FakeApp> {
           app.emit({ type: "windows" });
         }
         return json({ ok: true, agentSessionId: window.agentSessionId });
+      } else if (route === "ask") {
+        const open = window.asks?.find((a) => a.id === body.id);
+        if (!open) return json({ error: "no question is awaiting an answer" }, 409);
+        window.asks = window.asks?.filter((a) => a !== open);
+        app.emit({ type: "ask_closed", sessionId: window.sessionId, ids: [open.id] });
       } else if (route !== "abort") return json({ error: "not found" }, 404);
       return json({ ok: true });
     },

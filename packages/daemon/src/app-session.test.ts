@@ -438,3 +438,106 @@ test("a window that changes conversation by itself (windows event) is followed t
   await until(() => (daemon as any).sessions.get(id)?.agentSessionId === "by-itself", "followed");
   rig.done();
 });
+
+const ASK = {
+  id: "ask-1",
+  questions: [
+    {
+      id: "next",
+      question: "What should I do next?",
+      kind: "choice",
+      detail: "Pick one",
+      allowOther: false,
+      extra: "dropped",
+      options: [
+        { label: "Run tests", value: "tests", hint: "all of them", recommended: true },
+        { label: "Ship it" },
+        { nolabel: true },
+      ],
+    },
+    { id: "bad", question: "no kind" },
+  ],
+};
+const ASK_WIRE = [
+  {
+    id: "next",
+    question: "What should I do next?",
+    kind: "choice" as const,
+    detail: "Pick one",
+    allowOther: false,
+    options: [
+      { label: "Run tests", value: "tests", hint: "all of them", recommended: true },
+      { label: "Ship it" },
+    ],
+  },
+];
+
+test("an app window's question reaches the phone as ask_user, in catch-up, by event and by poll", async () => {
+  const rig = await openedApp();
+  const { app, sent, id, daemon } = rig;
+  app.emit({ type: "ask", sessionId: "win-1", ask: ASK });
+  await until(() => (daemon as any).sessions.get(id).asks?.has("ask-1"), "ask held");
+  expect(daemon.catchUp({ [id]: -1 }).find((f) => f.sessionId === id)?.asks).toEqual([
+    { requestId: "ask-1", questions: ASK_WIRE },
+  ]);
+  expect(JSON.stringify(sent)).toContain('"kind":"ask_user"');
+  // Answered at the desk.
+  app.emit({ type: "ask_closed", sessionId: "win-1", ids: ["ask-1"] });
+  await until(() => JSON.stringify(sent).includes("ask_user_closed"), "closed by event");
+  // The poll alone opens and closes one too.
+  app.windows[0]!.asks = [{ ...ASK, id: "ask-2" }];
+  await until(() => (daemon as any).sessions.get(id).asks?.has("ask-2"), "opened by poll");
+  app.windows[0]!.asks = [];
+  await until(() => (daemon as any).sessions.get(id).asks?.size === 0, "closed by poll");
+  rig.done();
+});
+
+test("session.ask on an app window drives /phone/ask; 409 closes the card with an error", async () => {
+  const rig = await openedApp();
+  const { app, replies, send, id, daemon } = rig;
+  app.windows[0]!.asks = [ASK];
+  await until(() => (daemon as any).sessions.get(id).asks?.has("ask-1"), "ask held");
+  const result = { action: "answer", answers: { next: "tests" } };
+  await send({ t: "session.ask", sessionId: id, requestId: "ask-1", result });
+  expect(app.calls.findLast((c) => c.route === "ask")?.body).toEqual({
+    sessionId: "win-1",
+    id: "ask-1",
+    action: "answer",
+    answers: { next: "tests" },
+  });
+  expect((daemon as any).sessions.get(id).asks.size).toBe(0);
+  expect(replies.filter((m) => m.t === "error")).toEqual([]);
+  // Settled in the window first: the phone's card still closes, with a word why.
+  (daemon as any).sessions.get(id).asks.set("ask-9", ASK_WIRE);
+  await send({ t: "session.ask", sessionId: id, requestId: "ask-9", result: { action: "cancel" } });
+  expect(app.calls.findLast((c) => c.route === "ask")?.body).toEqual({
+    sessionId: "win-1",
+    id: "ask-9",
+    action: "cancel",
+  });
+  expect(replies.at(-1)).toMatchObject({ t: "error", code: "ask", sessionId: id });
+  expect((daemon as any).sessions.get(id).asks.size).toBe(0);
+  rig.done();
+});
+
+test("session.ask on a pew2 session still goes to its own agent, not the app", async () => {
+  const rig = await appRig();
+  const { app, send, daemon } = rig;
+  const answers: unknown[] = [];
+  const session = (daemon as any).sessions.get("ggcoder-old");
+  session.handle.answerAsk = (requestId: string, result: unknown) => {
+    answers.push([requestId, result]);
+    return true;
+  };
+  session.asks = new Map([["q1", []]]);
+  await send({
+    t: "session.ask",
+    sessionId: "ggcoder-old",
+    requestId: "q1",
+    result: { action: "cancel" },
+  });
+  expect(answers).toEqual([["q1", { action: "cancel" }]]);
+  expect(session.asks.size).toBe(0);
+  expect(app.calls.some((c) => c.route === "ask")).toBe(false);
+  rig.done();
+});

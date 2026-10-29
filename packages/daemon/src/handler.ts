@@ -690,6 +690,14 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
       }
 
       case "session.ask": {
+        // A GG Coder app window: its own question card, over its control API.
+        if (daemon.isAppWindow(message.sessionId)) {
+          const { sessionId, requestId, result } = message;
+          const answered = await daemon.answerAppAsk(sessionId, requestId, result);
+          if (!answered.ok)
+            reply({ t: "error", code: "ask", message: answered.message, sessionId });
+          break;
+        }
         daemon.answerAsk(message.sessionId, message.requestId, message.result);
         break;
       }

@@ -90,3 +90,17 @@ export function goalDrawerRow(goal: GoalRowSource, lastActive: string) {
     meta: [word, lastActive].filter(Boolean).join(" · "),
   };
 }
+
+/**
+ * What "Decide later" remembers for a pending plan: the chat, the plan file and
+ * its generation. GG Coder numbers plans per window, so the generation alone
+ * matched another chat's plan and hid it (29 Oct).
+ */
+export function planDeferralKey(
+  sessionId: string | undefined,
+  pending: { planPath: string; generation: number } | null | undefined,
+): string | undefined {
+  return sessionId && pending
+    ? `${sessionId}:${pending.planPath}:${pending.generation}`
+    : undefined;
+}

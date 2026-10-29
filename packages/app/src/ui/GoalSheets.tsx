@@ -43,6 +43,8 @@ export function GoalSheets({
     setChecklistOpen,
     checklistHere,
     decidePlan,
+    planDeferred,
+    deferPlan,
     answerAsk,
     closeNewGoal,
     goalCreated,
@@ -96,6 +98,8 @@ export function GoalSheets({
         plan={stripsHere.plan ? (planHere?.pending ?? undefined) : undefined}
         busy={daemon.busy}
         onDecide={decidePlan}
+        deferred={planDeferred}
+        onDefer={deferPlan}
       />
       <ChecklistSheet
         visible={checklistOpen}

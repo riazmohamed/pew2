@@ -37,7 +37,7 @@ import type { Workspace } from "../useDaemon";
 import type { Dictation } from "./useDictation";
 import { Composer, type ComposerHandle, type ComposerSelector } from "./Composer";
 import { ContextBar } from "./ContextBar";
-import { PlanCard } from "./PlanCard";
+import { PlanCard, PlanWaitingPill } from "./PlanCard";
 import type { WorkProgress } from "../workProgress";
 import { changesAccessibilityLabel } from "../workspaceLabel";
 
@@ -78,6 +78,9 @@ interface Props {
   onChooseProject?: () => void;
   /** The plan and the newest steps of the work in progress, when there is any. */
   work?: WorkProgress;
+  /** A plan is waiting for a decision but its sheet was set aside: offer it again. */
+  planWaiting?: boolean;
+  onReviewPlan?: () => void;
   /**
    * Send the draft, answering whether it actually went.
    *
@@ -127,6 +130,8 @@ function ComposerDockView(
     onPreview,
     onChooseProject,
     work,
+    planWaiting,
+    onReviewPlan,
     onSend,
     busy,
     onStop,
@@ -221,6 +226,7 @@ function ComposerDockView(
           had arrived pushed the input down after the screen was drawn. */}
       {/* The plan and the steps streaming, while there is work to follow.
           Folded to one line while typing, so the draft keeps its room. */}
+      {planWaiting && onReviewPlan && !typing ? <PlanWaitingPill onPress={onReviewPlan} /> : null}
       {work && !typing ? <PlanCard work={work} /> : null}
       {!typing && (
         <ContextBar

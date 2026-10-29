@@ -47,8 +47,14 @@ function PlanReviewSheetView({
   plan,
   busy,
   onDecide,
+  deferred: deferredByParent,
+  onDefer,
 }: {
   plan?: PendingPlan;
+  /** "Decide later" was chosen for this plan (kept by the parent, per chat). */
+  deferred?: boolean;
+  /** "Decide later": the parent remembers it, so another chat's plan is not hidden. */
+  onDefer?: () => void;
   /** The daemon refuses `plan.decide` mid-turn, so every decision waits for idle. */
   busy: boolean;
   onDecide: (
@@ -80,12 +86,14 @@ function PlanReviewSheetView({
 
   return (
     <Sheet
-      visible={plan !== undefined && plan.generation !== deferred}
+      visible={
+        plan !== undefined && (onDefer ? deferredByParent !== true : plan.generation !== deferred)
+      }
       label="Plan ready"
       pewMood="happy"
       title={doc.title ?? "The plan"}
       dismissLabel="Decide later"
-      onClose={() => setDeferred(plan?.generation)}
+      onClose={() => (onDefer ? onDefer() : setDeferred(plan?.generation))}
     >
       <StageScroll
         style={styles.scroll}

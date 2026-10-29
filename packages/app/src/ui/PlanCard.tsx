@@ -121,6 +121,29 @@ function PlanCardView({ work }: { work: WorkProgress }) {
   );
 }
 
+/**
+ * A plan is waiting for the user's decision but its sheet was set aside
+ * ("Decide later", or Android back): one tap brings the Accept / Feedback /
+ * Reject sheet back, so a plan never waits with no way to answer it.
+ */
+export function PlanWaitingPill({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.card, styles.waiting, pressed && styles.pressed]}
+      hitSlop={touchSlop(theme.space(1))}
+      accessibilityRole="button"
+      accessibilityLabel="A plan is waiting for you. Review it"
+      onPress={onPress}
+    >
+      <Ionicons name="document-text-outline" size={14} color={theme.color.accent} />
+      <Text style={styles.waitingText} numberOfLines={1}>
+        Plan waiting for you
+      </Text>
+      <Text style={styles.waitingAction}>Review</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   card: {
     marginHorizontal: theme.space(3),
@@ -164,6 +187,15 @@ const styles = StyleSheet.create({
   entryNumber: { color: theme.color.textFaint, fontWeight: "400" },
   doneText: { color: theme.color.textDim, textDecorationLine: "line-through" },
   body: { maxHeight: 220 },
+  waiting: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.space(2),
+    paddingHorizontal: theme.space(3),
+    paddingVertical: theme.space(2),
+  },
+  waitingText: { flex: 1, color: theme.color.text, fontSize: theme.font.small, fontWeight: "600" },
+  waitingAction: { color: theme.color.accent, fontSize: theme.font.small, fontWeight: "700" },
   stepsAfterPlan: {
     marginTop: theme.space(1),
     paddingTop: theme.space(1),

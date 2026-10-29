@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { ggStrips, goalDrawerRow, isGoalsProvider, suggestGoalName } from "./goalsAgent";
+import {
+  ggStrips,
+  goalDrawerRow,
+  isGoalsProvider,
+  planDeferralKey,
+  suggestGoalName,
+} from "./goalsAgent";
 
 describe("ggStrips", () => {
   test("never shows autopilot/checklist/plan for gg-goals", () => {
@@ -60,4 +66,14 @@ describe("goalDrawerRow", () => {
   test("a running goal gets the busy dot", () => {
     expect(goalDrawerRow({ ...goal, status: "running" }, "just now").row.busy).toBe(true);
   });
+});
+
+test("Decide later is per chat and plan: another chat's plan with the same number still shows", () => {
+  const plan = { planPath: "/p/.gg/plans/check.md", generation: 1 };
+  expect(planDeferralKey("ggcoder-a", plan)).not.toBe(planDeferralKey("ggcoder-b", plan));
+  expect(planDeferralKey("ggcoder-a", plan)).not.toBe(
+    planDeferralKey("ggcoder-a", { ...plan, generation: 2 }),
+  );
+  expect(planDeferralKey(undefined, plan)).toBeUndefined();
+  expect(planDeferralKey("ggcoder-a", null)).toBeUndefined();
 });

@@ -1777,6 +1777,8 @@ export function Pew2({
                       onPreview={openPreview}
                       onChooseProject={pillChooses ? chooseProject : undefined}
                       work={work}
+                      planWaiting={goals.planDeferred}
+                      onReviewPlan={goals.reviewPlan}
                       onDraftChange={daemon.sendDraft}
                       selectors={composerSelectors}
                       onSend={send}

@@ -13,7 +13,7 @@ import {
   type SetStateAction,
 } from "react";
 import type { useDaemon } from "./useDaemon";
-import { ggStrips, isGoalsProvider } from "./goalsAgent";
+import { ggStrips, isGoalsProvider, planDeferralKey } from "./goalsAgent";
 import { goalForSession, type GoalSummary } from "./ggState";
 import { latestKenSaying, withoutKenLines } from "./kenLine";
 import { returnedDraft } from "./queue";
@@ -117,6 +117,18 @@ export function useGoalControls({
     },
     [openSessionId, decidePlanDaemon],
   );
+  // "Decide later" on the plan sheet, remembered per conversation AND plan
+  // generation. A sheet-local memory of the generation alone hid every later
+  // plan with the same number in any chat: GG Coder restarts its count per
+  // window, so a plan closed in pew2 chat hid the same chat's plan once it was
+  // open in the GG Coder app (29 Oct, "only one device sees the plan").
+  const [deferredPlanKey, setDeferredPlanKey] = useState<string | undefined>(undefined);
+  const pendingPlan = planHere?.pending ?? undefined;
+  const planKey = planDeferralKey(openSessionId, pendingPlan);
+  const planDeferred = planKey !== undefined && deferredPlanKey === planKey;
+  const deferPlan = useCallback(() => setDeferredPlanKey(planKey), [planKey]);
+  const reviewPlan = useCallback(() => setDeferredPlanKey(undefined), []);
+
   // Autopilot is a session setting, so a new GG Coder conversation has
   // nothing to set yet: a press there is remembered and applied the moment the
   // session exists, rather than showing a switch that does nothing.
@@ -234,6 +246,9 @@ export function useGoalControls({
     openChecklist,
     checklistHere,
     decidePlan,
+    planDeferred,
+    deferPlan,
+    reviewPlan,
     ggAgent,
     autopilotOffered,
     autopilotOn,

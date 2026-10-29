@@ -237,3 +237,58 @@ test("replays Ken's persisted Autopilot verdicts where they were written", async
     { kind: "autopilot", phase: "plan_accepted", reason: "solid" },
   ]);
 });
+
+test("mirrored tool steps read like the laptop: title with the command, kind, and output", async () => {
+  const { messageDisplayUpdates, toolTitle } = await import("./ggcoder-history");
+  const call = messageDisplayUpdates(
+    {
+      role: "assistant",
+      content: [
+        { type: "tool_call", id: "t1", name: "bash", args: { command: "npm   test\n  --silent" } },
+        { type: "tool_call", id: "t2", name: "read", args: { file_path: "src/a.ts" } },
+      ],
+    },
+    { tools: true },
+  );
+  expect(call).toEqual([
+    expect.objectContaining({
+      sessionUpdate: "tool_call",
+      toolCallId: "t1",
+      title: "bash(npm test --silent)",
+      name: "bash",
+      kind: "execute",
+    }),
+    expect.objectContaining({ toolCallId: "t2", title: "read(src/a.ts)", kind: "read" }),
+  ]);
+  const result = messageDisplayUpdates(
+    {
+      role: "tool",
+      content: [{ type: "tool_result", toolCallId: "t1", content: "Exit code: 0\n12 pass" }],
+    },
+    { tools: true },
+  );
+  expect(result).toEqual([
+    {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "t1",
+      status: "completed",
+      content: [{ type: "content", content: { type: "text", text: "Exit code: 0\n12 pass" } }],
+    },
+  ]);
+  expect(toolTitle("bash", { command: "x".repeat(200) }).length).toBeLessThanOrEqual(86);
+  expect(toolTitle("ls", {})).toBe("ls");
+});
+
+test("history hides GG Coder's [DONE:n] markers; the live mirror keeps them for the plan", async () => {
+  const { messageDisplayUpdates } = await import("./ggcoder-history");
+  const message = {
+    role: "assistant",
+    content: [{ type: "text", text: "Steps done.\n\n[DONE:1]\n[DONE:2]\n\nTests pass. [DONE:5]" }],
+  };
+  const shown = messageDisplayUpdates(message)[0] as { content: { text: string } };
+  expect(shown.content.text).toBe("Steps done.\n\nTests pass.");
+  const live = messageDisplayUpdates(message, { tools: true, keepDoneMarkers: true })[0] as {
+    content: { text: string };
+  };
+  expect(live.content.text).toContain("[DONE:5]");
+});

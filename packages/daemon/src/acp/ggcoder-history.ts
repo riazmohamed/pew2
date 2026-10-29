@@ -563,7 +563,16 @@ export function messageDisplayUpdates(
     content: unknown;
     provenance?: { kind?: string; visibility?: "transcript" | "hidden" | "summary" };
   },
-  options: { tools?: boolean; assetDirs?: string[] } = {},
+  options: {
+    tools?: boolean;
+    assetDirs?: string[];
+    /**
+     * Keep GG Coder's `[DONE:n]` plan-step markers in agent text. Only the
+     * live mirror wants them (it ticks the plan's steps off and strips them
+     * itself); everywhere else they are hidden, as GG Coder hides them.
+     */
+    keepDoneMarkers?: boolean;
+  } = {},
 ): Record<string, unknown>[] {
   const resolveData = options.assetDirs?.length ? assetResolver(options.assetDirs) : undefined;
   // ACP updates only: Ken's markers are placed by the history loop around these.
@@ -579,10 +588,16 @@ export function messageDisplayUpdates(
         isError?: unknown;
       }[]) {
         if (block?.type === "tool_result" && typeof block.toolCallId === "string") {
+          // The output too, as GG Coder's own ACP sends it, so the phone shows
+          // what the step did, not just that it finished (29 Oct).
+          const output = clipToolOutput(messageText((block as { content?: unknown }).content));
           updates.push({
             sessionUpdate: "tool_call_update",
             toolCallId: block.toolCallId,
             status: block.isError === true ? "failed" : "completed",
+            ...(output && {
+              content: [{ type: "content", content: { type: "text", text: output } }],
+            }),
           });
         }
       }
@@ -616,7 +631,8 @@ export function messageDisplayUpdates(
         content: { type: "text", text: thought },
       });
     }
-    const text = messageText(message.content);
+    const said = messageText(message.content);
+    const text = options.keepDoneMarkers ? said : stripPlanMarkers(said);
     const images = historyImages(message.content, resolveData);
     if (text || images.length > 0) {
       updates.push({
@@ -632,10 +648,19 @@ export function messageDisplayUpdates(
         args?: unknown;
       }[]) {
         if (block?.type === "tool_call" && typeof block.id === "string") {
+          const name = typeof block.name === "string" ? block.name : "tool";
+          const args =
+            block.args && typeof block.args === "object"
+              ? (block.args as Record<string, unknown>)
+              : {};
+          // The same title and kind GG Coder's ACP gives a tool ("bash(npm
+          // test)", not "bash"), so a mirrored window reads like the laptop.
           updates.push({
             sessionUpdate: "tool_call",
             toolCallId: block.id,
-            title: typeof block.name === "string" ? block.name : "tool",
+            title: toolTitle(name, args),
+            name,
+            kind: TOOL_KINDS[name] ?? "other",
             status: "in_progress",
             rawInput: block.args,
           });
@@ -644,6 +669,61 @@ export function messageDisplayUpdates(
     }
   }
   return updates;
+}
+
+/** Agent text without GG Coder's `[DONE:n]` step markers (ggcoder utils/plan-steps.ts). */
+function stripPlanMarkers(text: string): string {
+  if (!text.includes("[DONE:")) return text;
+  return text
+    .replace(/\[DONE:\d+\]/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/ {2,}/g, " ")
+    .trim();
+}
+
+/** GG Coder tool name -> ACP ToolKind (ggcoder modes/acp-mode.ts TOOL_KINDS). */
+const TOOL_KINDS: Record<string, string> = {
+  read: "read",
+  ls: "read",
+  find: "read",
+  grep: "search",
+  web_search: "search",
+  edit: "edit",
+  write: "edit",
+  bash: "execute",
+  screenshot: "execute",
+  web_fetch: "fetch",
+  source_path: "fetch",
+  subagent: "think",
+  spawn_agent: "think",
+  enter_plan: "switch_mode",
+  exit_plan: "switch_mode",
+};
+
+/**
+ * A one-line tool title, as GG Coder's ACP builds it (acp-mode.ts toolTitle):
+ * the tool and its first string argument (the command, path or query),
+ * clipped for a phone.
+ */
+export function toolTitle(name: string, args: Record<string, unknown>): string {
+  for (const value of Object.values(args)) {
+    if (typeof value !== "string" || value.length === 0) continue;
+    const flat = value.replace(/\s+/g, " ").trim();
+    const clipped = flat.length > 80 ? `${flat.slice(0, 79)}…` : flat;
+    return `${name}(${clipped})`;
+  }
+  return name;
+}
+
+/** Tool output kept for the phone: enough to read, not a whole build log. */
+const TOOL_OUTPUT_MAX = 16_000;
+
+function clipToolOutput(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length > TOOL_OUTPUT_MAX
+    ? `${trimmed.slice(0, TOOL_OUTPUT_MAX)}\n… (${trimmed.length - TOOL_OUTPUT_MAX} more characters)`
+    : trimmed;
 }
 
 /** Whether a stored message is shown in a transcript at all. */

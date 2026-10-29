@@ -105,6 +105,13 @@ export {
   type PromptOutcome,
   type ProviderCapabilities,
 } from "./daemon/types.js";
+import {
+  PLAN_APPROVED_PROMPT,
+  loadApprovedPlan,
+  planUpdate,
+  recoverApprovedPlan,
+  trackPlanUpdate,
+} from "./app-plan.js";
 
 /** Test seams for the native window path. */
 export interface NativeOptions extends Partial<NativeDeskDeps> {
@@ -1526,6 +1533,7 @@ export class Daemon extends DaemonConnectSession {
     native.mirror.start();
     if (native.kind === "app") {
       this.watchAppWindow(native);
+      void this.recoverAppPlan(mirrorSession).catch(() => {});
       // A plan already waiting in the window reaches the phone now, not at the first poll.
       void this.syncAppWindows().catch(() => {});
       return { ok: true, app: APP_NAME };
@@ -1549,11 +1557,26 @@ export class Daemon extends DaemonConnectSession {
       callbacks: {
         onUpdate: (update) => {
           const session = target();
-          if (session) this.record(session, { sessionId: agentSessionId, update });
+          if (!session) return;
+          // `[DONE:n]` ticks an approved plan's step off, and is never shown,
+          // as in the window (none known yet: only hidden).
+          const plan = session.native?.approvedPlan ?? {
+            planPath: "",
+            steps: [],
+            done: new Set<number>(),
+          };
+          const tracked = trackPlanUpdate(plan, update as Record<string, unknown>);
+          this.record(session, { sessionId: agentSessionId, update: tracked.update as never });
+          if (tracked.changed) this.recordAppPlan(session);
         },
         onUserMessage: (text) => {
           const session = target();
-          if (session) this.record(session, { kind: "user_message", text });
+          if (!session) return;
+          this.record(session, { kind: "user_message", text });
+          // The window accepted a plan (from the phone or at the desk): its
+          // steps start following the agent.
+          if (session.native?.kind === "app" && text.trim().startsWith(PLAN_APPROVED_PROMPT))
+            void this.startAppPlan(session).catch(() => {});
         },
         onTurnStart: () => {
           const session = target();
@@ -1576,6 +1599,52 @@ export class Daemon extends DaemonConnectSession {
     return sessionId && session ? { sessionId, session } : undefined;
   }
 
+  /** The approved plan's progress to the phone, as pew2's own sessions send it. */
+  private recordAppPlan(session: ActiveSession) {
+    const plan = session.native?.approvedPlan;
+    if (!plan) return;
+    this.record(session, { sessionId: session.agentSessionId, update: planUpdate(plan) as never });
+  }
+
+  /** A plan was accepted in the window: its steps, from the plan last seen waiting. */
+  private async startAppPlan(session: ActiveSession) {
+    const native = session.native;
+    if (!native) return;
+    const pending = native.lastPendingPlan;
+    const plan = pending
+      ? ((await loadApprovedPlan(pending.planPath)) ??
+        (await loadApprovedPlan(pending.planPath, pending.content)))
+      : await recoverApprovedPlan(session.cwd, "");
+    if (!plan) return;
+    native.approvedPlan = plan;
+    native.lastPendingPlan = undefined;
+    this.recordAppPlan(session);
+  }
+
+  /** A conversation already under way on an approved plan (pew2 restarted, linked late). */
+  private async recoverAppPlan(session: ActiveSession) {
+    const native = session.native;
+    if (native?.kind !== "app" || native.approvedPlan || !session.agentSessionId) return;
+    const directory = path.join(
+      this.nativeOptions.sessionsRoot ?? path.join(homedir(), ".gg", "sessions"),
+      encodeCwd(session.cwd),
+    );
+    const found = await findConversationFile(directory, {
+      agentSessionId: session.agentSessionId,
+    }).catch(() => undefined);
+    if (!found) return;
+    const plan = await recoverApprovedPlan(
+      session.cwd,
+      found.file,
+      async (id) =>
+        (await findConversationFile(directory, { agentSessionId: id }).catch(() => undefined))
+          ?.file,
+    );
+    if (!plan || native.approvedPlan) return;
+    native.approvedPlan = plan;
+    this.recordAppPlan(session);
+  }
+
   /**
    * An app window's plan, as the same `plan.state` pew2's own GG Coder
    * sessions send, so the phone's plan sheet works unchanged. Sent only on a
@@ -1585,6 +1654,7 @@ export class Daemon extends DaemonConnectSession {
     const found = this.appSession(native);
     if (!found) return;
     const { sessionId, session } = found;
+    if (plan) native.lastPendingPlan = { planPath: plan.planPath, content: plan.content };
     const state: wire.PlanState = {
       t: "plan.state",
       sessionId,
@@ -1644,10 +1714,14 @@ export class Daemon extends DaemonConnectSession {
       native.mirror.stop();
       native.mirror = mirror;
       session.agentSessionId = agentSessionId;
+      // A new conversation: its plan (if any) comes from its own accept.
+      native.approvedPlan = undefined;
       // The divider pew2's own sessions show; only where plan mode was ever seen.
       if (session.plan) this.record(session, { kind: "plan_accepted" });
       mirror.start();
       this.announceProviders();
+      // The accept prompt may already be in the file, before the baseline.
+      void this.recoverAppPlan(session).catch(() => {});
     } finally {
       if (native.repointing === agentSessionId) native.repointing = undefined;
     }

@@ -568,6 +568,7 @@ export class GgCoderMirror {
     if (!isTranscriptMessage(message)) return;
     const updates = messageDisplayUpdates(message, {
       tools: true,
+      keepDoneMarkers: true,
       ...(this.file && { assetDirs: [assetDirFor(this.file)] }),
     });
     if (message.role === "user") {

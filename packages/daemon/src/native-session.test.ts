@@ -91,11 +91,20 @@ test("the mirror emits only what is appended after the baseline, as history rend
     {
       sessionUpdate: "tool_call",
       toolCallId: "t1",
-      title: "ls",
+      // GG Coder's own ACP title: the tool and its first argument.
+      title: "ls(.)",
+      name: "ls",
+      kind: "read",
       status: "in_progress",
       rawInput: { path: "." },
     },
-    { sessionUpdate: "tool_call_update", toolCallId: "t1", status: "completed" },
+    {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "t1",
+      status: "completed",
+      // The output reaches the phone, as on the laptop.
+      content: [{ type: "content", content: { type: "text", text: "a b" } }],
+    },
     { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Done" } },
     "end",
     // The phone's own prompt is recognised, not shown twice.

@@ -22,6 +22,7 @@ import type { StoredAttachment } from "../attachments.js";
 import type { AgentProject } from "../projects.js";
 import { SESSION_HISTORY_LIMIT } from "../session-history.js";
 import type { wire } from "@pew2/protocol";
+import type { ApprovedPlan } from "../app-plan.js";
 
 export interface ActiveSession {
   handle?: AcpSessionHandle;
@@ -166,6 +167,13 @@ export interface NativeSession {
   statusRun?: { status: "busy" | "idle"; count: number };
   /** An app window's new conversation being followed (`repointApp`), while it is. */
   repointing?: string;
+  /**
+   * The plan accepted in an app window, with the steps its agent has marked
+   * `[DONE:n]`, sent to the phone as ACP `plan` updates (`app-plan.ts`).
+   */
+  approvedPlan?: ApprovedPlan;
+  /** The plan last seen waiting in the window: the one an accept approves. */
+  lastPendingPlan?: { planPath: string; content: string };
 }
 
 /** One queued message. `storing` writes its attachments; awaited when it is sent. */

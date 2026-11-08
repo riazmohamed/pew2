@@ -65,6 +65,7 @@ import {
 } from "./daemonState";
 import { useImageCache } from "./useImageCache";
 import { openConnection } from "./daemonConnection";
+import { shareInFlight } from "./inFlight";
 import { createActions, deliverPrompt as deliverPromptVia } from "./daemonActions";
 export type { PushAddress, TurnFinished } from "./daemonState";
 
@@ -216,6 +217,8 @@ export function useDaemon(
   // keystroke-rate frames, never state.
   const captureReplies = useRef(new Map<string, (result: CaptureResult) => void>());
   const deskReplies = useRef(new Map<string, (result: DeskResult) => void>());
+  /** Open/close asks still waiting, so a repeat tap shares them (`inFlight.ts`). */
+  const deskInFlight = useRef(new Map<string, Promise<DeskResult>>());
   const draftListener = useRef<((text: string) => void) | undefined>(undefined);
   const draftsEnabled = useRef<boolean | undefined>(undefined);
   // Highest `seq` seen per session.
@@ -652,62 +655,78 @@ export function useDaemon(
       openOnComputer: (
         target: DeskTarget = "chat",
         fresh?: { providerId?: string; cwd?: string },
-      ): Promise<DeskResult> => {
-        const requestId = id("desk");
-        // A native open is announced as a resumed session for the same
-        // conversation; expecting it like a reopen lets it take this screen.
-        const current = sessionRef.current;
-        const row =
-          target !== "chat" && current
-            ? sessionsRef.current.find((entry) => entry.id === current)
-            : undefined;
-        const expected = row?.agentSessionId ? restoreTarget(row) : undefined;
-        if (expected) {
-          restoring.current = expected;
-          awaitingResume.current = true;
-        }
-        // Undone if the window never opened.
-        const settle = (result: DeskResult) => {
-          if (expected && !result.ok && restoring.current === expected) {
-            restoring.current = undefined;
-            awaitingResume.current = false;
-          }
-          return result;
-        };
-        return ask<DeskResult>(
-          deskReplies.current,
-          requestId,
-          {
-            t: "desk.open",
-            requestId,
-            sessionId: current,
-            ...(target !== "chat" && { target }),
-            ...(!current &&
-              fresh?.providerId &&
-              fresh.cwd && { providerId: fresh.providerId, cwd: fresh.cwd }),
-            // iTerm's one-time permission prompt can hold the daemon ~12s.
+      ): Promise<DeskResult> =>
+        shareInFlight(
+          deskInFlight.current,
+          [
+            "open",
+            target,
+            sessionRef.current ?? "",
+            fresh?.providerId ?? "",
+            fresh?.cwd ?? "",
+          ].join("|"),
+          () => {
+            const requestId = id("desk");
+            // A native open is announced as a resumed session for the same
+            // conversation; expecting it like a reopen lets it take this screen.
+            const current = sessionRef.current;
+            const row =
+              target !== "chat" && current
+                ? sessionsRef.current.find((entry) => entry.id === current)
+                : undefined;
+            const expected = row?.agentSessionId ? restoreTarget(row) : undefined;
+            if (expected) {
+              restoring.current = expected;
+              awaitingResume.current = true;
+            }
+            // Undone if the window never opened.
+            const settle = (result: DeskResult) => {
+              if (expected && !result.ok && restoring.current === expected) {
+                restoring.current = undefined;
+                awaitingResume.current = false;
+              }
+              return result;
+            };
+            return ask<DeskResult>(
+              deskReplies.current,
+              requestId,
+              {
+                t: "desk.open",
+                requestId,
+                sessionId: current,
+                ...(target !== "chat" && { target }),
+                ...(!current &&
+                  fresh?.providerId &&
+                  fresh.cwd && { providerId: fresh.providerId, cwd: fresh.cwd }),
+                // iTerm's one-time permission prompt can hold the daemon ~12s.
+              },
+              20_000,
+              (message) => ({ ok: false, message }),
+              settle,
+            );
           },
-          20_000,
-          (message) => ({ ok: false, message }),
-          settle,
-        );
-      },
+        ),
       /** Close the window(s) pew2 opened on the computer for this conversation. */
-      closeOnComputer: (agentSessionId?: string): Promise<DeskResult> => {
-        const requestId = id("close");
-        return ask<DeskResult>(
-          deskReplies.current,
-          requestId,
-          {
-            t: "desk.close",
-            requestId,
-            ...(sessionRef.current && { sessionId: sessionRef.current }),
-            ...(agentSessionId && { agentSessionId }),
+      closeOnComputer: (agentSessionId?: string): Promise<DeskResult> =>
+        shareInFlight(
+          deskInFlight.current,
+          ["close", agentSessionId ?? "", sessionRef.current ?? ""].join("|"),
+          () => {
+            const requestId = id("close");
+            return ask<DeskResult>(
+              deskReplies.current,
+              requestId,
+              {
+                t: "desk.close",
+                requestId,
+                ...(sessionRef.current && { sessionId: sessionRef.current }),
+                ...(agentSessionId && { agentSessionId }),
+              },
+              20_000,
+              (message) => ({ ok: false, message }),
+            );
           },
-          20_000,
-          (message) => ({ ok: false, message }),
-        );
-      },
+        ),
       /** A picture of the computer's screen, taken now by the daemon (no agent turn). */
       captureComputer: (): Promise<CaptureResult> => {
         const requestId = id("shot");

@@ -7,7 +7,15 @@
  * anything, so reconnection is the feature under test here.
  */
 import { test, expect } from "bun:test";
-import { RelayClient, backoffBounds, type RelayClientOptions } from "./relay-client.js";
+import {
+  KEEPALIVE_REPLY,
+  RelayClient,
+  SILENT_MS,
+  WAKE_GAP_MS,
+  WATCHDOG_MS,
+  backoffBounds,
+  type RelayClientOptions,
+} from "./relay-client.js";
 import { SecureChannel, e2e, wire } from "@pew2/protocol";
 
 const { WIRE_VERSION } = wire;
@@ -687,4 +695,84 @@ test("no key configured: connects exactly as before", () => {
   relay.start();
   expect(FakeSocket.instances[0]!.headers).toEqual({});
   relay.stop();
+});
+
+test("a relay socket silent for a minute is replaced at once, without re-pairing", () => {
+  let now = 1_000_000;
+  const { relay } = client({ now: () => now });
+  relay.start();
+  const first = FakeSocket.instances[0]!;
+  first.open();
+  first.onmessage?.({ data: KEEPALIVE_REPLY });
+  // Healthy and talking: never replaced, however long it runs.
+  for (let i = 0; i < 30; i++) {
+    now += WATCHDOG_MS;
+    first.onmessage?.({ data: KEEPALIVE_REPLY });
+    relay.checkLiveness();
+  }
+  expect(FakeSocket.instances.length).toBe(1);
+  // Then nothing comes back.
+  for (let elapsed = 0; elapsed < SILENT_MS; elapsed += WATCHDOG_MS) {
+    expect(FakeSocket.instances.length).toBe(1);
+    now += WATCHDOG_MS;
+    relay.checkLiveness();
+  }
+  expect(FakeSocket.instances.length).toBe(2);
+  const second = FakeSocket.instances[1]!;
+  // Same room, same credentials: the phone needs no new pairing.
+  expect(second.url).toBe(first.url);
+  expect(first.readyState).toBe(3);
+  // The old socket's late close schedules nothing beside the new one.
+  first.onclose?.();
+  second.open();
+  expect(relay.online).toBe(true);
+  relay.stop();
+});
+
+test("silence is not judged until the relay has answered a keepalive", () => {
+  let now = 1_000_000;
+  const { relay } = client({ now: () => now });
+  relay.start();
+  FakeSocket.instances[0]!.open();
+  for (let i = 0; i < 60; i++) {
+    now += WATCHDOG_MS;
+    relay.checkLiveness();
+  }
+  expect(FakeSocket.instances.length).toBe(1);
+  relay.stop();
+});
+
+test("waking from sleep reconnects at once instead of waiting out the backoff", () => {
+  let now = 1_000_000;
+  const { relay } = client({ now: () => now });
+  relay.start();
+  // Several failures in a row: the next retry is up to 30 s away.
+  for (let i = 0; i < 6; i++) FakeSocket.instances.at(-1)!.close();
+  const before = FakeSocket.instances.length;
+  // An ordinary tick does nothing.
+  now += WATCHDOG_MS;
+  relay.checkLiveness();
+  expect(FakeSocket.instances.length).toBe(before);
+  // A tick that arrives minutes late is a wake.
+  now += 5 * 60_000;
+  relay.checkLiveness();
+  expect(FakeSocket.instances.length).toBe(before + 1);
+  relay.stop();
+});
+
+test("waking from sleep replaces a socket that still looks open", () => {
+  let now = 1_000_000;
+  const { relay } = client({ now: () => now });
+  relay.start();
+  const first = FakeSocket.instances[0]!;
+  first.open();
+  now += WAKE_GAP_MS;
+  relay.checkLiveness();
+  expect(FakeSocket.instances.length).toBe(2);
+  expect(first.onmessage).toBeNull();
+  relay.stop();
+  // Stopped: the watchdog does nothing more.
+  now += 10 * 60_000;
+  relay.checkLiveness();
+  expect(FakeSocket.instances.length).toBe(2);
 });

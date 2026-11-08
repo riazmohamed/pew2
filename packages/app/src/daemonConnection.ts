@@ -23,6 +23,7 @@ import {
 import type { DaemonRefs } from "./daemonContext";
 import { handleSealedFrame, type FrameRefs } from "./daemonFrame";
 import { refusalText } from "./fatalNotice";
+import { KEEPALIVE_REPLY, createHeartbeat, type Heartbeat } from "./heartbeat";
 
 const { WIRE_VERSION } = wire;
 
@@ -100,7 +101,13 @@ export function openConnection(
     streamGeneration.current += 1;
     setState((prev) => (prev.activeStream ? { ...prev, activeStream: undefined } : prev));
   };
-  streamBoundary.current = resetStream;
+  // Going to the background calls this (`setForeground` in `useDaemon`), after
+  // `streamForeground` already says so: the steady check stops there, so a
+  // backgrounded app holds no timer. `resume.current` starts it again.
+  streamBoundary.current = () => {
+    resetStream();
+    if (!streamForeground.current) current?.heartbeat.stop();
+  };
 
   // A different pairing deserves a fresh attempt: this effect re-runs when the
   // url changes, which is exactly when someone has scanned a new code.
@@ -120,6 +127,8 @@ export function openConnection(
         probe: () => void;
         /** Let this socket go and open the next one at once. */
         replace: (why: string) => void;
+        /** The steady check while on screen and connected. See `heartbeat.ts`. */
+        heartbeat: Heartbeat;
       }
     | undefined;
 
@@ -158,6 +167,7 @@ export function openConnection(
       connLog(`${why}: reconnecting now`);
       clearTimeout(deadline);
       clearTimeout(probe);
+      heartbeat.stop();
       ws.onopen = null;
       ws.onmessage = null;
       ws.onclose = null;
@@ -171,7 +181,24 @@ export function openConnection(
       connect();
     };
 
+    const heartbeat = createHeartbeat({
+      send: () => {
+        if (socket.current !== ws || ws.readyState !== WebSocket.OPEN) return false;
+        try {
+          ws.send(KEEPALIVE_FRAME);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      dead: (why) => replace(why),
+      now: Date.now,
+      setTimer: (callback, ms) => setTimeout(callback, ms),
+      clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    });
+
     current = {
+      heartbeat,
       startedAt: Date.now(),
       probe: () => {
         if (socket.current !== ws || probe !== undefined) return;
@@ -348,6 +375,9 @@ export function openConnection(
           proof: secure.proof(deviceId),
         }),
       );
+      // On screen only: a backgrounded app keeps no timer (Android has killed
+      // it for background CPU before).
+      if (streamForeground.current) heartbeat.start();
     };
 
     ws.onmessage = (event) => {
@@ -357,6 +387,7 @@ export function openConnection(
         probe = undefined;
       }
       let frame: unknown;
+      heartbeat.heard(event.data === KEEPALIVE_REPLY);
       try {
         frame = JSON.parse(event.data as string);
       } catch {
@@ -501,6 +532,7 @@ export function openConnection(
       clearTimeout(deadline);
       clearTimeout(probe);
       probe = undefined;
+      heartbeat.stop();
       connLog("closed");
       scheduleReconnect();
     };
@@ -532,6 +564,8 @@ export function openConnection(
     // a resume with nothing to correct does not re-render the tree.
     setState((s) => (s.unreachable ? { ...s, unreachable: false } : s));
     const ws = socket.current;
+    // Back on screen with a socket that is open: the steady check resumes.
+    if (ws?.readyState === WebSocket.OPEN) current?.heartbeat.start();
     const check = resumeCheck(ws?.readyState, Date.now() - (current?.startedAt ?? 0));
     connLog(`foreground: ${check}`);
     if (check === "wait") return;
@@ -556,6 +590,7 @@ export function openConnection(
     streamBoundary.current = undefined;
     alive.current = false;
     resume.current = undefined;
+    current?.heartbeat.stop();
     current = undefined;
     if (retry.current) clearTimeout(retry.current);
     const ws = socket.current;

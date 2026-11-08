@@ -7,6 +7,10 @@
  * this phone's width and sends a picture, refreshed on demand or every few
  * seconds while the sheet is open. Both start from the same list: what is
  * listening on the desktop right now.
+ *
+ * A daemon with ngrok adds a third: "Open anywhere" asks it for a private
+ * public link to the site, live with hot reload, from any network. Without
+ * that ability (or with an older daemon) the sheet is exactly as before.
  */
 import { memo, useEffect, useState } from "react";
 import {
@@ -23,7 +27,14 @@ import { Image } from "expo-image";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as WebBrowser from "expo-web-browser";
 import { theme } from "../theme";
-import { previewImageKey, previewUrl, rankServers, type PreviewServer } from "../preview";
+import {
+  previewImageKey,
+  previewUrl,
+  rankServers,
+  tunnelView,
+  type PreviewServer,
+  type TunnelMap,
+} from "../preview";
 import { SHEET_ROW_HEIGHT, Sheet, sheetCardStyle, useSheetMaxContentHeight } from "./Sheet";
 import { touchSlop } from "./controls";
 import type { ImageEntry } from "../useDaemon";
@@ -47,6 +58,10 @@ interface PreviewSheetProps {
    * offered whenever the desktop names a LAN address).
    */
   viaRelay?: boolean;
+  /** The daemon can open a private ngrok link. Absent: no "Open anywhere". */
+  tunnelOffered?: boolean;
+  tunnels?: TunnelMap;
+  onTunnel?: (port: number, action: "open" | "close") => void;
 }
 
 function PreviewSheetView({
@@ -57,6 +72,9 @@ function PreviewSheetView({
   onSnapshot,
   onClose,
   viaRelay = false,
+  tunnelOffered = false,
+  tunnels,
+  onTunnel,
 }: PreviewSheetProps) {
   const { width } = useWindowDimensions();
   const maxHeight = useSheetMaxContentHeight();
@@ -76,6 +94,10 @@ function PreviewSheetView({
   // can't probe plain http), so it gets a note instead of losing the button:
   // hiding it broke Open live at home for every relay-paired phone.
   const liveOffered = lanHosts.length > 0;
+  const anywhere = tunnelOffered && onTunnel !== undefined;
+  // The port whose link was just asked for: it opens in the browser as soon
+  // as the computer answers, so one tap is enough.
+  const [opening, setOpening] = useState<number | undefined>(undefined);
 
   // Closing forgets the pick: a server chosen last time may be gone by the
   // next open, and the list is the right place to land.
@@ -84,8 +106,35 @@ function PreviewSheetView({
       setSelected(undefined);
       setAuto(false);
       setLiveNote(undefined);
+      setOpening(undefined);
     }
   }, [visible]);
+
+  const browse = (url: string) =>
+    // Same chrome as a link tapped in the transcript.
+    void WebBrowser.openBrowserAsync(url, {
+      toolbarColor: theme.color.surface,
+      controlsColor: theme.color.accent,
+    });
+
+  useEffect(() => {
+    if (opening === undefined) return;
+    const entry = tunnels?.[opening];
+    if (entry?.status === "open" && entry.url) {
+      setOpening(undefined);
+      browse(entry.url);
+    } else if (entry?.status !== "starting") setOpening(undefined);
+  }, [opening, tunnels]);
+
+  const openAnywhere = (port: number) => {
+    const entry = tunnels?.[port];
+    if (entry?.status === "open" && entry.url) {
+      browse(entry.url);
+      return;
+    }
+    setOpening(port);
+    onTunnel?.(port, "open");
+  };
 
   // Auto-refresh only while the snapshot is on screen. `onSnapshot` itself
   // drops a request while one is still rendering, so a slow page never stacks
@@ -103,11 +152,7 @@ function PreviewSheetView({
       return;
     }
     setLiveNote(undefined);
-    // Same chrome as a link tapped in the transcript.
-    void WebBrowser.openBrowserAsync(url, {
-      toolbarColor: theme.color.surface,
-      controlsColor: theme.color.accent,
-    });
+    browse(url);
   };
 
   const snapshot = (port: number, retry = false) => {
@@ -150,7 +195,9 @@ function PreviewSheetView({
             {ranked.length > 0 && lanHosts.length > 0 && viaRelay && (
               <View style={[styles.row, styles.rowDivided]}>
                 <Text style={styles.description}>
-                  Open live works on the same Wi-Fi as your computer. Away from it, use a snapshot.
+                  {anywhere
+                    ? "Open live works on the same Wi-Fi as your computer. Away from it, use Open anywhere or a snapshot."
+                    : "Open live works on the same Wi-Fi as your computer. Away from it, use a snapshot."}
                 </Text>
               </View>
             )}
@@ -161,37 +208,68 @@ function PreviewSheetView({
                 </Text>
               </View>
             )}
-            {ranked.map((server, index) => (
-              <View
-                key={server.port}
-                style={[styles.site, index < ranked.length - 1 && styles.rowDivided]}
-              >
-                {/* Port and process on their own line, full width: beside the
+            {ranked.map((server, index) => {
+              const link = anywhere ? tunnelView(tunnels?.[server.port]) : undefined;
+              return (
+                <View
+                  key={server.port}
+                  style={[styles.site, index < ranked.length - 1 && styles.rowDivided]}
+                >
+                  {/* Port and process on their own line, full width: beside the
                     two buttons a phone had room for ":50…" and nothing else. */}
-                <Text style={styles.name} numberOfLines={1}>
-                  :{server.port}
-                  <Text style={styles.description}>{`  ${server.process}`}</Text>
-                </Text>
-                <View style={styles.actions}>
-                  {/* Live only when the desktop has a LAN address to name; the
+                  <Text style={styles.name} numberOfLines={1}>
+                    :{server.port}
+                    <Text style={styles.description}>{`  ${server.process}`}</Text>
+                  </Text>
+                  <View style={styles.actions}>
+                    {/* Live only when the desktop has a LAN address to name; the
                     snapshot works from anywhere the daemon does. */}
-                  {liveOffered && (
+                    {liveOffered && (
+                      <Action
+                        icon="globe-outline"
+                        label="Open live"
+                        accessibilityLabel={`Open port ${server.port} live in the browser`}
+                        onPress={() => open(server.port)}
+                      />
+                    )}
                     <Action
-                      icon="globe-outline"
-                      label="Open live"
-                      accessibilityLabel={`Open port ${server.port} live in the browser`}
-                      onPress={() => open(server.port)}
+                      icon="camera-outline"
+                      label="Snapshot"
+                      accessibilityLabel={`Render port ${server.port} as a picture`}
+                      onPress={() => snapshot(server.port)}
                     />
+                    {/* Live from any network, through a private ngrok link. */}
+                    {link && (
+                      <Action
+                        icon="earth-outline"
+                        label={link.label}
+                        busy={link.busy}
+                        accessibilityLabel={`Open port ${server.port} live from anywhere through a private link`}
+                        onPress={() => openAnywhere(server.port)}
+                      />
+                    )}
+                  </View>
+                  {link?.note && (
+                    <View style={styles.linkRow}>
+                      <Text
+                        style={[styles.description, styles.linkNote]}
+                        accessibilityLiveRegion="polite"
+                      >
+                        {link.note}
+                      </Text>
+                      {link.closable && (
+                        <Action
+                          icon="close"
+                          label="Close link"
+                          accessibilityLabel={`Close the private link to port ${server.port}`}
+                          onPress={() => onTunnel?.(server.port, "close")}
+                        />
+                      )}
+                    </View>
                   )}
-                  <Action
-                    icon="camera-outline"
-                    label="Snapshot"
-                    accessibilityLabel={`Render port ${server.port} as a picture`}
-                    onPress={() => snapshot(server.port)}
-                  />
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </ScrollView>
         ) : (
           <View>
@@ -260,21 +338,30 @@ function Action({
   label,
   accessibilityLabel,
   onPress,
+  busy = false,
 }: {
   icon: React.ComponentProps<typeof Ionicons>["name"];
   label: string;
   accessibilityLabel: string;
   onPress: () => void;
+  /** Waiting on the computer: disabled, with a spinner in place of the icon. */
+  busy?: boolean;
 }) {
   return (
     <Pressable
-      style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
+      style={({ pressed }) => [styles.action, (pressed || busy) && styles.actionPressed]}
       hitSlop={touchSlop(theme.space(2))}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled: busy, busy }}
+      disabled={busy}
       onPress={onPress}
     >
-      <Ionicons name={icon} size={16} color={theme.color.text} />
+      {busy ? (
+        <ActivityIndicator size="small" color={theme.color.textDim} />
+      ) : (
+        <Ionicons name={icon} size={16} color={theme.color.text} />
+      )}
       <Text style={styles.actionLabel}>{label}</Text>
     </Pressable>
   );
@@ -294,7 +381,9 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space(3),
     gap: theme.space(2),
   },
-  actions: { flexDirection: "row", gap: theme.space(2) },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: theme.space(2) },
+  linkRow: { flexDirection: "row", alignItems: "center", gap: theme.space(3) },
+  linkNote: { flex: 1, minWidth: 0 },
   rowDivided: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.color.border,

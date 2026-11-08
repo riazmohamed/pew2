@@ -86,3 +86,101 @@ export function rankServers(servers: readonly PreviewServer[]): PreviewServer[] 
     return aDev - bDev || a.port - b.port;
   });
 }
+
+/**
+ * One port's "Open live anywhere" link, as the sheet tracks it. `starting` and
+ * `closing` are the phone's own states while it waits; the rest come from the
+ * daemon's `preview.tunnel.state`. Mirrors `wire.PreviewTunnelState`.
+ */
+export interface TunnelEntry {
+  status: "starting" | "closing" | "open" | "closed" | "error";
+  /** First-visit address; carries the secret, so never shown on screen. */
+  url?: string;
+  /** Epoch ms it closes at if unused until then. */
+  idleCloseAt?: number;
+  message?: string;
+}
+
+export type TunnelMap = Record<number, TunnelEntry>;
+
+/** What the daemon said about one port's link. */
+export interface TunnelUpdate {
+  port: number;
+  status: "open" | "closed" | "error";
+  url?: string;
+  idleCloseAt?: number;
+  message?: string;
+}
+
+/** Fold a daemon update into the map. A plain close is forgotten; a close with a reason is kept to show it. */
+export function applyTunnelUpdate(map: TunnelMap | undefined, update: TunnelUpdate): TunnelMap {
+  const next: TunnelMap = { ...map };
+  if (update.status === "closed" && !update.message) {
+    delete next[update.port];
+    return next;
+  }
+  next[update.port] = {
+    status: update.status,
+    ...(update.url ? { url: update.url } : {}),
+    ...(update.idleCloseAt ? { idleCloseAt: update.idleCloseAt } : {}),
+    ...(update.message ? { message: update.message } : {}),
+  };
+  return next;
+}
+
+/**
+ * The map after a fresh `preview.servers`: the daemon's open links win, and a
+ * request still in flight on the phone is kept, since its answer is coming.
+ */
+export function mergeTunnelList(
+  previous: TunnelMap | undefined,
+  open: readonly TunnelUpdate[] | undefined,
+): TunnelMap {
+  const next: TunnelMap = {};
+  for (const [port, entry] of Object.entries(previous ?? {})) {
+    if (entry.status === "starting" || entry.status === "closing") next[Number(port)] = entry;
+  }
+  for (const update of open ?? []) {
+    if (update.status === "open") Object.assign(next, applyTunnelUpdate(next, update));
+  }
+  return next;
+}
+
+/** "14:05", the clock time a link closes, in the phone's own locale. */
+function clock(at: number): string {
+  const date = new Date(at);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+/** How the sheet shows one port's link: the button's label and the line under it. */
+export interface TunnelView {
+  label: string;
+  /** Waiting on the computer: the button is disabled and shows a spinner. */
+  busy: boolean;
+  /** A link is open and can be closed. */
+  closable: boolean;
+  note?: string;
+}
+
+export function tunnelView(entry: TunnelEntry | undefined): TunnelView {
+  switch (entry?.status) {
+    case "starting":
+      return { label: "Starting…", busy: true, closable: false, note: "Opening a private link…" };
+    case "closing":
+      return { label: "Closing…", busy: true, closable: false };
+    case "open":
+      return {
+        label: "Open anywhere",
+        busy: false,
+        closable: true,
+        note: entry.idleCloseAt
+          ? `Private link open. Closes at ${clock(entry.idleCloseAt)} if unused.`
+          : "Private link open.",
+      };
+    case "error":
+    case "closed":
+      return { label: "Open anywhere", busy: false, closable: false, note: entry.message };
+    default:
+      return { label: "Open anywhere", busy: false, closable: false };
+  }
+}

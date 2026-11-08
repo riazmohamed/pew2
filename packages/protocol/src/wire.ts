@@ -852,6 +852,13 @@ export const PreviewServers = z.object({
    */
   lanHosts: z.array(z.string()),
   servers: z.array(PreviewServer),
+  /**
+   * The daemon can open a private ngrok link to a site ("Open live anywhere").
+   * Sent only when ngrok is installed; absent means the sheet stays as before.
+   */
+  tunnel: z.boolean().optional(),
+  /** Links already open, so a reopened sheet shows them. */
+  tunnels: z.array(z.lazy(() => PreviewTunnelState)).optional(),
 });
 
 /**
@@ -872,6 +879,36 @@ export const PreviewSnapshotRequest = z.object({
   path: z.string().optional(),
   /** CSS viewport width in pixels; the phone's own width by default. */
   width: z.number().int().positive().optional(),
+});
+
+/**
+ * App -> daemon. Open or close a private public link to a local site.
+ *
+ * Only offered when `preview.servers` said `tunnel: true`. Like the snapshot
+ * it names a *port*: the daemon refuses one it does not see listening and only
+ * ever forwards to 127.0.0.1. Answered with `preview.tunnel.state`.
+ */
+export const PreviewTunnelRequest = z.object({
+  t: z.literal("preview.tunnel"),
+  requestId: z.string(),
+  port: z.number().int().positive(),
+  action: z.enum(["open", "close"]),
+});
+
+/**
+ * Daemon -> app. One port's link: open (with its URL, which carries the
+ * secret), closed (asked, idle, or ngrok stopped) or an error to show. Also
+ * broadcast without a `requestId` when a link closes on its own.
+ */
+export const PreviewTunnelState = z.object({
+  t: z.literal("preview.tunnel.state").optional(),
+  requestId: z.string().optional(),
+  port: z.number().int().positive(),
+  status: z.enum(["open", "closed", "error"]),
+  url: z.string().optional(),
+  /** Epoch ms it closes at if unused until then; moves on with each use. */
+  idleCloseAt: z.number().optional(),
+  message: z.string().optional(),
 });
 
 /**
@@ -1909,6 +1946,7 @@ export const ClientMessage = z.discriminatedUnion("t", [
   PushRegister,
   PreviewListRequest,
   PreviewSnapshotRequest,
+  PreviewTunnelRequest,
   DraftUpdate,
   KeepAwakeSet,
   DeskOpen,
@@ -1936,6 +1974,11 @@ export const ClientMessage = z.discriminatedUnion("t", [
   AppDiag,
 ]);
 
+/** `PreviewTunnelState` as its own frame, where the tag is required. */
+export const PreviewTunnelStateMessage = PreviewTunnelState.extend({
+  t: z.literal("preview.tunnel.state"),
+});
+
 export const ServerMessage = z.discriminatedUnion("t", [
   Ready,
   Envelope,
@@ -1950,6 +1993,7 @@ export const ServerMessage = z.discriminatedUnion("t", [
   Workspace,
   Workspaces,
   PreviewServers,
+  PreviewTunnelStateMessage,
   DeviceJoined,
   DraftUpdate,
   DeskOpened,
@@ -2058,6 +2102,8 @@ export type PreviewListRequest = z.output<typeof PreviewListRequest>;
 export type PreviewServer = z.output<typeof PreviewServer>;
 export type PreviewServers = z.output<typeof PreviewServers>;
 export type PreviewSnapshotRequest = z.output<typeof PreviewSnapshotRequest>;
+export type PreviewTunnelRequest = z.output<typeof PreviewTunnelRequest>;
+export type PreviewTunnelState = z.output<typeof PreviewTunnelState>;
 export type DraftUpdate = z.output<typeof DraftUpdate>;
 export type KeepAwakeSet = z.output<typeof KeepAwakeSet>;
 export type DeskOpen = z.output<typeof DeskOpen>;

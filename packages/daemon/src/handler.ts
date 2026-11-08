@@ -18,6 +18,7 @@ import { workspaceStatus } from "./git.js";
 import { folderName, resolveWorkspace } from "./workspace.js";
 import { suggestionRoots, discoverRepos, listDirectory } from "./workspaces.js";
 import { previewSites, previewablePorts, snapshot } from "./preview.js";
+import { tunnels } from "./tunnel.js";
 import { lanAddresses } from "./pairing.js";
 import { wire } from "@pew2/protocol";
 import { storeGoalFiles } from "./goalFiles";
@@ -599,7 +600,35 @@ export async function handleMessage(raw: string, ctx: HandlerContext): Promise<v
           // Only what serves a page; the snapshot below still accepts any
           // listener but pew2's own, so a page that answers slowly can be shot.
           servers: await previewSites(),
+          // Offered only with ngrok installed; an older app ignores both.
+          ...(tunnels.available() ? { tunnel: true, tunnels: tunnels.list() } : {}),
         });
+        break;
+      }
+
+      case "preview.tunnel": {
+        // Same port rule as the snapshot: re-checked against what is listening
+        // now, and the gate only ever forwards to 127.0.0.1. Closing on its own
+        // (idle, ngrok gone) is broadcast, so every paired device drops the link.
+        const { requestId, port } = message;
+        if (message.action === "close") {
+          reply({ t: "preview.tunnel.state", requestId, ...tunnels.close(port) });
+          break;
+        }
+        try {
+          const info = await tunnels.open(port, await previewablePorts(), (update) =>
+            broadcast({ t: "preview.tunnel.state", ...update }),
+          );
+          reply({ t: "preview.tunnel.state", requestId, ...info });
+        } catch (error) {
+          reply({
+            t: "preview.tunnel.state",
+            requestId,
+            port,
+            status: "error",
+            message: humanError(error),
+          });
+        }
         break;
       }
 

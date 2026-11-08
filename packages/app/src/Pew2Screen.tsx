@@ -1957,6 +1957,9 @@ export function Pew2({
                   servers={daemon.preview?.servers ?? []}
                   images={daemon.images}
                   onSnapshot={daemon.snapshotPreview}
+                  tunnelOffered={daemon.preview?.tunnel === true}
+                  tunnels={daemon.preview?.tunnels}
+                  onTunnel={daemon.previewTunnel}
                   viaRelay={pairing.remote}
                   onClose={closePreview}
                 />

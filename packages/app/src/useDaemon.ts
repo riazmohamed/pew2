@@ -19,7 +19,7 @@ import { SecureChannel, envelopeHeader, wire } from "@pew2/protocol";
 import type { DeskTarget } from "./deskChoice";
 import { sessionCacheKey, toCachedSessions } from "./sessionCache";
 import { toCachedProviders } from "./providerCache";
-import { previewImageKey } from "./preview";
+import { previewImageKey, type TunnelEntry } from "./preview";
 import { createDraftThrottle, shouldSendDraft, type DraftThrottle } from "./draftSync";
 import { USE_FIXTURES, sampleSessions } from "./fixtures";
 import { agentSessionKey } from "./agentHistory";
@@ -728,6 +728,45 @@ export function useDaemon(
           sent
             ? { status: "loading" }
             : { status: "error", message: "Not connected to your computer" },
+        );
+      },
+      /**
+       * Open or close a port's private ngrok link ("Open live anywhere"). Only
+       * offered when the daemon said `tunnel`; the answer lands in
+       * `preview.tunnels` via `preview.tunnel.state`.
+       */
+      previewTunnel: (port: number, action: "open" | "close") => {
+        const setTunnel = (entry: TunnelEntry | undefined, onlyIf?: TunnelEntry["status"]) =>
+          setState((s) => {
+            const tunnels = { ...s.preview?.tunnels };
+            if (onlyIf && tunnels[port]?.status !== onlyIf) return s;
+            if (entry) tunnels[port] = entry;
+            else delete tunnels[port];
+            return {
+              ...s,
+              preview: {
+                lanHosts: s.preview?.lanHosts ?? [],
+                servers: s.preview?.servers ?? [],
+                ...s.preview,
+                tunnels,
+              },
+            };
+          });
+        const waiting = action === "open" ? "starting" : "closing";
+        const sent = post({ t: "preview.tunnel", requestId: id("tunnel"), port, action });
+        if (!sent) {
+          setTunnel({ status: "error", message: "Not connected to your computer." });
+          return;
+        }
+        setTunnel({ status: waiting });
+        // ngrok answers in seconds; past this the spinner becomes an error.
+        setTimeout(
+          () =>
+            setTunnel(
+              { status: "error", message: "Your computer didn't answer. Try again." },
+              waiting,
+            ),
+          30_000,
         );
       },
     };

@@ -10,7 +10,7 @@ import type { TurnReceipt } from "./activity";
 import type { KenMeta } from "./chunks";
 import type { ContextUsage } from "./contextUsage";
 import type { ChatImage } from "./images";
-import type { PreviewServer } from "./preview";
+import type { PreviewServer, TunnelMap } from "./preview";
 
 export type Status = "connecting" | "online" | "offline";
 
@@ -38,6 +38,10 @@ export interface DeskResult {
 export interface PreviewState {
   lanHosts: string[];
   servers: PreviewServer[];
+  /** The daemon can open a private ngrok link. Absent from an older daemon. */
+  tunnel?: boolean;
+  /** Per-port "Open live anywhere" links, open or in flight. */
+  tunnels?: TunnelMap;
 }
 
 export interface Provider {

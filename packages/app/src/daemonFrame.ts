@@ -38,6 +38,7 @@ import type { DaemonRefs } from "./daemonContext";
 import { reduceMessage } from "./daemonReducer";
 import { shouldApplyRemoteDraft } from "./draftSync";
 import type { PreviewState } from "./daemonTypes";
+import { applyTunnelUpdate, mergeTunnelList, type TunnelUpdate } from "./preview";
 
 /** The one socket this frame arrived on, and its per-connection helpers. */
 export interface FrameConnection {
@@ -758,11 +759,35 @@ export function handleSealedFrame(
   // Machine-wide, so no per-session filter: a server started from another
   // conversation is just as reachable from this one.
   if (message.t === "preview.servers" && Array.isArray(message.servers)) {
-    const preview: PreviewState = {
-      lanHosts: Array.isArray(message.lanHosts) ? message.lanHosts : [],
-      servers: message.servers,
-    };
-    setState((s) => ({ ...s, preview }));
+    const lanHosts = Array.isArray(message.lanHosts) ? message.lanHosts : [];
+    const servers = message.servers;
+    // `tunnel` only from a daemon with ngrok; otherwise the sheet is as before.
+    const tunnel = message.tunnel === true;
+    const open = Array.isArray(message.tunnels) ? (message.tunnels as TunnelUpdate[]) : undefined;
+    setState((s) => {
+      const preview: PreviewState = {
+        lanHosts,
+        servers,
+        ...(tunnel ? { tunnel, tunnels: mergeTunnelList(s.preview?.tunnels, open) } : {}),
+      };
+      return { ...s, preview };
+    });
+    return;
+  }
+
+  // One port's "Open live anywhere" link: the answer to a request, or a
+  // broadcast when it closed on its own (idle, ngrok stopped).
+  if (message.t === "preview.tunnel.state" && typeof message.port === "number") {
+    const update = message as unknown as TunnelUpdate;
+    setState((s) => ({
+      ...s,
+      preview: {
+        lanHosts: s.preview?.lanHosts ?? [],
+        servers: s.preview?.servers ?? [],
+        ...s.preview,
+        tunnels: applyTunnelUpdate(s.preview?.tunnels, update),
+      },
+    }));
     return;
   }
 

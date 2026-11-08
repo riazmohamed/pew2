@@ -15,6 +15,20 @@ Dates are the day the tag was cut.
 
 ### Added
 
+- **Steadier connection, and back within seconds after the Mac sleeps.** While
+  the app is open and connected it checks the connection after 15 seconds of
+  quiet and reconnects if 40 pass with no answer, so replies missed after a
+  signal drop arrive without leaving and reopening the app. Nothing runs in
+  the background. The daemon replaces a relay connection that has gone quiet
+  for a minute and reconnects at once when the Mac wakes, rather than waiting
+  out its backoff. No re-pairing, no new message types: older apps and
+  daemons work as before.
+
+- **Open live anywhere.** Preview can open a site the agent is running from
+  any network, live with hot reload, through a private ngrok link. Shown only
+  when ngrok is installed on the computer; the link needs a secret only the
+  phone has, closes after 30 minutes unused, on request, or when the daemon
+  stops. Open live and Snapshot are unchanged.
 - **Open in GG Coder app.** A third choice beside pew2 chat and OG Coder:
   opens the conversation in a GG Coder desktop app window (GG Coder and GG
   Goals chats), types the phone's draft into it live, sends, stops and closes

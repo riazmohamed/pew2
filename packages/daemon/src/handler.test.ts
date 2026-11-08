@@ -532,3 +532,49 @@ test("daemon.keepAwake persists the switch and re-announces it", async () => {
   expect(await readKeepAwakeEnabled(env)).toBe(false);
   expect(sent.filter((m) => m.t === "providers").at(-1)?.keepAwake?.enabled).toBe(false);
 });
+
+// ---- Open live anywhere (ngrok) -----------------------------------------
+
+test("preview.list announces the tunnel only when ngrok is usable", async () => {
+  // An older app ignores the field; a daemon without ngrok never sends it, so
+  // a newer app shows the sheet exactly as before.
+  const { daemon } = stubbed();
+  const before = process.env.PEW2_NGROK;
+  process.env.PEW2_NGROK = "off";
+  try {
+    const out = await send(daemon, { t: "preview.list" });
+    expect(out[0]?.t).toBe("preview.servers");
+    expect(out[0]?.tunnel).toBeUndefined();
+    expect(out[0]?.tunnels).toBeUndefined();
+  } finally {
+    if (before === undefined) delete process.env.PEW2_NGROK;
+    else process.env.PEW2_NGROK = before;
+  }
+});
+
+test("preview.tunnel refuses a port nothing listens on, before ngrok is touched", async () => {
+  const { daemon } = stubbed();
+
+  const out = await send(daemon, { t: "preview.tunnel", requestId: "t1", port: 1, action: "open" });
+
+  expect(out[0]).toMatchObject({
+    t: "preview.tunnel.state",
+    requestId: "t1",
+    port: 1,
+    status: "error",
+  });
+  expect(String(out[0]?.message)).toContain("Nothing is listening on port 1");
+});
+
+test("preview.tunnel close of a link that is not open is a plain closed", async () => {
+  const { daemon } = stubbed();
+
+  const out = await send(daemon, {
+    t: "preview.tunnel",
+    requestId: "t2",
+    port: 1,
+    action: "close",
+  });
+
+  expect(out[0]).toEqual({ t: "preview.tunnel.state", requestId: "t2", port: 1, status: "closed" });
+});

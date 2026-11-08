@@ -21,6 +21,7 @@ import type { AskAnswer, ConfigOption } from "./acp/connect.js";
 import { encodeCwd, loadGgCoderDisplayHistory } from "./acp/ggcoder-history.js";
 import { SessionLog } from "./session/log.js";
 import { type DeskDeps, type DeskResult, Desk } from "./desk.js";
+import { tunnels } from "./tunnel.js";
 import {
   GgCoderMirror,
   conversationNames,
@@ -2573,6 +2574,8 @@ export class Daemon extends DaemonConnectSession {
   }
 
   closeAll() {
+    // Every ngrok child this daemon started goes with it.
+    tunnels.closeAll();
     this.voiceController?.stop();
     this.appDesk.stop();
     if (this.chatWindowTimer) clearInterval(this.chatWindowTimer);

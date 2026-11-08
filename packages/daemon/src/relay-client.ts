@@ -60,6 +60,8 @@ export interface RelayClientOptions {
    * replace its own lingering socket at once. Absent: admitted as before.
    */
   resumeKey?: string;
+  /** Wall clock, injectable for tests. Defaults to `Date.now`. */
+  now?: () => number;
 }
 
 export type RelayStatus = "connecting" | "online" | "offline";
@@ -74,6 +76,26 @@ const MAX_BACKOFF_MS = 30_000;
  * the phone sees nothing.
  */
 const HEARTBEAT_MS = 25_000;
+
+/**
+ * How often the watchdog looks. Cheap: two subtractions every five seconds.
+ */
+export const WATCHDOG_MS = 5_000;
+
+/**
+ * Silence after which an open relay socket is replaced. The heartbeat above is
+ * answered by the relay every 25 s, so two missed answers and change means the
+ * path is gone (a lid closed on it, a network switched under it) even though
+ * nothing has closed it.
+ */
+export const SILENT_MS = 60_000;
+
+/**
+ * A watchdog tick this late means the machine was asleep. The wall clock
+ * keeps time through sleep; the timers do not, so backoff scheduled before the
+ * lid closed would still be waited out after it opened.
+ */
+export const WAKE_GAP_MS = WATCHDOG_MS + 15_000;
 
 /**
  * The keepalive, in cleartext and byte-for-byte fixed.
@@ -106,6 +128,16 @@ export class RelayClient {
   private stopped = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private watchdog: ReturnType<typeof setInterval> | null = null;
+  /** When the current socket last delivered anything (a pong included). */
+  private lastHeard = 0;
+  /** When the watchdog last ran, to notice a sleep. */
+  private lastTick = 0;
+  /**
+   * The relay has answered a keepalive in this process. Until then silence is
+   * not judged, so a relay that never answered pings cannot cause a loop.
+   */
+  private relayAnswers = false;
 
   constructor(private readonly options: RelayClientOptions) {}
 
@@ -145,12 +177,15 @@ export class RelayClient {
 
   start(): void {
     this.stopped = false;
+    this.startWatchdog();
     this.connect();
   }
 
   stop(): void {
     this.stopped = true;
     this.clearTimers();
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.watchdog = null;
     try {
       this.socket?.close();
     } catch {
@@ -172,6 +207,70 @@ export class RelayClient {
 
   get online(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
+  }
+
+  private now(): number {
+    return (this.options.now ?? Date.now)();
+  }
+
+  private startWatchdog() {
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.lastTick = this.now();
+    this.watchdog = setInterval(() => this.checkLiveness(), WATCHDOG_MS);
+    this.watchdog.unref?.();
+  }
+
+  /**
+   * The watchdog's tick (public for tests): reconnect at once after a sleep,
+   * and replace an open socket that has gone silent.
+   *
+   * Reconnecting into the same room needs no re-pairing: the token and key
+   * are unchanged, the reconnect key lets the relay drop this machine's
+   * lingering socket at once, and the relay passes the new `hello` to phones,
+   * which start over and replay what they missed by cursor.
+   */
+  checkLiveness(): void {
+    if (this.stopped) return;
+    const now = this.now();
+    const gap = now - this.lastTick;
+    this.lastTick = now;
+    if (gap >= WAKE_GAP_MS) {
+      this.reconnectNow(`woke after ${Math.round(gap / 1000)}s asleep`);
+      return;
+    }
+    if (
+      this.relayAnswers &&
+      this.socket?.readyState === WebSocket.OPEN &&
+      now - this.lastHeard >= SILENT_MS
+    ) {
+      this.reconnectNow(`relay silent for ${Math.round((now - this.lastHeard) / 1000)}s`);
+    }
+  }
+
+  /**
+   * Let the current socket go and connect now, without backoff. Its handlers
+   * come off first: a close on a dead path can take minutes, and nothing it
+   * does later may touch the new one.
+   */
+  private reconnectNow(why: string): void {
+    console.log(`[relay] ${why}: reconnecting now`);
+    this.clearTimers();
+    const old = this.socket;
+    this.socket = null;
+    this.channel = null;
+    if (old) {
+      old.onopen = null;
+      old.onmessage = null;
+      old.onclose = null;
+      old.onerror = null;
+      try {
+        old.close();
+      } catch {
+        // Already gone.
+      }
+    }
+    this.attempts = 0;
+    this.connect();
   }
 
   private status(status: RelayStatus, detail?: string) {
@@ -203,6 +302,7 @@ export class RelayClient {
 
     socket.onopen = () => {
       this.attempts = 0;
+      this.lastHeard = this.now();
       this.status("online");
       this.channel = new SecureChannel(e2e.fromHex(this.options.key), "daemon");
       // `hello` is cleartext because it is what establishes the connection, and
@@ -234,6 +334,11 @@ export class RelayClient {
 
     socket.onmessage = (event) => {
       const raw = typeof event.data === "string" ? event.data : null;
+      if (this.socket === socket) this.lastHeard = this.now();
+      if (raw === KEEPALIVE_REPLY) {
+        this.relayAnswers = true;
+        return;
+      }
       if (raw === null || !this.channel) return;
 
       let frame: unknown;

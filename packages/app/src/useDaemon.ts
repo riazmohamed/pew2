@@ -612,14 +612,22 @@ export function useDaemon(
       new Promise<T>((resolve) => {
         const finish = (result: T) => resolve(done ? done(result) : result);
         if (!post(message)) {
-          finish(fail("Your computer isn't reachable right now."));
+          finish(
+            fail(
+              "Your computer is offline right now. It may be locked or asleep. Try again once it's back.",
+            ),
+          );
           return;
         }
         replies.set(requestId, finish);
         setTimeout(() => {
           if (!replies.has(requestId)) return;
           replies.delete(requestId);
-          finish(fail("The computer didn't answer. Check its screen."));
+          finish(
+            fail(
+              "Your computer didn't answer. It may be locked, asleep or reconnecting. Try again in a moment.",
+            ),
+          );
         }, timeoutMs);
       });
     const id = (prefix: string) =>

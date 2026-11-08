@@ -82,6 +82,8 @@ test("ngrok points at the loopback gate, never at the dev server or another host
   const { m, ngrok } = manager([STARTED]);
   const info = await m.open(5173, LISTENING);
   expect(ngrok.spawned[0]!.args.slice(0, 2)).toEqual(["http", "http://127.0.0.1:50001"]);
+  // No :4040 inspector: Preview would list it as a site.
+  expect(ngrok.spawned[0]!.args).toContain("--inspect=false");
   expect(info.status).toBe("open");
   expect(info.url!.startsWith(`${PUBLIC}/?pew2_key=`)).toBe(true);
   expect(info.url!.split("=")[1]).toHaveLength(32);

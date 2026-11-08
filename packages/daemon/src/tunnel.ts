@@ -360,6 +360,9 @@ export class TunnelManager {
         "stdout",
         "--log-format",
         "json",
+        // No local inspector page on :4040: it is a website too, so Preview
+        // listed ngrok's own console next to the user's sites (8 Nov).
+        "--inspect=false",
       ]);
     } catch (error) {
       proxy.stop();

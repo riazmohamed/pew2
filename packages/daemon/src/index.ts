@@ -1788,6 +1788,59 @@ export class Daemon extends DaemonConnectSession {
       this.applyAppPlan(native, window.plan ?? null, window.planMode);
     if (window.asks) this.syncAppAsks(native, window.asks);
     if (window.agentSessionId) void this.repointApp(native, window.agentSessionId);
+    this.applyAppConfig(native, window);
+  }
+
+  /**
+   * A phone pill changed on a conversation open in the GG Coder app: the
+   * window's own model / thinking switch (`/phone/model`, `/phone/thinking`,
+   * contract v1.3), then the pills re-read from the window, since a model
+   * switch can also move the thinking level.
+   */
+  private async setAppConfigOption(
+    native: NativeSession,
+    option: ConfigOption,
+    value: string | boolean,
+  ) {
+    if (option.category !== "model" && option.category !== "thought_level")
+      throw new Error(APP_MODE_REFUSAL);
+    const client = this.appDesk.client;
+    if (!client || !native.appSessionId)
+      throw new Error("The GG Coder app isn't available on the computer.");
+    const result = await client.config(
+      native.appSessionId,
+      option.category === "model" ? "model" : "thinking",
+      String(value),
+    );
+    if (!result.ok) {
+      if (result.status === 404 && result.message === "not found")
+        throw new Error(APP_CONFIG_REFUSAL);
+      if (result.status === 409 && /running/.test(result.message))
+        throw new Error("The GG Coder app is in the middle of a reply. Try again when it's done.");
+      throw new Error(result.message);
+    }
+    const window = (await client.windows())?.find((w) => w.sessionId === native.appSessionId);
+    const read = window ? appConfigOptions(native.configOptions, window) : undefined;
+    native.configOptions =
+      read && read.options.some((o) => o.id === option.id && o.currentValue === value)
+        ? read.options
+        : native.configOptions.map((o) => (o.id === option.id ? { ...o, currentValue: value } : o));
+    return native.configOptions;
+  }
+
+  /** The window's model and thinking (v1.3) become the phone's pills. */
+  private applyAppConfig(native: NativeSession, window: AppWindowInfo) {
+    const { options, changed } = appConfigOptions(native.configOptions, window);
+    if (!changed) return;
+    native.configOptions = options;
+    const found = this.appSession(native);
+    if (found)
+      this.send({
+        t: "session.config",
+        sessionId: found.sessionId,
+        providerId: found.session.providerId,
+        configOptions: options,
+      });
   }
 
   /** The app's window list, applied to every app mirror. */
@@ -2102,9 +2155,9 @@ export class Daemon extends DaemonConnectSession {
     configId: string,
     value: string | boolean,
   ) {
-    if (native.kind === "app") throw new Error(APP_CONFIG_REFUSAL);
     const option = native.configOptions.find((o) => o.id === configId);
     if (!option) throw new Error(`Unknown option '${configId}'`);
+    if (native.kind === "app") return this.setAppConfigOption(native, option, value);
     if (option.category !== "model" && option.category !== "thought_level")
       throw new Error(NATIVE_CONFIG_REFUSAL);
     native.configuring = true;
@@ -2610,7 +2663,11 @@ export const NATIVE_CONFIG_REFUSAL =
 
 /** Said when the phone changes a selector on a conversation open in the GG Coder app. */
 export const APP_CONFIG_REFUSAL =
-  "The GG Coder app's model and thinking are set in its window. Change them there.";
+  "This version of the GG Coder app can't change its model or thinking from the phone. Update the app, or change them in its window.";
+
+/** Said when the phone changes plan mode on a conversation open in the GG Coder app. */
+export const APP_MODE_REFUSAL =
+  "The GG Coder app switches plan mode in its window (or when the agent decides to plan). It can't be switched from the phone.";
 
 const NATIVE_WINDOW_GONE = "The OG Coder window didn't take it. Is it still open?";
 
@@ -2650,4 +2707,32 @@ if (import.meta.main) {
     daemon.closeAll();
     process.exit(0);
   });
+}
+
+/** Selectors updated to an app window's model and thinking level (contract v1.3). */
+export function appConfigOptions<
+  T extends {
+    id: string;
+    category?: string | null;
+    currentValue?: unknown;
+    options?: { value: string }[];
+  },
+>(
+  options: T[],
+  window: { model?: string; thinkingLevel?: string },
+): { options: T[]; changed: boolean } {
+  let changed = false;
+  const next = options.map((option) => {
+    const value =
+      option.category === "model"
+        ? window.model
+        : option.category === "thought_level"
+          ? window.thinkingLevel
+          : undefined;
+    if (value === undefined || value === option.currentValue) return option;
+    if (!(option.options ?? []).some((o) => o.value === value)) return option;
+    changed = true;
+    return { ...option, currentValue: value };
+  });
+  return { options: next, changed };
 }

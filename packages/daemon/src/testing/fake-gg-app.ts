@@ -20,6 +20,9 @@ export interface FakeWindow {
   planMode?: boolean;
   /** v1.2: open ask_user questions, oldest first. */
   asks?: { id: string; questions: unknown[] }[];
+  /** v1.3: the window's model and thinking level. */
+  model?: string;
+  thinkingLevel?: string;
 }
 
 export interface FakeApp {
@@ -152,6 +155,11 @@ export async function startFakeApp(): Promise<FakeApp> {
         if (!open) return json({ error: "no question is awaiting an answer" }, 409);
         window.asks = window.asks?.filter((a) => a !== open);
         app.emit({ type: "ask_closed", sessionId: window.sessionId, ids: [open.id] });
+      } else if (route === "model") {
+        if (window.busy) return json({ error: "cannot switch model while running" }, 409);
+        window.model = String(body.model);
+      } else if (route === "thinking") {
+        window.thinkingLevel = typeof body.level === "string" ? body.level : "off";
       } else if (route !== "abort") return json({ error: "not found" }, 404);
       return json({ ok: true });
     },

@@ -53,6 +53,10 @@ export interface AppWindowInfo {
   planMode?: boolean;
   /** The window's open questions, oldest first (v1.2); undefined from an older app. */
   asks?: AppAsk[];
+  /** The window's model id (v1.3); undefined from an older app. */
+  model?: string;
+  /** The window's thinking level, "off" for none (v1.3); undefined from an older app. */
+  thinkingLevel?: string;
 }
 
 /** One open `ask_user` card in an app window: the tool's own question payload. */
@@ -232,6 +236,8 @@ function parseWindow(raw: unknown): AppWindowInfo | undefined {
     ...(plan !== undefined && { plan }),
     ...(typeof w.planMode === "boolean" && { planMode: w.planMode }),
     ...(asks && { asks }),
+    ...(typeof w.model === "string" && w.model && { model: w.model }),
+    ...(typeof w.thinkingLevel === "string" && { thinkingLevel: w.thinkingLevel }),
   };
 }
 
@@ -374,6 +380,22 @@ export class AppClient {
       action,
       ...(answers !== undefined && { answers }),
     });
+    return result.ok ? { ok: true, value: true } : result;
+  }
+
+  /**
+   * Switch the window's model or thinking level, as its own picker does (v1.3).
+   * 409 while the window is replying; 404 "not found" from an app older than v1.3.
+   */
+  async config(
+    sessionId: string,
+    setting: "model" | "thinking",
+    value: string,
+  ): Promise<AppResult<true>> {
+    const result =
+      setting === "model"
+        ? await this.request("model", { sessionId, model: value })
+        : await this.request("thinking", { sessionId, level: value });
     return result.ok ? { ok: true, value: true } : result;
   }
 

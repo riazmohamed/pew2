@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { appendFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { APP_CONFIG_REFUSAL, DESK_DRAFT_FROM, Daemon } from "./index.js";
+import { APP_MODE_REFUSAL, DESK_DRAFT_FROM, Daemon } from "./index.js";
 import { handleMessage } from "./handler.js";
 import { SessionLog } from "./session/log.js";
 import { startFakeApp, type FakeApp } from "./testing/fake-gg-app.js";
@@ -181,8 +181,63 @@ test("handover to the app: opened by conversation, typed both ways, mirrored, cl
     () => JSON.stringify(sent.filter((m) => m.t === "session.event")).includes("Done it"),
     "reply mirrored",
   );
-  // The app's pills are its own.
-  await expect(daemon.setConfigOption(id, "model", "x")).rejects.toThrow(APP_CONFIG_REFUSAL);
+  // Model and thinking pills drive the window's own switches (contract v1.3).
+  const native = (daemon as any).sessions.get(id).native;
+  native.configOptions = [
+    {
+      id: "model",
+      name: "Model",
+      category: "model",
+      type: "select",
+      currentValue: "claude-opus-5-5",
+      options: [{ value: "claude-opus-5-5" }, { value: "gpt-6.1-sol" }],
+    },
+    {
+      id: "thinking",
+      name: "Thinking",
+      category: "thought_level",
+      type: "select",
+      currentValue: "high",
+      options: [{ value: "off" }, { value: "low" }, { value: "high" }],
+    },
+    {
+      id: "mode",
+      name: "Mode",
+      category: "mode",
+      type: "select",
+      currentValue: "default",
+      options: [{ value: "default" }, { value: "plan" }],
+    },
+  ];
+  const afterModel = await daemon.setConfigOption(id, "model", "gpt-6.1-sol");
+  expect(app.calls.findLast((c) => c.route === "model")?.body).toEqual({
+    sessionId: "win-1",
+    model: "gpt-6.1-sol",
+  });
+  expect(app.windows[0]?.model).toBe("gpt-6.1-sol");
+  expect(afterModel.find((o: any) => o.id === "model")?.currentValue).toBe("gpt-6.1-sol");
+  await daemon.setConfigOption(id, "thinking", "off");
+  expect(app.calls.findLast((c) => c.route === "thinking")?.body).toEqual({
+    sessionId: "win-1",
+    level: "off",
+  });
+  expect(app.windows[0]?.thinkingLevel).toBe("off");
+  await expect(daemon.setConfigOption(id, "mode", "plan")).rejects.toThrow(APP_MODE_REFUSAL);
+  // Changed in the window: the phone's pills follow.
+  app.windows[0]!.model = "claude-opus-5-5";
+  await until(
+    () =>
+      sent
+        .findLast((m) => m.t === "session.config" && m.sessionId === id)
+        ?.configOptions.find((o: any) => o.id === "model")?.currentValue === "claude-opus-5-5",
+    "desk model change reaches the phone",
+  );
+  // Busy window: the refusal says so.
+  app.windows[0]!.busy = true;
+  await expect(daemon.setConfigOption(id, "model", "gpt-6.1-sol")).rejects.toThrow(
+    "middle of a reply",
+  );
+  app.windows[0]!.busy = false;
   // Stop is the window's stop button.
   await send({ t: "session.cancel", sessionId: id });
   await until(() => app.calls.some((c) => c.route === "abort"), "abort");

@@ -1146,10 +1146,11 @@ export class Daemon extends DaemonConnectSession {
           .map(([id]) => id)
       : [];
     if (natives.length === 0 && chats.length === 0) {
-      return {
-        ok: false,
-        message: "There's no terminal open on the computer for this conversation.",
-      };
+      // Already gone (closed on the Mac, or the agent quit) while the phone
+      // still showed Close, e.g. it missed the update on a dropped connection
+      // (16 Nov). Nothing left to close: re-announced so its button goes.
+      this.announceProviders();
+      return { ok: true, message: "It was already closed on the computer." };
     }
     for (const session of natives) {
       if (session.working) {
@@ -1187,6 +1188,8 @@ export class Daemon extends DaemonConnectSession {
       if (closed) this.chatWindows.delete(id);
       else failed.push("pew2 chat");
     }
+    // Closed on purpose: the app's own "closed" for it is not a restart to recover from.
+    if (agentSessionId) this.appRelinks.delete(agentSessionId);
     this.announceProviders();
     return failed.length === 0
       ? { ok: true }
@@ -1450,6 +1453,8 @@ export class Daemon extends DaemonConnectSession {
     history?: unknown[];
     resumed: boolean;
     beforeRegister?: () => void;
+    /** An app window already on this conversation: linked as it is, not opened or focused. */
+    appWindow?: { sessionId: string };
   }): Promise<DeskResult> {
     const { providerId, cwd, configOptions } = args;
     const directory = path.join(
@@ -1468,16 +1473,18 @@ export class Daemon extends DaemonConnectSession {
     await mirror?.baseline();
 
     const isApp = args.kind === "app";
-    const opened = isApp
-      ? await this.openAppWindow(providerId, cwd, args.agentSessionId)
-      : await openNativeWindow(this.nativeDeps, {
-          // The full path: the window's login shell may not have the agent's
-          // folder on its PATH (see `commandPath`).
-          command: commandPath(args.provider.command, this.env) ?? args.provider.command,
-          providerId,
-          agentSessionId: args.agentSessionId,
-          cwd,
-        });
+    const opened = args.appWindow
+      ? { ok: true as const, appSessionId: args.appWindow.sessionId }
+      : isApp
+        ? await this.openAppWindow(providerId, cwd, args.agentSessionId)
+        : await openNativeWindow(this.nativeDeps, {
+            // The full path: the window's login shell may not have the agent's
+            // folder on its PATH (see `commandPath`).
+            command: commandPath(args.provider.command, this.env) ?? args.provider.command,
+            providerId,
+            agentSessionId: args.agentSessionId,
+            cwd,
+          });
     if (!opened.ok) return { ok: false, message: opened.message };
     const appSessionId = "appSessionId" in opened ? opened.appSessionId : undefined;
 
@@ -2010,6 +2017,8 @@ export class Daemon extends DaemonConnectSession {
     if (event.type === "windows") {
       // A window may have moved to a new conversation (an accepted plan).
       void this.syncAppWindows().catch(() => {});
+      // Or reopened on a conversation whose link the app's restart ended.
+      void this.relinkAppWindows().catch(() => {});
       return;
     }
     const native = this.appNative(event.sessionId);
@@ -2043,7 +2052,7 @@ export class Daemon extends DaemonConnectSession {
     if (!available) {
       for (const session of [...this.sessions.values()])
         if (session.native?.kind === "app") void this.endNativeWindow(session.native);
-    }
+    } else this.scheduleRelinks();
     this.announceProviders();
   }
 
@@ -2088,9 +2097,99 @@ export class Daemon extends DaemonConnectSession {
     const sessionId = this.nativeSessionId(native);
     const session = sessionId ? this.sessions.get(sessionId) : undefined;
     if (!sessionId || !session) return;
+    if (native.kind === "app" && session.agentSessionId) {
+      this.appRelinks.set(session.agentSessionId, {
+        sessionId,
+        providerId: session.providerId,
+        cwd: session.cwd,
+        configOptions: native.configOptions,
+        until: Date.now() + APP_RELINK_MS,
+      });
+    }
     if (session.working) this.nativeTurnEnd(session);
     this.closeSession(sessionId, session);
     this.announceProviders();
+    if (native.kind === "app" && this.appDesk.available)
+      void this.relinkAppWindows().catch(() => {});
+  }
+
+  /**
+   * App windows pew2 was mirroring when the link ended from the app's side
+   * (the app quit or restarted, a window left its list), by conversation.
+   * When a window on that conversation is there again (the app reopens its
+   * windows after an update), the phone's chat is linked to it again, as if
+   * "Open in GG Coder app" had been tapped. Without this every app chat on
+   * the phone stopped reaching its window after the app updated (16 Nov).
+   * A Close from the phone is not remembered: that link was ended on purpose.
+   */
+  private readonly appRelinks = new Map<
+    string,
+    {
+      sessionId: string;
+      providerId: string;
+      cwd: string;
+      configOptions: ConfigOption[];
+      until: number;
+    }
+  >();
+  private relinking?: Promise<void>;
+
+  /** Link remembered conversations to the app windows now showing them. One pass at a time. */
+  private relinkAppWindows(): Promise<void> {
+    this.relinking ??= this.relinkAppWindowsOnce().finally(() => {
+      this.relinking = undefined;
+    });
+    return this.relinking;
+  }
+
+  private async relinkAppWindowsOnce() {
+    const now = Date.now();
+    for (const [id, link] of this.appRelinks) if (link.until < now) this.appRelinks.delete(id);
+    if (this.appRelinks.size === 0) return;
+    const windows = await this.appDesk.client?.windows();
+    if (!windows) return;
+    for (const window of windows) {
+      const agentSessionId = window.agentSessionId ?? undefined;
+      const link = agentSessionId ? this.appRelinks.get(agentSessionId) : undefined;
+      if (!agentSessionId || !link) continue;
+      this.appRelinks.delete(agentSessionId);
+      // Already mirrored, or taken meanwhile (sent to pew2's own agent, opened
+      // in iTerm): one writer per conversation, so it is left alone.
+      if (this.appNative(window.sessionId)) continue;
+      if ([...this.sessions.values()].some((s) => s.agentSessionId === agentSessionId)) continue;
+      const provider = this.providers.find((p) => p.manifest.id === link.providerId);
+      if (!provider) continue;
+      const history = await loadGgCoderDisplayHistory(
+        agentSessionId,
+        link.cwd,
+        this.nativeOptions.sessionsRoot,
+      ).catch(() => undefined);
+      const result = await this.attachNative({
+        kind: "app",
+        provider,
+        providerId: link.providerId,
+        cwd: link.cwd,
+        configOptions: link.configOptions,
+        agentSessionId,
+        history,
+        resumed: true,
+        appWindow: { sessionId: window.sessionId },
+      });
+      const linked = this.nativeSessionFor(link.providerId, agentSessionId);
+      // The phone may still address the old id: it follows to the new one.
+      if (result.ok && linked) this.retired.set(link.sessionId, linked);
+      console.log(
+        `[desk] app window linked again ${link.sessionId}: ${result.ok && linked ? `ok (${linked})` : (result.message ?? "failed")}`,
+      );
+    }
+  }
+
+  /** The app came back: its windows reopen over a few seconds, so look a few times. */
+  private scheduleRelinks() {
+    for (const delay of [0, 3_000, 10_000, 30_000]) {
+      const timer = setTimeout(() => void this.relinkAppWindows().catch(() => {}), delay);
+      timer.unref?.();
+    }
   }
 
   /**
@@ -2670,6 +2769,8 @@ export const APP_MODE_REFUSAL =
   "The GG Coder app switches plan mode in its window (or when the agent decides to plan). It can't be switched from the phone.";
 
 const NATIVE_WINDOW_GONE = "The OG Coder window didn't take it. Is it still open?";
+/** How long an app link ended from the app's side is picked up again when its window returns. */
+const APP_RELINK_MS = 10 * 60_000;
 
 /** A turn this young is not ended by an idle-looking screen (it may not have redrawn yet). */
 export const NATIVE_TURN_GRACE_MS = 4_000;

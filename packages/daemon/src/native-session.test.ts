@@ -794,12 +794,12 @@ test("a pew2 chat window opened from the phone is remembered, offered, and close
   expect(rig.replies.at(-1)).toEqual({ t: "desk.closed", requestId: "c1", ok: true });
   expect(sent.findLast((m) => m.t === "providers").desk.windows).toBeUndefined();
 
-  // Nothing left to close: said so.
+  // Nothing left to close (the phone missed the update): no error, and the
+  // windows are announced again so its Close button goes (16 Nov).
+  const before = sent.filter((m) => m.t === "providers").length;
   await send({ t: "desk.close", requestId: "c2", sessionId: "ggcoder-old" });
-  expect(rig.replies.at(-1)).toMatchObject({
-    ok: false,
-    message: expect.stringContaining("no terminal open"),
-  });
+  expect(rig.replies.at(-1)).toMatchObject({ ok: true });
+  expect(sent.filter((m) => m.t === "providers").length).toBeGreaterThan(before);
   daemon.closeAll();
 });
 

@@ -617,3 +617,74 @@ test("a pew2 chat window follows its conversation to a new agent id, so Close st
   sessions.delete("s1");
   rig.done();
 });
+
+const restoredWindow = (sessionId: string, agentSessionId = AGENT_ID) => ({
+  sessionId,
+  cwd: CWD,
+  mode: "code",
+  sessionPath: null,
+  agentSessionId,
+  busy: false,
+  focused: false,
+  composer: "",
+});
+
+test("the app restarting (an update) links the phone's chat to its reopened window again (16 Nov)", async () => {
+  const rig = await openedApp();
+  const { app, id, daemon, sent, send } = rig;
+  // The app goes: its window leaves the list and the mirror ends.
+  app.windows = [];
+  await until(() => !daemon.isNative(id), "ended with the window");
+  // The app is back and reopens the same conversation in a new window.
+  app.windows = [restoredWindow("win-9")];
+  app.emit({ type: "windows" });
+  const relinked = await until(
+    () => sent.findLast((m) => m.t === "session.started" && m.sessionId !== id),
+    "linked again",
+  );
+  expect(relinked).toMatchObject({ resumed: true, agentSessionId: AGENT_ID });
+  expect(daemon.isAppWindow(relinked.sessionId)).toBe(true);
+  // A phone still on the old id follows to the new link, and typing reaches the window.
+  expect(daemon.forwardedSession(id)).toBe(relinked.sessionId);
+  await send({ t: "session.draft", sessionId: id, text: "typed on the phone" });
+  await until(() => app.windows[0]!.composer === "typed on the phone", "draft in the window");
+  rig.done();
+});
+
+test("a Close from the phone is not linked again when the window comes back", async () => {
+  const rig = await openedApp();
+  const { app, id, daemon, sent, send } = rig;
+  await send({ t: "desk.close", requestId: "c1", sessionId: id });
+  await until(() => !daemon.isNative(id), "closed from the phone");
+  const started = sent.filter((m) => m.t === "session.started").length;
+  app.windows = [restoredWindow("win-9")];
+  app.emit({ type: "windows" });
+  await Bun.sleep(150);
+  expect(sent.filter((m) => m.t === "session.started").length).toBe(started);
+  rig.done();
+});
+
+test("a conversation taken by pew2's own agent meanwhile is not linked to the app too", async () => {
+  const rig = await openedApp();
+  const { app, id, daemon, sent } = rig;
+  app.windows = [];
+  await until(() => !daemon.isNative(id), "ended with the window");
+  // The phone sent it a message while the app was gone: pew2's agent has it now.
+  (daemon as any).sessions.set("ggcoder-acp", {
+    handle: { close: () => {} },
+    log: new SessionLog("ggcoder-acp"),
+    providerId: "ggcoder",
+    agentSessionId: AGENT_ID,
+    cwd: CWD,
+    live: true,
+    lastUsedAt: Date.now(),
+    ready: Promise.resolve(),
+    permissions: new Map(),
+  });
+  const started = sent.filter((m) => m.t === "session.started").length;
+  app.windows = [restoredWindow("win-9")];
+  app.emit({ type: "windows" });
+  await Bun.sleep(150);
+  expect(sent.filter((m) => m.t === "session.started").length).toBe(started);
+  rig.done();
+});

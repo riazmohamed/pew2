@@ -12,6 +12,7 @@ import {
   RelayClient,
   SILENT_MS,
   WAKE_GAP_MS,
+  CONNECT_TIMEOUT_MS,
   WATCHDOG_MS,
   backoffBounds,
   type RelayClientOptions,
@@ -775,4 +776,32 @@ test("waking from sleep replaces a socket that still looks open", () => {
   now += 10 * 60_000;
   relay.checkLiveness();
   expect(FakeSocket.instances.length).toBe(2);
+});
+
+test("a handshake that never opens or closes is replaced after the connect timeout", () => {
+  let now = 1_000_000;
+  const { relay } = client({ now: () => now });
+  relay.start();
+  const first = FakeSocket.instances[0]!;
+  // Still CONNECTING: no open, no close. Short of the timeout, left alone.
+  for (let elapsed = WATCHDOG_MS; elapsed < CONNECT_TIMEOUT_MS; elapsed += WATCHDOG_MS) {
+    now += WATCHDOG_MS;
+    relay.checkLiveness();
+  }
+  expect(FakeSocket.instances.length).toBe(1);
+  now += WATCHDOG_MS;
+  relay.checkLiveness();
+  expect(FakeSocket.instances.length).toBe(2);
+  expect(first.onopen).toBeNull();
+  // The new dial gets its own full timeout, and opening clears the concern.
+  const second = FakeSocket.instances[1]!;
+  now += WATCHDOG_MS;
+  relay.checkLiveness();
+  second.open();
+  for (let i = 0; i < 12; i++) {
+    now += WATCHDOG_MS;
+    relay.checkLiveness();
+  }
+  expect(FakeSocket.instances.length).toBe(2);
+  relay.stop();
 });

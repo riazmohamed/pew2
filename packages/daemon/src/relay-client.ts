@@ -98,6 +98,15 @@ export const SILENT_MS = 60_000;
 export const WAKE_GAP_MS = WATCHDOG_MS + 15_000;
 
 /**
+ * How long a socket may sit in CONNECTING before it is replaced. A handshake
+ * can hang with the TCP link up and no upgrade answer ever arriving (seen
+ * 16 Nov after Cloudflare answered several dials with non-101 responses):
+ * no `open`, no `close`, so no retry, and the phone could not reach the
+ * computer for 90 minutes until the daemon was restarted.
+ */
+export const CONNECT_TIMEOUT_MS = 20_000;
+
+/**
  * The keepalive, in cleartext and byte-for-byte fixed.
  *
  * The relay answers this exact string from the Durable Object's hibernation
@@ -133,6 +142,8 @@ export class RelayClient {
   private lastHeard = 0;
   /** When the watchdog last ran, to notice a sleep. */
   private lastTick = 0;
+  /** When the current socket was dialled, to give up on a hung handshake. */
+  private dialledAt = 0;
   /**
    * The relay has answered a keepalive in this process. Until then silence is
    * not judged, so a relay that never answered pings cannot cause a loop.
@@ -239,6 +250,13 @@ export class RelayClient {
       return;
     }
     if (
+      this.socket?.readyState === WebSocket.CONNECTING &&
+      now - this.dialledAt >= CONNECT_TIMEOUT_MS
+    ) {
+      this.reconnectNow(`handshake hung for ${Math.round((now - this.dialledAt) / 1000)}s`);
+      return;
+    }
+    if (
       this.relayAnswers &&
       this.socket?.readyState === WebSocket.OPEN &&
       now - this.lastHeard >= SILENT_MS
@@ -299,6 +317,7 @@ export class RelayClient {
       return;
     }
     this.socket = socket;
+    this.dialledAt = this.now();
 
     socket.onopen = () => {
       this.attempts = 0;

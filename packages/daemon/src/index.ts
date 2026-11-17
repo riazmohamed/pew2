@@ -56,6 +56,7 @@ import {
   appPhoneFile,
   type AppDeskOptions,
   type AppEvent,
+  type AppLaunchFailure,
   type AppAsk,
   type AppPlan,
   appAskQuestions,
@@ -132,7 +133,7 @@ export interface NativeOptions extends Partial<NativeDeskDeps> {
   settleMs?: number;
   throttleMs?: number;
   /** The GG Coder app's discovery (file, fetch, pid check) for tests. */
-  appDesk?: Omit<AppDeskOptions, "onChange" | "onEvent">;
+  appDesk?: Omit<AppDeskOptions, "onChange" | "onEvent" | "onLaunchable">;
   /** `pew2 chat` window opening (AppleScript, Terminal) for tests and `scripts/soak`. */
   desk?: Partial<DeskDeps>;
 }
@@ -168,6 +169,7 @@ export class Daemon extends DaemonConnectSession {
       ...native.appDesk,
       onChange: (available) => this.appAvailabilityChanged(available),
       onEvent: (event) => this.appEvent(event),
+      onLaunchable: () => this.announceProviders(),
     });
     this.awake = this.createKeepAwake();
   }
@@ -1010,10 +1012,13 @@ export class Daemon extends DaemonConnectSession {
     };
   }
 
-  /** Providers openable in the GG Coder app right now (macOS, app's phone control on). */
+  /**
+   * Providers openable in the GG Coder app (macOS, app's phone control on).
+   * A closed app with Phone control on counts: an Open starts it.
+   */
   private appProviders(): string[] {
     if ((this.nativeOptions.platform ?? process.platform) !== "darwin") return [];
-    if (!this.appDesk.available) return [];
+    if (!this.appDesk.available && !this.appDesk.launchable) return [];
     return APP_PROVIDERS.filter(
       (id) =>
         this.isEnabled(id === GG_GOALS_ID ? GG_PROVIDER_ID : id) &&
@@ -1967,13 +1972,16 @@ export class Daemon extends DaemonConnectSession {
   ): Promise<
     { ok: true; appSessionId: string; agentSessionId?: string } | { ok: false; message: string }
   > {
-    const client = this.appDesk.client;
+    let client = this.appDesk.client;
     if (!client) {
-      return {
-        ok: false,
-        message:
-          "The GG Coder app isn't available on the computer. Turn on Phone control in its settings.",
-      };
+      // Closed: started, as an Open in OG Coder starts iTerm.
+      const launched = await this.appDesk.launch();
+      if ("failure" in launched) {
+        console.log(`[desk] starting the GG Coder app: ${launched.failure}`);
+        return { ok: false, message: APP_LAUNCH_MESSAGES[launched.failure] };
+      }
+      console.log("[desk] started the GG Coder app");
+      client = launched.client;
     }
     const directory = path.join(
       this.nativeOptions.sessionsRoot ?? path.join(homedir(), ".gg", "sessions"),
@@ -2769,6 +2777,13 @@ export const APP_MODE_REFUSAL =
   "The GG Coder app switches plan mode in its window (or when the agent decides to plan). It can't be switched from the phone.";
 
 const NATIVE_WINDOW_GONE = "The OG Coder window didn't take it. Is it still open?";
+/** What the phone is told when a closed GG Coder app could not be started for it. */
+const APP_LAUNCH_MESSAGES: Record<AppLaunchFailure, string> = {
+  off: "The GG Coder app isn't available on the computer. Turn on Phone control in its settings.",
+  missing: "The GG Coder app isn't installed on this computer.",
+  failed: "Couldn't start the GG Coder app on the computer. Try again in a moment.",
+  timeout: "The GG Coder app is still starting on the computer. Try again in a moment.",
+};
 /** How long an app link ended from the app's side is picked up again when its window returns. */
 const APP_RELINK_MS = 10 * 60_000;
 

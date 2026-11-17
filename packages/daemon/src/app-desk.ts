@@ -11,7 +11,8 @@
  * them back exactly as it does for an iTerm window.
  */
 import type { wire } from "@pew2/protocol";
-import { readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { readFile, stat } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -29,6 +30,24 @@ export const APP_RECHECK_MS = 10_000;
 /** Ordinary requests; opening a window waits for its session to exist. */
 export const APP_REQUEST_TIMEOUT_MS = 5_000;
 export const APP_OPEN_TIMEOUT_MS = 20_000;
+/**
+ * How long a phone's Open waits for a closed app to start and switch its phone
+ * control on. The phone gives up on the whole request after 20 s, and the open
+ * itself comes after this.
+ */
+export const APP_LAUNCH_TIMEOUT_MS = 15_000;
+/** Where the app is installed. Named by path, not bundle id: built copies elsewhere share the id. */
+export const APP_PATH = "/Applications/GG Coder.app";
+
+/** Why a closed app could not be started for the phone. */
+export type AppLaunchFailure = "off" | "missing" | "failed" | "timeout";
+
+/** `open -a <app>`: true once macOS has started it (or it was running already). */
+export function openApp(appPath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile("open", ["-a", appPath], { timeout: 10_000 }, (error) => resolve(!error));
+  });
+}
 
 /** What the app wrote to its discovery file. */
 export interface AppPhoneInfo {
@@ -465,6 +484,16 @@ export interface AppDeskOptions {
   onChange?: (available: boolean) => void;
   /** Every event from the app, while it is available. */
   onEvent?: (event: AppEvent) => void;
+  /** Whether a closed app can be started for the phone changed (after a check). */
+  onLaunchable?: (launchable: boolean) => void;
+  /** The installed app (default `APP_PATH`). */
+  appPath?: string;
+  /** The app's settings, for its Phone control switch (default `gg-app.json` beside the discovery file). */
+  settingsFile?: string;
+  /** Starts the app (default `openApp`, macOS only). */
+  launch?: (appPath: string) => Promise<boolean>;
+  launchTimeoutMs?: number;
+  launchPollMs?: number;
 }
 
 /**
@@ -479,10 +508,78 @@ export class AppDesk {
   private checking?: Promise<void>;
   private again = false;
   private started = false;
+  private launching?: Promise<{ client: AppClient } | { failure: AppLaunchFailure }>;
+  private canStart = false;
   readonly file: string;
+  private readonly settingsFile: string;
+  private readonly appPath: string;
 
   constructor(private readonly options: AppDeskOptions = {}) {
     this.file = options.file ?? appPhoneFile();
+    this.settingsFile = options.settingsFile ?? path.join(path.dirname(this.file), "gg-app.json");
+    this.appPath = options.appPath ?? APP_PATH;
+  }
+
+  /**
+   * The app is closed but can be started for the phone: installed, with its
+   * Phone control switched on (the setting outlives the app). The phone is
+   * offered the app as if it were running; an Open starts it (`launch`).
+   */
+  get launchable(): boolean {
+    return !this.current && this.canStart;
+  }
+
+  /** Installed, and Phone control on in its settings. */
+  private async startable(): Promise<boolean> {
+    if (!this.options.launch && process.platform !== "darwin") return false;
+    const settings = await readFile(this.settingsFile, "utf8").catch(() => "");
+    let on: boolean;
+    try {
+      on = (JSON.parse(settings) as { phoneControl?: unknown }).phoneControl === true;
+    } catch {
+      on = false;
+    }
+    if (!on) return false;
+    return stat(this.appPath).then(
+      (s) => s.isDirectory(),
+      () => false,
+    );
+  }
+
+  /**
+   * Start the closed app and wait for its phone control, as an Open from the
+   * phone opens iTerm for OG Coder. Concurrent callers share one start. Tried
+   * twice: an update swaps the app on disk while it is closed.
+   */
+  launch(): Promise<{ client: AppClient } | { failure: AppLaunchFailure }> {
+    if (this.current) return Promise.resolve({ client: this.current });
+    this.launching ??= (async (): Promise<
+      { client: AppClient } | { failure: AppLaunchFailure }
+    > => {
+      if (!(await this.startable())) {
+        const installed = await stat(this.appPath).then(
+          () => true,
+          () => false,
+        );
+        return { failure: installed ? "off" : "missing" };
+      }
+      const start = this.options.launch ?? openApp;
+      let started = await start(this.appPath);
+      if (!started) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        started = await start(this.appPath);
+      }
+      if (!started) return { failure: "failed" };
+      const deadline = Date.now() + (this.options.launchTimeoutMs ?? APP_LAUNCH_TIMEOUT_MS);
+      while (!this.current && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, this.options.launchPollMs ?? 250));
+        await this.check();
+      }
+      return this.current ? { client: this.current } : { failure: "timeout" };
+    })().finally(() => {
+      this.launching = undefined;
+    });
+    return this.launching;
   }
 
   /** The client while the app is available. */
@@ -501,7 +598,8 @@ export class AppDesk {
       try {
         const name = path.basename(this.file);
         this.watcher = watch(path.dirname(this.file), (_event, changed) => {
-          if (!changed || changed === name) void this.check();
+          if (!changed || changed === name || changed === path.basename(this.settingsFile))
+            void this.check();
         });
         this.watcher.on("error", () => {});
         this.watcher.unref?.();
@@ -555,8 +653,11 @@ export class AppDesk {
       alive && info ? (same ? this.current : new AppClient(info, this.options.fetch)) : undefined;
     const reachable = client ? await client.ping() : false;
     const next = reachable ? client : undefined;
+    const couldStart = this.launchable;
+    this.canStart = next ? this.canStart : await this.startable();
     if (next === this.current) {
       if (next && !this.stream) this.follow(next);
+      if (couldStart !== this.launchable) this.options.onLaunchable?.(this.launchable);
       return;
     }
     const was = this.available;
@@ -565,6 +666,7 @@ export class AppDesk {
     this.current = next;
     if (next) this.follow(next);
     if (was !== this.available || (was && next)) this.options.onChange?.(this.available);
+    if (couldStart !== this.launchable) this.options.onLaunchable?.(this.launchable);
   }
 
   private follow(client: AppClient) {

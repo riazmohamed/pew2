@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
-import { appendFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { APP_MODE_REFUSAL, DESK_DRAFT_FROM, Daemon } from "./index.js";
 import { handleMessage } from "./handler.js";
+import type { AppDeskOptions } from "./app-desk.js";
 import { SessionLog } from "./session/log.js";
 import { startFakeApp, type FakeApp } from "./testing/fake-gg-app.js";
 
@@ -23,7 +24,7 @@ async function until<T>(read: () => T | undefined | false, what: string): Promis
 }
 
 /** A daemon with one ACP ggcoder session, the fake app found, and no iTerm at all. */
-async function appRig(options: { withApp?: boolean } = {}) {
+async function appRig(options: { withApp?: boolean; appDesk?: Omit<AppDeskOptions, "file"> } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "pew2-app-"));
   const directory = path.join(root, "Users_test_my project");
   await mkdir(directory, { recursive: true });
@@ -48,7 +49,10 @@ async function appRig(options: { withApp?: boolean } = {}) {
     alivePollMs: 20,
     throttleMs: 10,
     turnGraceMs: 60,
-    appDesk: { file: options.withApp === false ? path.join(root, "none.json") : app.file },
+    appDesk: {
+      file: options.withApp === false ? path.join(root, "none.json") : app.file,
+      ...options.appDesk,
+    },
   });
   const sent: any[] = [];
   daemon.attach((message) => sent.push(message));
@@ -686,5 +690,74 @@ test("a conversation taken by pew2's own agent meanwhile is not linked to the ap
   app.emit({ type: "windows" });
   await Bun.sleep(150);
   expect(sent.filter((m) => m.t === "session.started").length).toBe(started);
+  rig.done();
+});
+
+/** The app installed with Phone control on, but closed: its discovery file is gone until `launch`. */
+async function closedAppRig(options: { phoneControl?: boolean; starts?: boolean } = {}) {
+  const dir = await mkdtemp(path.join(tmpdir(), "pew2-closed-app-"));
+  const appPath = path.join(dir, "GG Coder.app");
+  await mkdir(appPath);
+  const settingsFile = path.join(dir, "gg-app.json");
+  await writeFile(settingsFile, JSON.stringify({ phoneControl: options.phoneControl ?? true }));
+  const launches: string[] = [];
+  let discovery = "";
+  let file = "";
+  const rig = await appRig({
+    appDesk: {
+      appPath,
+      settingsFile,
+      launchTimeoutMs: 400,
+      launchPollMs: 10,
+      launch: async (where) => {
+        launches.push(where);
+        if (options.starts !== false) await writeFile(file, discovery);
+        return true;
+      },
+    },
+  });
+  file = rig.app.file;
+  discovery = await readFile(file, "utf8");
+  await rm(file);
+  await rig.daemon.appDesk.check();
+  return { ...rig, launches };
+}
+
+test("a closed app with Phone control on is still offered, and an Open starts it", async () => {
+  const rig = await closedAppRig();
+  const { daemon, app, sent, replies, send, launches } = rig;
+  expect(daemon.appDesk.available).toBe(false);
+  expect((daemon as any).deskAnnouncement().app).toContain("ggcoder");
+  await send({ t: "desk.open", requestId: "r1", sessionId: "ggcoder-old", target: "app" });
+  expect(launches).toHaveLength(1);
+  expect(replies.at(-1)).toMatchObject({ t: "desk.opened", ok: true, app: "GG Coder app" });
+  expect(app.windows.map((w) => w.agentSessionId)).toEqual([AGENT_ID]);
+  const started = sent.find((m) => m.t === "session.started");
+  expect(daemon.isAppWindow(started.sessionId)).toBe(true);
+  rig.done();
+});
+
+test("a closed app with Phone control off is not offered, nor started", async () => {
+  const rig = await closedAppRig({ phoneControl: false });
+  const { daemon, replies, send, launches } = rig;
+  expect((daemon as any).deskAnnouncement().app).toBeUndefined();
+  await send({ t: "desk.open", requestId: "r1", sessionId: "ggcoder-old", target: "app" });
+  expect(launches).toHaveLength(0);
+  expect(replies.at(-1)).toMatchObject({ ok: false });
+  expect(daemon.isNative("ggcoder-old")).toBe(false);
+  rig.done();
+});
+
+test("an app that never switches its phone control on: the phone is told, the chat stays", async () => {
+  const rig = await closedAppRig({ starts: false });
+  const { daemon, replies, send, launches } = rig;
+  await send({ t: "desk.open", requestId: "r1", sessionId: "ggcoder-old", target: "app" });
+  expect(launches).toHaveLength(1);
+  expect(replies.at(-1)).toMatchObject({
+    ok: false,
+    message: expect.stringContaining("still starting"),
+  });
+  // pew2's own agent still has the conversation.
+  expect((daemon as any).sessions.has("ggcoder-old")).toBe(true);
   rig.done();
 });
